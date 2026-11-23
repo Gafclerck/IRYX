@@ -1,0 +1,32 @@
+# BMad Method - Workflow Status Tracker
+project_name: IRYX
+user_name: Abdoul
+communication_language: French
+document_output_language: French
+track: greenfield
+project_level: 2
+planning_artifacts: _bmad-output/planning-artifacts
+implementation_artifacts: _bmad-output/implementation-artifacts
+
+phases:
+  analysis:
+    status: not-started
+    artifacts:
+      product_brief: null
+      research: null
+  planning:
+    status: not-started
+    artifacts:
+      prd: null
+      ux_design: null
+  solutioning:
+    status: not-started
+    artifacts:
+      architecture: null
+      epics_and_stories: null
+      sprint_status: null
+  implementation:
+    status: not-started
+    artifacts:
+      sprint_tracking: null
+      code_review: null
