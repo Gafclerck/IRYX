@@ -1,0 +1,32 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Evidence and forensic data storage
+evidence/
+*.db
+*.sqlite3
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+build/
+dist/
+*.egg-info/
+
+# Node artifacts
+node_modules/
+.npm/
+
+# OS specific files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# Reference external repository
+mulder_repo/
