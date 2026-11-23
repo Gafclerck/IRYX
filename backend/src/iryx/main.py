@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from iryx import __version__
+from iryx.auth.router import router as auth_router
 from iryx.core.config import get_settings
 from iryx.core.exceptions import register_exception_handlers
 from iryx.core.logging import setup_logging
@@ -74,6 +75,9 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Register API Routers
+    application.include_router(auth_router)
 
     # Thin Health Check Endpoint (D-03)
     @application.get(

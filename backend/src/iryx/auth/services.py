@@ -9,14 +9,18 @@ from sqlalchemy.orm import Session
 
 from iryx.auth.models import User
 from iryx.auth.schemas import UserCreate
-from iryx.core.exceptions import UserAlreadyExistsException
-from iryx.core.security import hash_password
+from iryx.core.exceptions import (
+    InactiveAccountException,
+    InvalidCredentialsException,
+    UserAlreadyExistsException,
+)
+from iryx.core.security import hash_password, verify_password
 
 logger = logging.getLogger("iryx.auth.services")
 
 
 class UserService:
-    """Service handling User business logic, persistence, and uniqueness."""
+    """Service handling User business logic, persistence, and authentication."""
 
     def __init__(self, db: Session) -> None:
         self.db = db
@@ -35,9 +39,7 @@ class UserService:
             return None
         return self.db.get(User, user_id)
 
-    def create_user(
-        self, user_create: UserCreate, auto_commit: bool = True
-    ) -> User:
+    def create_user(self, user_create: UserCreate, auto_commit: bool = True) -> User:
         """Create a new user with hashed password and uniqueness enforcement.
 
         Raises UserAlreadyExistsException (HTTP 409) if email is already taken.
@@ -86,10 +88,37 @@ class UserService:
             self.db.rollback()
             raise
 
+    def authenticate_user(self, email: str, password: str) -> User:
+        """Authenticate user credentials against argon2id hash and verify active account.
 
-def create_user(
-    db: Session, user_create: UserCreate, auto_commit: bool = True
-) -> User:
+        Raises:
+            InvalidCredentialsException (HTTP 401): If user is not found or password fails.
+            InactiveAccountException (HTTP 403): If user exists and password matches but inactive.
+        """
+        if (
+            not isinstance(email, str)
+            or not email.strip()
+            or not isinstance(password, str)
+            or not password.strip()
+        ):
+            raise InvalidCredentialsException()
+
+        normalized_email = email.lower().strip()
+        user = self.get_by_email(normalized_email)
+
+        if user is None:
+            raise InvalidCredentialsException()
+
+        if not verify_password(password, user.hashed_password):
+            raise InvalidCredentialsException()
+
+        if not user.is_active:
+            raise InactiveAccountException()
+
+        return user
+
+
+def create_user(db: Session, user_create: UserCreate, auto_commit: bool = True) -> User:
     """Helper function to create a new user."""
     return UserService(db).create_user(user_create, auto_commit=auto_commit)
 
@@ -102,3 +131,8 @@ def get_user_by_email(db: Session, email: str) -> User | None:
 def get_user_by_id(db: Session, user_id: uuid.UUID) -> User | None:
     """Helper function to fetch a user by id."""
     return UserService(db).get_by_id(user_id)
+
+
+def authenticate_user(db: Session, email: str, password: str) -> User:
+    """Helper function to authenticate a user."""
+    return UserService(db).authenticate_user(email=email, password=password)

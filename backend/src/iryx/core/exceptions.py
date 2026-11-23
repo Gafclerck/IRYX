@@ -121,6 +121,62 @@ class ConflictException(IryxException):
         )
 
 
+class InvalidCredentialsException(UnauthorizedException):
+    """Raised when authentication credentials (email or password) are incorrect."""
+
+    def __init__(
+        self,
+        message: str = "Identifiants invalides.",
+        code: str = "INVALID_CREDENTIALS",
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+        )
+
+
+class InactiveAccountException(ForbiddenException):
+    """Raised when an authenticated user account has been disabled or is inactive."""
+
+    def __init__(
+        self,
+        message: str = "Compte utilisateur inactif.",
+        code: str = "INACTIVE_ACCOUNT",
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+        )
+
+
+class InvalidTokenException(UnauthorizedException):
+    """Raised when a JWT token is expired, corrupted, or has an invalid signature."""
+
+    def __init__(
+        self,
+        message: str = "Jeton d'authentification invalide ou expiré.",
+        code: str = "INVALID_TOKEN",
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+        )
+
+
+class UserNotFoundException(UnauthorizedException):
+    """Raised when the user identified by token sub claim does not exist."""
+
+    def __init__(
+        self,
+        message: str = "Utilisateur introuvable.",
+        code: str = "USER_NOT_FOUND",
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+        )
+
+
 class UserAlreadyExistsException(ConflictException):
     """Raised when attempting to create a user with an already registered email."""
 
@@ -147,9 +203,13 @@ def _format_error_response(code: str, message: str) -> dict[str, Any]:
 
 async def iryx_exception_handler(request: Request, exc: IryxException) -> JSONResponse:
     """Handle custom IryxException instances."""
+    headers: dict[str, str] | None = None
+    if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+        headers = {"WWW-Authenticate": "Bearer"}
     return JSONResponse(
         status_code=exc.status_code,
         content=_format_error_response(code=exc.code, message=exc.message),
+        headers=headers,
     )
 
 
@@ -186,9 +246,15 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
     code = status_code_map.get(exc.status_code, "HTTP_ERROR")
     message = str(exc.detail) if exc.detail else "Une erreur HTTP est survenue."
 
+    headers: dict[str, str] | None = getattr(exc, "headers", None)
+    if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+        headers = headers.copy() if headers else {}
+        headers.setdefault("WWW-Authenticate", "Bearer")
+
     return JSONResponse(
         status_code=exc.status_code,
         content=_format_error_response(code=code, message=message),
+        headers=headers,
     )
 
 

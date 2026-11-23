@@ -26,11 +26,16 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:8000"]
     log_level: str = "INFO"
 
-    # Security & Authentication (ADR-0006)
+    # Security & Authentication (ADR-0006, Story 1.4)
     secret_key: str = Field(..., description="Application secret key (mandatory)")
-    jwt_secret_key: str = "change-me-in-production-use-a-strong-jwt-secret-key"
-    jwt_algorithm: str = "HS256"
-    jwt_access_token_expire_minutes: int = 480
+    jwt_secret_key: str = Field(
+        "change-me-in-production-use-a-strong-jwt-secret-key",
+        description="Cryptographic secret key for signing JWT tokens",
+    )
+    jwt_algorithm: str = Field("HS256", description="Cryptographic algorithm for JWT signature")
+    jwt_access_token_expire_minutes: int = Field(
+        60, gt=0, description="Access token expiration in minutes (60 min = 3600s)"
+    )
 
     # Database Configuration (D-05, D-06)
     database_url: str = "postgresql+psycopg://iryx:iryx_password@localhost:5432/iryx_db"

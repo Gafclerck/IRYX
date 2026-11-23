@@ -147,6 +147,7 @@ async def test_domain_exceptions_standardized_responses(
     # UnauthorizedException -> 401
     r3 = await async_client.get("/_test/unauthorized-domain")
     assert r3.status_code == 401
+    assert r3.headers.get("www-authenticate") == "Bearer"
     assert r3.json() == {
         "error": {"code": "UNAUTHORIZED", "message": "Jeton JWT expiré ou invalide."}
     }

@@ -14,7 +14,7 @@ def test_settings_nominal_with_required_key() -> None:
     assert settings.environment in ("development", "test")
     assert settings.port == 8000
     assert settings.max_evidence_size_gb == 16
-    assert settings.jwt_access_token_expire_minutes == 480
+    assert settings.jwt_access_token_expire_minutes == 60
     assert settings.polling_retry_after_seconds == 3
 
 
@@ -40,6 +40,21 @@ def test_settings_invalid_type_raises_validation_error() -> None:
 
     errors = exc_info.value.errors()
     assert any(e["loc"][0] == "port" for e in errors)
+
+
+def test_settings_jwt_expire_minutes_must_be_positive() -> None:
+    """Verify jwt_access_token_expire_minutes rejects non-positive values (<= 0)."""
+    with pytest.raises(ValidationError) as exc_info_zero:
+        Settings(secret_key="test-key", jwt_access_token_expire_minutes=0)
+    assert any(
+        e["loc"][0] == "jwt_access_token_expire_minutes" for e in exc_info_zero.value.errors()
+    )
+
+    with pytest.raises(ValidationError) as exc_info_neg:
+        Settings(secret_key="test-key", jwt_access_token_expire_minutes=-10)
+    assert any(
+        e["loc"][0] == "jwt_access_token_expire_minutes" for e in exc_info_neg.value.errors()
+    )
 
 
 def test_cors_origins_parsing_variants() -> None:

@@ -11,8 +11,18 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from iryx.auth.schemas import UserCreate, UserResponse
-from iryx.auth.services import UserService, create_user, get_user_by_email, get_user_by_id
-from iryx.core.exceptions import UserAlreadyExistsException
+from iryx.auth.services import (
+    UserService,
+    authenticate_user,
+    create_user,
+    get_user_by_email,
+    get_user_by_id,
+)
+from iryx.core.exceptions import (
+    InactiveAccountException,
+    InvalidCredentialsException,
+    UserAlreadyExistsException,
+)
 from iryx.core.security import verify_password
 from iryx.db.base import Base
 
@@ -148,9 +158,7 @@ def test_create_user_integrity_error_reraised_when_not_duplicate(
     user_in = UserCreate(email="nondup@iryx.io", password="Password12345!")
 
     with (
-        patch.object(
-            test_db_session, "commit", side_effect=IntegrityError("stmt", {}, None)
-        ),
+        patch.object(test_db_session, "commit", side_effect=IntegrityError("stmt", {}, None)),
         pytest.raises(IntegrityError),
     ):
         service.create_user(user_in)
@@ -166,3 +174,83 @@ def test_create_user_auto_commit_false(test_db_session: Session) -> None:
     assert user.id is not None
     test_db_session.commit()
     assert service.get_by_email("flushonly@iryx.io") is not None
+
+
+def test_authenticate_user_success(test_db_session: Session) -> None:
+    """Verify authenticate_user succeeds and returns User on matching credentials."""
+    service = UserService(test_db_session)
+    created = service.create_user(
+        UserCreate(email="auth.success@iryx.io", password="CorrectPassword123!")
+    )
+
+    authenticated = service.authenticate_user("auth.success@iryx.io", "CorrectPassword123!")
+    assert authenticated.id == created.id
+    assert authenticated.email == "auth.success@iryx.io"
+
+
+def test_authenticate_user_wrong_password_raises_invalid_credentials(
+    test_db_session: Session,
+) -> None:
+    """Verify wrong password raises InvalidCredentialsException (HTTP 401)."""
+    service = UserService(test_db_session)
+    service.create_user(UserCreate(email="auth.fail@iryx.io", password="CorrectPassword123!"))
+
+    with pytest.raises(InvalidCredentialsException) as exc_info:
+        service.authenticate_user("auth.fail@iryx.io", "WrongPassword123!")
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.code == "INVALID_CREDENTIALS"
+    assert "Identifiants invalides." in exc_info.value.message
+
+
+def test_authenticate_user_unknown_email_raises_invalid_credentials(
+    test_db_session: Session,
+) -> None:
+    """Verify unknown email raises InvalidCredentialsException without leaking user existence."""
+    service = UserService(test_db_session)
+
+    with pytest.raises(InvalidCredentialsException) as exc_info:
+        service.authenticate_user("nobody@iryx.io", "AnyPassword123!")
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.code == "INVALID_CREDENTIALS"
+    assert "Identifiants invalides." in exc_info.value.message
+
+
+def test_authenticate_user_inactive_account_raises_inactive_account(
+    test_db_session: Session,
+) -> None:
+    """Verify inactive account raises InactiveAccountException (HTTP 403)."""
+    service = UserService(test_db_session)
+    user = service.create_user(UserCreate(email="inactive@iryx.io", password="CorrectPassword123!"))
+    user.is_active = False
+    test_db_session.commit()
+
+    with pytest.raises(InactiveAccountException) as exc_info:
+        service.authenticate_user("inactive@iryx.io", "CorrectPassword123!")
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.code == "INACTIVE_ACCOUNT"
+    assert "inactif" in exc_info.value.message
+
+
+def test_authenticate_user_empty_or_blank_inputs(test_db_session: Session) -> None:
+    """Verify empty or blank email or password raises InvalidCredentialsException."""
+    service = UserService(test_db_session)
+
+    with pytest.raises(InvalidCredentialsException):
+        service.authenticate_user("", "Password123!")
+
+    with pytest.raises(InvalidCredentialsException):
+        service.authenticate_user("user@iryx.io", "")
+
+
+def test_authenticate_user_helper_dispatch(test_db_session: Session) -> None:
+    """Verify authenticate_user standalone helper function delegates properly."""
+    create_user(
+        test_db_session,
+        UserCreate(email="auth.helper@iryx.io", password="Password12345!"),
+    )
+
+    user = authenticate_user(test_db_session, "auth.helper@iryx.io", "Password12345!")
+    assert user.email == "auth.helper@iryx.io"

@@ -3,7 +3,14 @@
 import uuid
 from datetime import datetime
 
+import email_validator
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+# Allow .local domain for IRYX environment per architectural specifications
+if "local" in email_validator.SPECIAL_USE_DOMAIN_NAMES:
+    email_validator.SPECIAL_USE_DOMAIN_NAMES = [
+        d for d in email_validator.SPECIAL_USE_DOMAIN_NAMES if d != "local"
+    ]
 
 
 class UserCreate(BaseModel):
@@ -40,3 +47,35 @@ class UserResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class LoginRequest(BaseModel):
+    """Schema for user authentication and session opening request."""
+
+    email: EmailStr = Field(
+        ...,
+        max_length=255,
+        description="Adresse email de l'utilisateur.",
+    )
+    password: str = Field(
+        ...,
+        min_length=1,
+        max_length=128,
+        description="Mot de passe de l'utilisateur.",
+    )
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, v: object) -> object:
+        """Strip leading/trailing whitespace and convert email to lowercase."""
+        if isinstance(v, str):
+            return v.strip().lower()
+        return v
+
+
+class TokenResponse(BaseModel):
+    """Schema for successful authentication response containing JWT bearer token."""
+
+    access_token: str = Field(..., description="Jeton d'accès JWT signé (HS256).")
+    token_type: str = Field("bearer", description="Type de jeton (bearer).")
+    expires_in: int = Field(..., description="Durée de validité du jeton en secondes (3600s).")

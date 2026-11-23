@@ -11,6 +11,7 @@ from httpx import ASGITransport, AsyncClient
 os.environ["SECRET_KEY"] = "test-secret-key-for-unit-testing-32-chars-min"
 os.environ["ENVIRONMENT"] = "test"
 os.environ["LOG_LEVEL"] = "DEBUG"
+os.environ["JWT_ACCESS_TOKEN_EXPIRE_MINUTES"] = "60"
 
 from iryx.core.config import get_settings  # noqa: E402
 from iryx.main import app  # noqa: E402
