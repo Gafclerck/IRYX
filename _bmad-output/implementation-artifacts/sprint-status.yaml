@@ -1,0 +1,104 @@
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created, ready for development
+#   - in-progress: Developer actively working on implementation
+#   - review: Implementation complete, ready for review
+#   - done: Story completed
+
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when its first story starts (via build's sprint sync)
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates the next story after the previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; the status view surfaces open ones
+generated: 11-23-2026 17:18
+last_updated: 11-23-2026 17:18
+project: IRYX
+project_key: NOKEY
+tracking_system: file-system
+story_location: D:\MY_PROEJCT\IRYX\_bmad-output\implementation-artifacts
+development_status:
+  epic-1: backlog
+  1-1-initialisation-du-socle-applicatif-fastapi-configuration-pyd: backlog
+  1-2-infrastructure-de-base-de-données-postgresql-16-sessions-sql: backlog
+  1-3-modèle-utilisateur-user-hachage-sécurisé-argon2-et-migration: backlog
+  1-4-service-d-authentification-jwt-et-endpoint-de-connexion-api: backlog
+  epic-1-retrospective: optional
+
+  epic-2: backlog
+  2-1-modèles-organization-et-membership-migration-alembic-et-sché: backlog
+  2-2-api-de-gestion-des-organisations-et-attribution-des-rôles-rb: backlog
+  2-3-modèle-case-migration-alembic-et-gestion-du-cycle-de-vie-des: backlog
+  2-4-dépendance-de-sécurité-verify_case_access-et-isolation-stric: backlog
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-modèles-evidence-et-ingestionrun-migrations-alembic-et-confi: backlog
+  3-2-endpoint-de-téléversement-de-preuves-et-protection-contre-l: backlog
+  3-3-tâche-celery-d-ingestion-scellement-sha-256-détection-filety: backlog
+  3-4-consultation-de-l-état-d-ingestion-par-polling-rest-et-consu: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-registre-de-la-gateway-forensique-modèle-toolexecution-et-cl: backlog
+  4-2-analyseur-de-logs-texte-et-csv-avec-normalisation-des-horoda: backlog
+  4-3-analyseur-de-journaux-d-événements-windows-evtx-python-evtx: backlog
+  4-4-analyseur-de-ruches-de-registre-windows-regipy-fr13: backlog
+  4-5-analyseur-d-artefacts-d-exécution-windows-prefetch-dissect-f: backlog
+  4-6-analyseur-de-mémoire-vive-volatility-3-avec-symboles-isf-hor: backlog
+  4-7-troncature-contextuelle-résumé-des-résultats-d-outils-et-end: backlog
+  epic-4-retrospective: optional
+
+  epic-5: backlog
+  5-1-client-llm-unifié-openai-avec-réessais-tenacity-et-prompts-s: backlog
+  5-2-modèles-investigationrun-et-phase-schémas-et-initialisation: backlog
+  5-3-agent-planner-et-proposition-de-plan-d-investigation-borné-f: backlog
+  5-4-porte-humaine-h1-validation-du-plan-d-action-et-api-d-arbitr: backlog
+  5-5-agent-executor-procédural-et-dispatch-sécurisé-vers-la-gatew: backlog
+  5-6-persistance-transactionnelle-d-état-checkpointer-postgresql: backlog
+  epic-5-retrospective: optional
+
+  epic-6: backlog
+  6-1-modèle-finding-schémas-pydantic-et-migration-alembic: backlog
+  6-2-agent-analyst-et-formulation-structurée-des-constats-d-enquê: backlog
+  6-3-composant-verifier-déterministe-formel-sans-appel-llm-fr23-n: backlog
+  6-4-porte-humaine-h2-validation-des-findings-et-api-de-revue-fr1: backlog
+  epic-6-retrospective: optional
+
+  epic-7: backlog
+  7-1-service-de-reconstruction-et-de-corrélation-de-la-chronologi: backlog
+  7-2-api-de-consultation-paginée-et-filtrage-de-la-timeline-d-enq: backlog
+  7-3-moteur-de-corrélation-multi-sources-et-mise-en-correspondanc: backlog
+  epic-7-retrospective: optional
+
+  epic-8: backlog
+  8-1-module-de-pseudonymisation-déterministe-microsoft-presidio-f: backlog
+  8-2-porte-humaine-h3-autorisation-d-envoi-llm-externe-et-prévisu: backlog
+  8-3-modèle-report-agent-rapporteur-génération-et-scellement-sha: backlog
+  8-4-endpoints-de-consultation-et-téléchargement-des-rapports-sce: backlog
+  8-5-service-d-audit-immuable-en-ajout-seul-auditevent-et-déclenc: backlog
+  epic-8-retrospective: optional
+
+  epic-9: backlog
+  9-1-configuration-dockerfile-multi-étapes-et-docker-compose-mono: backlog
+  9-2-durcissement-de-sécurité-du-conteneur-de-traitement-et-isola: backlog
+  9-3-script-de-peuplement-de-démonstration-seed-data-d-un-inciden: backlog
+  9-4-script-de-test-d-acceptation-et-démonstration-de-bout-en-bou: backlog
+  epic-9-retrospective: optional

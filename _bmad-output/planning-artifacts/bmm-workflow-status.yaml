@@ -15,18 +15,18 @@ phases:
       product_brief: null
       research: null
   planning:
-    status: not-started
+    status: completed
     artifacts:
-      prd: null
+      prd: prd.md
       ux_design: null
   solutioning:
-    status: not-started
+    status: completed
     artifacts:
-      architecture: null
-      epics_and_stories: null
-      sprint_status: null
+      architecture: architecture.md
+      epics_and_stories: epics.md
+      sprint_status: sprint-status.yaml
   implementation:
     status: not-started
     artifacts:
-      sprint_tracking: null
+      sprint_tracking: sprint-status.yaml
       code_review: null
