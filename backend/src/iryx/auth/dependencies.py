@@ -70,6 +70,7 @@ def get_current_user(
         raise UserNotFoundException(
             message="Utilisateur introuvable.",
             code="USER_NOT_FOUND",
+            status_code=401,
         )
 
     if not user.is_active:

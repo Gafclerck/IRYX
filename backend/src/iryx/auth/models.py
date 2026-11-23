@@ -136,6 +136,11 @@ class Membership(Base):
         ),
     )
 
+    @property
+    def email(self) -> str | None:
+        """Convenience property to access member user's email."""
+        return self.user.email if self.user else None
+
     def __init__(self, **kw) -> None:
         if kw.get("id") is None:
             kw["id"] = uuid.uuid4()

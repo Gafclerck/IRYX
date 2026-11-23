@@ -163,17 +163,91 @@ class InvalidTokenException(UnauthorizedException):
         )
 
 
-class UserNotFoundException(UnauthorizedException):
-    """Raised when the user identified by token sub claim does not exist."""
+class UserNotFoundException(NotFoundException):
+    """Raised when a requested user entity is not found."""
 
     def __init__(
         self,
         message: str = "Utilisateur introuvable.",
         code: str = "USER_NOT_FOUND",
+        status_code: int = status.HTTP_404_NOT_FOUND,
     ) -> None:
         super().__init__(
             message=message,
             code=code,
+        )
+        self.status_code = status_code
+
+
+class OrganizationNotFoundException(NotFoundException):
+    """Raised when a requested organization does not exist or is inaccessible."""
+
+    def __init__(
+        self,
+        message: str = "Organisation introuvable.",
+        code: str = "ORGANIZATION_NOT_FOUND",
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+        )
+
+
+class MemberNotFoundException(NotFoundException):
+    """Raised when a requested membership does not exist."""
+
+    def __init__(
+        self,
+        message: str = "Membre introuvable.",
+        code: str = "MEMBER_NOT_FOUND",
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+        )
+
+
+class MemberAlreadyExistsException(ConflictException):
+    """Raised when attempting to add an already registered member to an organization."""
+
+    def __init__(
+        self,
+        message: str = "Cet utilisateur est déjà membre de l'organisation.",
+        code: str = "MEMBER_ALREADY_EXISTS",
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+        )
+
+
+class InsufficientPermissionsException(ForbiddenException):
+    """Raised when an authenticated user lacks the required RBAC role."""
+
+    def __init__(
+        self,
+        message: str = "Permissions insuffisantes pour effectuer cette action.",
+        code: str = "INSUFFICIENT_PERMISSIONS",
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+        )
+
+
+class CannotRemoveLastAdminException(IryxException):
+    """Raised when an operation would leave an organization without an active administrator."""
+
+    def __init__(
+        self,
+        message: str = "Impossible de supprimer ou rétrograder le dernier administrateur actif.",
+        code: str = "CANNOT_REMOVE_LAST_ADMIN",
+        status_code: int = status.HTTP_400_BAD_REQUEST,
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+            status_code=status_code,
         )
 
 
