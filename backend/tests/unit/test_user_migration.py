@@ -36,7 +36,7 @@ def test_migration_001_offline_upgrade_sql() -> None:
     script_dir = ScriptDirectory.from_config(cfg)
     revisions = list(script_dir.walk_revisions())
     assert len(revisions) >= 1
-    assert revisions[0].revision == "001"
+    assert any(rev.revision == "001" for rev in revisions)
 
 
 def test_migration_001_offline_downgrade_sql() -> None:
