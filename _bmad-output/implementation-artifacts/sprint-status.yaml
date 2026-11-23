@@ -37,8 +37,8 @@ story_location: D:\MY_PROEJCT\IRYX\_bmad-output\implementation-artifacts
 development_status:
   epic-1: in-progress
   1-1-initialisation-du-socle-applicatif-fastapi-configuration-pyd: done
-  1-2-infrastructure-de-base-de-données-postgresql-16-sessions-sql: review
-  1-3-modèle-utilisateur-user-hachage-sécurisé-argon2-et-migration: backlog
+  1-2-infrastructure-de-base-de-données-postgresql-16-sessions-sql: done
+  1-3-modèle-utilisateur-user-hachage-sécurisé-argon2-et-migration: review
   1-4-service-d-authentification-jwt-et-endpoint-de-connexion-api: backlog
   epic-1-retrospective: optional
 

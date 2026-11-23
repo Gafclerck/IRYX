@@ -106,6 +106,35 @@ class UnauthorizedException(IryxException):
         )
 
 
+class ConflictException(IryxException):
+    """Raised when an operation conflicts with the current resource state."""
+
+    def __init__(
+        self,
+        message: str = "Conflit avec l'état actuel de la ressource.",
+        code: str = "CONFLICT",
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+            status_code=status.HTTP_409_CONFLICT,
+        )
+
+
+class UserAlreadyExistsException(ConflictException):
+    """Raised when attempting to create a user with an already registered email."""
+
+    def __init__(
+        self,
+        message: str = "Un utilisateur avec cette adresse email existe déjà.",
+        code: str = "USER_ALREADY_EXISTS",
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+        )
+
+
 def _format_error_response(code: str, message: str) -> dict[str, Any]:
     """Return the standardized error response envelope."""
     return {

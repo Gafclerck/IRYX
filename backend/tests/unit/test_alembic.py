@@ -71,7 +71,7 @@ def test_alembic_root_ini_configuration():
 
 
 def test_alembic_script_directory_initial_state():
-    """Verify Alembic can inspect the migration directory and reports no revisions."""
+    """Verify Alembic can inspect the migration directory and reports revision 001."""
     backend_dir = Path(__file__).resolve().parent.parent.parent
     ini_path = backend_dir / "alembic.ini"
 
@@ -81,7 +81,7 @@ def test_alembic_script_directory_initial_state():
 
     script_dir = ScriptDirectory.from_config(cfg)
     heads = script_dir.get_heads()
-    assert heads == []
+    assert heads == ["001"]
 
 
 def test_alembic_offline_upgrade_execution():
