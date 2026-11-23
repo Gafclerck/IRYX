@@ -11,6 +11,7 @@ if backend_src not in sys.path:
     sys.path.insert(0, backend_src)
 
 import iryx.auth.models  # noqa: F401, E402
+import iryx.cases.models  # noqa: F401, E402
 from iryx.core.config import get_settings  # noqa: E402
 from iryx.db.base import Base  # noqa: E402
 

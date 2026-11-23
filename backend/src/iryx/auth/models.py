@@ -3,6 +3,7 @@
 import uuid
 from datetime import datetime
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
@@ -17,6 +18,9 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from iryx.db.base import Base
+
+if TYPE_CHECKING:
+    from iryx.cases.models import Case
 
 
 class MembershipRole(StrEnum):
@@ -46,6 +50,12 @@ class Organization(Base):
     )
 
     memberships: Mapped[list["Membership"]] = relationship(
+        back_populates="organization",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    cases: Mapped[list["Case"]] = relationship(
+        "Case",
         back_populates="organization",
         cascade="all, delete-orphan",
         passive_deletes=True,

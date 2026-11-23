@@ -193,6 +193,38 @@ class OrganizationNotFoundException(NotFoundException):
         )
 
 
+class CaseNotFoundException(NotFoundException):
+    """Raised when a requested case entity is not found."""
+
+    def __init__(
+        self,
+        message: str = "Dossier introuvable.",
+        code: str = "CASE_NOT_FOUND",
+        status_code: int = status.HTTP_404_NOT_FOUND,
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+        )
+        self.status_code = status_code
+
+
+class InvalidStatusTransitionException(IryxException):
+    """Raised when an illegal or unsupported case status transition is attempted."""
+
+    def __init__(
+        self,
+        message: str = "Transition de statut de dossier non autorisée.",
+        code: str = "INVALID_STATUS_TRANSITION",
+        status_code: int = status.HTTP_400_BAD_REQUEST,
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+            status_code=status_code,
+        )
+
+
 class MemberNotFoundException(NotFoundException):
     """Raised when a requested membership does not exist."""
 

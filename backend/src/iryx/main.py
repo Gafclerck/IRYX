@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from iryx import __version__
 from iryx.auth.router import router as auth_router
+from iryx.cases.router import router as cases_router
 from iryx.core.config import get_settings
 from iryx.core.exceptions import register_exception_handlers
 from iryx.core.logging import setup_logging
@@ -80,6 +81,7 @@ def create_app() -> FastAPI:
     # Register API Routers
     application.include_router(auth_router)
     application.include_router(organizations_router)
+    application.include_router(cases_router)
 
     # Thin Health Check Endpoint (D-03)
     @application.get(
