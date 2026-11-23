@@ -38,6 +38,9 @@ async def lifespan(app: FastAPI):
         },
     )
     yield
+    from iryx.db.session import engine
+
+    engine.dispose()
     logger.info("Stopping IRYX API")
 
 

@@ -58,6 +58,17 @@ async def trigger_validation_domain() -> None:
     raise ValidationException("Le format du hash SHA-256 est invalide.")
 
 
+@dummy_router.get("/http-503-error")
+async def trigger_http_503_error() -> None:
+    """Endpoint raising generic Starlette HTTPException with 503."""
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+
+    raise StarletteHTTPException(
+        status_code=503,
+        detail="Service tiers temporairement indisponible.",
+    )
+
+
 # Include the test router into app
 app.include_router(dummy_router)
 
@@ -145,4 +156,19 @@ async def test_domain_exceptions_standardized_responses(
     assert r4.status_code == 422
     assert r4.json() == {
         "error": {"code": "VALIDATION_ERROR", "message": "Le format du hash SHA-256 est invalide."}
+    }
+
+
+@pytest.mark.asyncio
+async def test_http_503_service_unavailable_code_mapping(
+    async_client: AsyncClient,
+) -> None:
+    """Verify generic HTTPException with status 503 maps to SERVICE_UNAVAILABLE."""
+    response = await async_client.get("/_test/http-503-error")
+    assert response.status_code == 503
+    assert response.json() == {
+        "error": {
+            "code": "SERVICE_UNAVAILABLE",
+            "message": "Service tiers temporairement indisponible.",
+        }
     }

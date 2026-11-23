@@ -31,6 +31,21 @@ class IryxException(Exception):
         self.status_code = status_code
 
 
+class DatabaseUnavailableException(IryxException):
+    """Raised when the database service is unavailable or connection fails."""
+
+    def __init__(
+        self,
+        message: str = "Service de base de données temporairement indisponible.",
+        code: str = "DATABASE_UNAVAILABLE",
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+
 class ValidationException(IryxException):
     """Raised when incoming data or entity invariants fail validation."""
 
@@ -137,6 +152,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
         HTTP_413_STATUS: "PAYLOAD_TOO_LARGE",
         HTTP_422_STATUS: "VALIDATION_ERROR",
         status.HTTP_500_INTERNAL_SERVER_ERROR: "INTERNAL_SERVER_ERROR",
+        status.HTTP_503_SERVICE_UNAVAILABLE: "SERVICE_UNAVAILABLE",
     }
     code = status_code_map.get(exc.status_code, "HTTP_ERROR")
     message = str(exc.detail) if exc.detail else "Une erreur HTTP est survenue."
