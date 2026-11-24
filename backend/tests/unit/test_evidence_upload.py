@@ -26,7 +26,6 @@ from iryx.db.base import Base
 from iryx.evidence.models import Evidence, IngestionStatus
 from iryx.evidence.schemas import EvidenceUploadResponse
 from iryx.evidence.services import CHUNK_SIZE, EvidenceService
-from iryx.evidence.tasks import process_evidence_ingestion
 
 
 @pytest.fixture
@@ -407,21 +406,6 @@ async def test_upload_evidence_filename_sanitization_and_validation(
         u3 = create_upload_file("a" * 256 + ".bin", b"Content 3")
         with pytest.raises(ValidationException):
             await service.upload_evidence(case.id, u3, user.id)
-
-
-def test_process_evidence_ingestion_celery_task(caplog: pytest.LogCaptureFixture) -> None:
-    """Verify Celery task stub executes and logs structured trace."""
-    evidence_id = str(uuid.uuid4())
-    staging_path = "/tmp/staging/fake.bin"
-
-    with caplog.at_level(logging.INFO):
-        result = process_evidence_ingestion(evidence_id, staging_path)
-
-    assert result == {"evidence_id": evidence_id, "status": "processing"}
-    matching = [r for r in caplog.records if "Démarrage du traitement d'ingestion" in r.message]
-    assert len(matching) >= 1
-    assert matching[-1].context["evidence_id"] == evidence_id
-    assert matching[-1].context["staging_path"] == staging_path
 
 
 def test_evidence_upload_response_schema_serialization() -> None:

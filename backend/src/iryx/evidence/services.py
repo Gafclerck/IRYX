@@ -16,11 +16,9 @@ from iryx.core.exceptions import (
     ValidationException,
 )
 from iryx.evidence.models import Evidence, IngestionRun, IngestionStatus
-from iryx.evidence.tasks import process_evidence_ingestion
+from iryx.evidence.tasks import CHUNK_SIZE, process_evidence_ingestion
 
 logger = logging.getLogger(__name__)
-
-CHUNK_SIZE = 65536  # 64 KB buffer per ADR-0005, D-04
 
 
 class EvidenceService:
