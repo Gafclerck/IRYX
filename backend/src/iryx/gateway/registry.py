@@ -121,11 +121,13 @@ def _register_default_tools(registry: ToolRegistry) -> None:
     from iryx.gateway.tools.log_parser import LogCsvParserTool
     from iryx.gateway.tools.prefetch_parser import PrefetchParserTool
     from iryx.gateway.tools.registry_parser import RegistryParserTool
+    from iryx.gateway.tools.volatility_analyzer import Volatility3Tool
 
     registry.register(LogCsvParserTool())
     registry.register(EvtxParserTool())
     registry.register(RegistryParserTool())
     registry.register(PrefetchParserTool())
+    registry.register(Volatility3Tool())
 
 
 _register_default_tools(default_registry)

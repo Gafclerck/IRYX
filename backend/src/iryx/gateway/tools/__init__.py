@@ -14,8 +14,15 @@ from iryx.gateway.tools.registry_parser import (
     RegistryParserParameters,
     RegistryParserTool,
 )
+from iryx.gateway.tools.volatility_analyzer import (
+    AUTHORIZED_PLUGINS,
+    Volatility3Parameters,
+    Volatility3Tool,
+    VolatilityExecutionError,
+)
 
 __all__ = [
+    "AUTHORIZED_PLUGINS",
     "DEFAULT_KEY_PATHS",
     "EvtxParserParameters",
     "EvtxParserTool",
@@ -27,5 +34,8 @@ __all__ = [
     "RegistryHiveParsingError",
     "RegistryParserParameters",
     "RegistryParserTool",
+    "Volatility3Parameters",
+    "Volatility3Tool",
+    "VolatilityExecutionError",
     "sanitize_path",
 ]
