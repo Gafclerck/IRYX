@@ -765,6 +765,13 @@ def test_list_user_cases_pagination_validation_returns_422(
     assert r_neg.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
+def test_list_user_cases_unauthenticated_returns_401(client: TestClient) -> None:
+    """Verify GET /api/v1/cases without authentication returns HTTP 401 UNAUTHORIZED."""
+    response = client.get("/api/v1/cases")
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "UNAUTHORIZED"
+
+
 def test_get_case_not_found_standardized_message(client: TestClient, test_setup: dict) -> None:
     """Verify GET /api/v1/cases/{fake_uuid} returns standardized 404 error envelope."""
     admin: User = test_setup["admin"]

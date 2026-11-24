@@ -109,6 +109,22 @@ deferred: []
   - `[low]` `[patch]` BH12: require_case_role non testé au niveau FastAPI Depends — Action: Intégré sur PATCH /api/v1/cases/{case_id}/status et validé via test_patch_case_status_by_viewer_forbidden et test_patch_case_status_by_outsider_forbidden.
   - `[medium]` `[patch]` VG1: Absence de test de pagination multi-pages et has_more sur GET /api/v1/cases — Action: Ajout de test_list_user_cases_pagination_multi_page dans test_cases_api.py (vérifiant has_more True sur page 1, puis False sur page 2).
 
+### 2026-11-24 — Review pass 2
+- verdicts: 12 findings — high 0, medium 0, low 2, false 10, maybe-false 0
+- findings:
+  - `[false]` `[reject]` BH1: carried — Case existence enumeration oracle (404 vs 403) conforme au contrat I/O et entropie UUIDv4.
+  - `[false]` `[reject]` BH2: require_case_role est bien injecté sur PATCH /api/v1/cases/{case_id}/status dans router.py.
+  - `[false]` `[reject]` BH3: require_case_role sans argument validant l'adhésion est le comportement voulu et testé unitairement.
+  - `[false]` `[reject]` BH4: Normalisation .lower() déjà en place pour les rôles passés en chaînes ou enums.
+  - `[low]` `[reject]` BH5: carried — Double verrouillage défensif dans update_case_status.
+  - `[false]` `[reject]` BH6: Pas de divergence fonctionnelle, requêtes ORM isolées et lisibles.
+  - `[low]` `[patch]` BH7: carried — Validation limit > 100 dans list_cases déjà appliquée.
+  - `[false]` `[reject]` BH8: Requête SQL déterministe sans anomalie fonctionnelle.
+  - `[false]` `[reject]` BH9: carried — Message HTTP conforme à la matrice d'acceptation.
+  - `[false]` `[reject]` BH10: carried — Filtrage additionnel hors périmètre Story 2.4.
+  - `[false]` `[reject]` BH11: Schéma CaseOut conforme au modèle de données canonique.
+  - `[low]` `[patch]` BH12: Ajout de test_list_user_cases_unauthenticated_returns_401 validant le rejet HTTP 401 en l'absence de JWT.
+
 ## Design Notes
 
 - **Signature de `verify_case_access` :**
