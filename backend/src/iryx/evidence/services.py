@@ -6,16 +6,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import UploadFile
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from iryx.core.config import get_settings
 from iryx.core.exceptions import (
     EmptyFileException,
+    EvidenceNotFoundInCaseException,
     PayloadTooLargeException,
     ValidationException,
 )
 from iryx.evidence.models import Evidence, IngestionRun, IngestionStatus
+from iryx.evidence.schemas import EvidenceIngestionStatusResponse
 from iryx.evidence.tasks import CHUNK_SIZE, process_evidence_ingestion
 
 logger = logging.getLogger(__name__)
@@ -158,3 +160,124 @@ class EvidenceService:
             self.db.commit()
 
         return evidence, ingestion_run
+
+    def get_evidence(self, case_id: uuid.UUID, evidence_id: uuid.UUID) -> Evidence:
+        """Retrieve an evidence record guaranteeing it belongs to the given case.
+
+        Args:
+            case_id: Target investigation case UUID.
+            evidence_id: Target evidence UUID.
+
+        Returns:
+            The matching Evidence entity.
+
+        Raises:
+            EvidenceNotFoundInCaseException: If evidence does not exist or does not belong to case.
+        """
+        evidence = self.db.scalar(
+            select(Evidence).where(
+                Evidence.id == evidence_id,
+                Evidence.case_id == case_id,
+            )
+        )
+        if evidence is None:
+            raise EvidenceNotFoundInCaseException()
+        return evidence
+
+    def get_ingestion_status(
+        self, case_id: uuid.UUID, evidence_id: uuid.UUID
+    ) -> EvidenceIngestionStatusResponse:
+        """Retrieve latest ingestion run status and sealed metadata for an evidence.
+
+        Args:
+            case_id: Target investigation case UUID.
+            evidence_id: Target evidence UUID.
+
+        Returns:
+            EvidenceIngestionStatusResponse containing status, progress, error_message, sha256,
+            and detected_type.
+
+        Raises:
+            EvidenceNotFoundInCaseException: If evidence does not exist or does not belong to case.
+        """
+        evidence = self.get_evidence(case_id=case_id, evidence_id=evidence_id)
+        latest_run = self.db.scalar(
+            select(IngestionRun)
+            .where(IngestionRun.evidence_id == evidence_id)
+            .order_by(IngestionRun.started_at.desc(), IngestionRun.id.desc())
+            .limit(1)
+        )
+
+        if (
+            latest_run
+            and latest_run.status == IngestionStatus.COMPLETED
+            and evidence.sha256 is None
+        ):
+            self.db.refresh(evidence)
+
+        sha256 = (
+            evidence.sha256
+            if (latest_run and latest_run.status == IngestionStatus.COMPLETED)
+            else None
+        )
+        detected_type = (
+            evidence.detected_type
+            if (latest_run and latest_run.status == IngestionStatus.COMPLETED)
+            else None
+        )
+
+        if latest_run is not None:
+            return EvidenceIngestionStatusResponse(
+                status=latest_run.status,
+                progress=latest_run.progress,
+                error_message=latest_run.error_message,
+                sha256=sha256,
+                detected_type=detected_type,
+            )
+
+        return EvidenceIngestionStatusResponse(
+            status=IngestionStatus.PENDING,
+            progress=0,
+            error_message=None,
+            sha256=None,
+            detected_type=None,
+        )
+
+    def list_evidences(
+        self, case_id: uuid.UUID, limit: int = 50, offset: int = 0
+    ) -> tuple[list[Evidence], int]:
+        """List paginated evidences for a case with deterministic ordering.
+
+        Enforces deterministic ordering by created_at DESC, id DESC.
+
+        Args:
+            case_id: Target investigation case UUID.
+            limit: Maximum items to return (1 <= limit <= 100).
+            offset: Number of items to skip (offset >= 0).
+
+        Returns:
+            Tuple of (list of Evidence entities, total count of evidences for case).
+
+        Raises:
+            ValidationException: If limit < 1 or limit > 100 or offset < 0.
+        """
+        if limit < 1 or limit > 100 or offset < 0:
+            raise ValidationException(
+                "Les paramètres de pagination sont invalides (1 <= limit <= 100, offset >= 0)."
+            )
+
+        count_stmt = select(func.count(Evidence.id)).where(Evidence.case_id == case_id)
+        total = self.db.scalar(count_stmt) or 0
+
+        if total == 0 or offset >= total:
+            return [], total
+
+        stmt = (
+            select(Evidence)
+            .where(Evidence.case_id == case_id)
+            .order_by(Evidence.created_at.desc(), Evidence.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        items = list(self.db.scalars(stmt).all())
+        return items, total

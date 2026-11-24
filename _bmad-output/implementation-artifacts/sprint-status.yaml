@@ -53,7 +53,7 @@ development_status:
   3-1-modèles-evidence-et-ingestionrun-migrations-alembic-et-confi: done
   3-2-endpoint-de-téléversement-de-preuves-et-protection-contre-l: done
   3-3-tâche-celery-d-ingestion-scellement-sha-256-détection-filety: review
-  3-4-consultation-de-l-état-d-ingestion-par-polling-rest-et-consu: backlog
+  3-4-consultation-de-l-état-d-ingestion-par-polling-rest-et-consu: done
   epic-3-retrospective: optional
 
   epic-4: backlog

@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from iryx.core.exceptions import (
     EmptyFileException,
+    EvidenceNotFoundInCaseException,
     ForbiddenException,
     NotFoundException,
     PayloadTooLargeException,
@@ -192,6 +193,14 @@ async def test_domain_exceptions_standardized_responses(
             "message": "La taille du fichier dépasse la limite autorisée.",
         }
     }
+
+
+def test_evidence_not_found_in_case_exception() -> None:
+    """Verify EvidenceNotFoundInCaseException status and standard error code."""
+    exc = EvidenceNotFoundInCaseException()
+    assert exc.status_code == 404
+    assert exc.code == "EVIDENCE_NOT_FOUND_IN_CASE"
+    assert "dossier" in exc.message.lower()
 
 
 @pytest.mark.asyncio

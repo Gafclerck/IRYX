@@ -1,9 +1,10 @@
-"""Integration tests for Evidence Upload API (POST /api/v1/cases/{case_id}/evidences)."""
+"""Integration tests for Evidence Upload, Status Polling, Pagination, and Detail APIs."""
 
 import io
 import tempfile
 import uuid
 from collections.abc import Generator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -156,9 +157,10 @@ def test_upload_evidence_nominal_success(
         evidence_id = uuid.UUID(data["evidence_id"])
         ingestion_run_id = uuid.UUID(data["ingestion_run_id"])
 
-        # Verify Location header (Acceptance Criteria)
+        # Verify Location and Retry-After headers (ADR-0008)
         expected_location = f"/api/v1/cases/{case.id}/evidences/{evidence_id}/ingestion-status"
         assert response.headers.get("Location") == expected_location
+        assert response.headers.get("Retry-After") == "3"
 
         # Verify DB Evidence entity
         evidence = db_session.get(Evidence, evidence_id)
@@ -395,3 +397,535 @@ def test_upload_evidence_payload_too_large(
 
         # Verify staging file was purged
         assert len(list(temp_staging.glob("*.bin"))) == 0
+
+
+# ============================================================================
+# Story 3.4 : Polling Ingestion Status Tests
+# ============================================================================
+
+
+def test_get_ingestion_status_completed(
+    client: TestClient,
+    test_setup: dict[str, object],
+    db_session: Session,
+) -> None:
+    """Verify polling completed ingestion returns HTTP 200 with sealed sha256 and detected_type."""
+    case: Case = test_setup["case"]  # type: ignore
+    analyst: User = test_setup["analyst"]  # type: ignore
+
+    evidence = Evidence(
+        id=uuid.uuid4(),
+        case_id=case.id,
+        original_name="target_binary.exe",
+        file_size=2048,
+        sha256="1" * 64,
+        detected_type="application/x-executable",
+        imported_by=analyst.id,
+    )
+    ingestion_run = IngestionRun(
+        id=uuid.uuid4(),
+        evidence_id=evidence.id,
+        status=IngestionStatus.COMPLETED,
+        progress=100,
+        error_message=None,
+    )
+    db_session.add_all([evidence, ingestion_run])
+    db_session.commit()
+
+    response = client.get(
+        f"/api/v1/cases/{case.id}/evidences/{evidence.id}/ingestion-status",
+        headers=auth_header(analyst),
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "completed"
+    assert data["progress"] == 100
+    assert data["error_message"] is None
+    assert data["sha256"] == "1" * 64
+    assert data["detected_type"] == "application/x-executable"
+    # No Retry-After header on completed task
+    assert "Retry-After" not in response.headers
+
+
+def test_get_ingestion_status_processing(
+    client: TestClient,
+    test_setup: dict[str, object],
+    db_session: Session,
+) -> None:
+    """Verify polling processing ingestion returns HTTP 200 with Retry-After: 3."""
+    case: Case = test_setup["case"]  # type: ignore
+    analyst: User = test_setup["analyst"]  # type: ignore
+
+    evidence = Evidence(
+        id=uuid.uuid4(),
+        case_id=case.id,
+        original_name="memory.raw",
+        file_size=4096,
+        sha256=None,
+        detected_type=None,
+        imported_by=analyst.id,
+    )
+    ingestion_run = IngestionRun(
+        id=uuid.uuid4(),
+        evidence_id=evidence.id,
+        status=IngestionStatus.PROCESSING,
+        progress=20,
+        error_message=None,
+    )
+    db_session.add_all([evidence, ingestion_run])
+    db_session.commit()
+
+    response = client.get(
+        f"/api/v1/cases/{case.id}/evidences/{evidence.id}/ingestion-status",
+        headers=auth_header(analyst),
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "processing"
+    assert data["progress"] == 20
+    assert data["error_message"] is None
+    assert data["sha256"] is None
+    assert data["detected_type"] is None
+    # ADR-0008: Retry-After: 3 on in-progress polling
+    assert response.headers.get("Retry-After") == "3"
+
+
+def test_get_ingestion_status_pending(
+    client: TestClient,
+    test_setup: dict[str, object],
+    db_session: Session,
+) -> None:
+    """Verify polling pending ingestion returns HTTP 200 with Retry-After: 3."""
+    case: Case = test_setup["case"]  # type: ignore
+    analyst: User = test_setup["analyst"]  # type: ignore
+
+    evidence = Evidence(
+        id=uuid.uuid4(),
+        case_id=case.id,
+        original_name="queued.raw",
+        file_size=1024,
+        sha256=None,
+        detected_type=None,
+        imported_by=analyst.id,
+    )
+    ingestion_run = IngestionRun(
+        id=uuid.uuid4(),
+        evidence_id=evidence.id,
+        status=IngestionStatus.PENDING,
+        progress=0,
+        error_message=None,
+    )
+    db_session.add_all([evidence, ingestion_run])
+    db_session.commit()
+
+    response = client.get(
+        f"/api/v1/cases/{case.id}/evidences/{evidence.id}/ingestion-status",
+        headers=auth_header(analyst),
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "pending"
+    assert data["progress"] == 0
+    assert data["error_message"] is None
+    assert data["sha256"] is None
+    assert data["detected_type"] is None
+    assert response.headers.get("Retry-After") == "3"
+
+
+def test_get_ingestion_status_failed(
+    client: TestClient,
+    test_setup: dict[str, object],
+    db_session: Session,
+) -> None:
+    """Verify polling failed ingestion returns HTTP 200 with error_message."""
+    case: Case = test_setup["case"]  # type: ignore
+    analyst: User = test_setup["analyst"]  # type: ignore
+
+    evidence = Evidence(
+        id=uuid.uuid4(),
+        case_id=case.id,
+        original_name="broken.bin",
+        file_size=1024,
+        sha256=None,
+        detected_type=None,
+        imported_by=analyst.id,
+    )
+    ingestion_run = IngestionRun(
+        id=uuid.uuid4(),
+        evidence_id=evidence.id,
+        status=IngestionStatus.FAILED,
+        progress=40,
+        error_message="Hash computation IO failure",
+    )
+    db_session.add_all([evidence, ingestion_run])
+    db_session.commit()
+
+    response = client.get(
+        f"/api/v1/cases/{case.id}/evidences/{evidence.id}/ingestion-status",
+        headers=auth_header(analyst),
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "failed"
+    assert data["progress"] == 40
+    assert data["error_message"] == "Hash computation IO failure"
+    assert data["sha256"] is None
+    assert data["detected_type"] is None
+
+
+def test_get_ingestion_status_evidence_not_found(
+    client: TestClient,
+    test_setup: dict[str, object],
+) -> None:
+    """Verify unknown evidence_id returns HTTP 404 with EVIDENCE_NOT_FOUND_IN_CASE."""
+    case: Case = test_setup["case"]  # type: ignore
+    analyst: User = test_setup["analyst"]  # type: ignore
+    unknown_evidence_id = uuid.uuid4()
+
+    response = client.get(
+        f"/api/v1/cases/{case.id}/evidences/{unknown_evidence_id}/ingestion-status",
+        headers=auth_header(analyst),
+    )
+
+    assert response.status_code == 404
+    data = response.json()
+    assert data["error"]["code"] == "EVIDENCE_NOT_FOUND_IN_CASE"
+
+
+def test_get_ingestion_status_evidence_in_other_case(
+    client: TestClient,
+    test_setup: dict[str, object],
+    db_session: Session,
+) -> None:
+    """Verify requesting evidence from other case returns 404 EVIDENCE_NOT_FOUND_IN_CASE."""
+    case: Case = test_setup["case"]  # type: ignore
+    org = test_setup["org"]
+    analyst: User = test_setup["analyst"]  # type: ignore
+
+    # Create another case in the same organization
+    other_case = Case(
+        id=uuid.uuid4(),
+        organization_id=org.id,  # type: ignore
+        title="Dossier Autre",
+        status="open",
+        created_by=analyst.id,
+    )
+    evidence_in_other = Evidence(
+        id=uuid.uuid4(),
+        case_id=other_case.id,
+        original_name="other_case_evidence.raw",
+        file_size=512,
+        imported_by=analyst.id,
+    )
+    db_session.add_all([other_case, evidence_in_other])
+    db_session.commit()
+
+    # Query with case.id but other_case's evidence.id
+    response = client.get(
+        f"/api/v1/cases/{case.id}/evidences/{evidence_in_other.id}/ingestion-status",
+        headers=auth_header(analyst),
+    )
+
+    assert response.status_code == 404
+    data = response.json()
+    assert data["error"]["code"] == "EVIDENCE_NOT_FOUND_IN_CASE"
+
+
+# ============================================================================
+# Story 3.4 : Evidence Detail Metadata Tests
+# ============================================================================
+
+
+def test_get_evidence_detail_nominal(
+    client: TestClient,
+    test_setup: dict[str, object],
+    db_session: Session,
+) -> None:
+    """Verify GET /evidences/{evidence_id} returns complete EvidenceRead schema."""
+    case: Case = test_setup["case"]  # type: ignore
+    analyst: User = test_setup["analyst"]  # type: ignore
+
+    evidence = Evidence(
+        id=uuid.uuid4(),
+        case_id=case.id,
+        original_name="disk_image.e01",
+        file_size=1048576,
+        sha256="e" * 64,
+        detected_type="application/octet-stream",
+        imported_by=analyst.id,
+    )
+    db_session.add(evidence)
+    db_session.commit()
+
+    response = client.get(
+        f"/api/v1/cases/{case.id}/evidences/{evidence.id}",
+        headers=auth_header(analyst),
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == str(evidence.id)
+    assert data["case_id"] == str(case.id)
+    assert data["original_name"] == "disk_image.e01"
+    assert data["file_size"] == 1048576
+    assert data["sha256"] == "e" * 64
+    assert data["detected_type"] == "application/octet-stream"
+    assert data["imported_by"] == str(analyst.id)
+    assert "created_at" in data
+
+
+def test_get_evidence_detail_not_found(
+    client: TestClient,
+    test_setup: dict[str, object],
+) -> None:
+    """Verify detail for non-existent evidence returns HTTP 404 EVIDENCE_NOT_FOUND_IN_CASE."""
+    case: Case = test_setup["case"]  # type: ignore
+    analyst: User = test_setup["analyst"]  # type: ignore
+
+    response = client.get(
+        f"/api/v1/cases/{case.id}/evidences/{uuid.uuid4()}",
+        headers=auth_header(analyst),
+    )
+
+    assert response.status_code == 404
+    data = response.json()
+    assert data["error"]["code"] == "EVIDENCE_NOT_FOUND_IN_CASE"
+
+
+def test_get_evidence_detail_cross_case_not_found(
+    client: TestClient,
+    test_setup: dict[str, object],
+    db_session: Session,
+) -> None:
+    """Verify evidence from another case returns HTTP 404 EVIDENCE_NOT_FOUND_IN_CASE."""
+    case: Case = test_setup["case"]  # type: ignore
+    org = test_setup["org"]
+    analyst: User = test_setup["analyst"]  # type: ignore
+
+    other_case = Case(
+        id=uuid.uuid4(),
+        organization_id=org.id,  # type: ignore
+        title="Dossier Autre 2",
+        status="open",
+        created_by=analyst.id,
+    )
+    evidence = Evidence(
+        id=uuid.uuid4(),
+        case_id=other_case.id,
+        original_name="secret.bin",
+        file_size=256,
+        imported_by=analyst.id,
+    )
+    db_session.add_all([other_case, evidence])
+    db_session.commit()
+
+    response = client.get(
+        f"/api/v1/cases/{case.id}/evidences/{evidence.id}",
+        headers=auth_header(analyst),
+    )
+
+    assert response.status_code == 404
+    data = response.json()
+    assert data["error"]["code"] == "EVIDENCE_NOT_FOUND_IN_CASE"
+
+
+# ============================================================================
+# Story 3.4 : Paged Collection of Evidences Tests
+# ============================================================================
+
+
+def test_list_evidences_nominal_pagination(
+    client: TestClient,
+    test_setup: dict[str, object],
+    db_session: Session,
+) -> None:
+    """Verify GET /evidences returns paginated items with total, limit, offset, and has_more."""
+    case: Case = test_setup["case"]  # type: ignore
+    analyst: User = test_setup["analyst"]  # type: ignore
+
+    now = datetime.now(UTC)
+    for i in range(3):
+        ev = Evidence(
+            id=uuid.uuid4(),
+            case_id=case.id,
+            original_name=f"artifact_{i}.bin",
+            file_size=100 * (i + 1),
+            imported_by=analyst.id,
+            created_at=now + timedelta(seconds=i),
+        )
+        db_session.add(ev)
+    db_session.commit()
+
+    # Page 1: limit 2, offset 0
+    res1 = client.get(
+        f"/api/v1/cases/{case.id}/evidences?limit=2&offset=0",
+        headers=auth_header(analyst),
+    )
+    assert res1.status_code == 200
+    data1 = res1.json()
+    assert len(data1["items"]) == 2
+    assert data1["total"] == 3
+    assert data1["total_items"] == 3
+    assert data1["limit"] == 2
+    assert data1["offset"] == 0
+    assert data1["has_more"] is True
+    # Verify deterministic sorting (created_at DESC): artifact_2 then artifact_1
+    assert data1["items"][0]["original_name"] == "artifact_2.bin"
+    assert data1["items"][1]["original_name"] == "artifact_1.bin"
+
+    # Page 2: limit 2, offset 2
+    res2 = client.get(
+        f"/api/v1/cases/{case.id}/evidences?limit=2&offset=2",
+        headers=auth_header(analyst),
+    )
+    assert res2.status_code == 200
+    data2 = res2.json()
+    assert len(data2["items"]) == 1
+    assert data2["total"] == 3
+    assert data2["total_items"] == 3
+    assert data2["limit"] == 2
+    assert data2["offset"] == 2
+    assert data2["has_more"] is False
+    assert data2["items"][0]["original_name"] == "artifact_0.bin"
+
+
+def test_list_evidences_default_pagination(
+    client: TestClient,
+    test_setup: dict[str, object],
+    db_session: Session,
+) -> None:
+    """Verify default pagination parameters are limit=50 and offset=0."""
+    case: Case = test_setup["case"]  # type: ignore
+    analyst: User = test_setup["analyst"]  # type: ignore
+
+    response = client.get(
+        f"/api/v1/cases/{case.id}/evidences",
+        headers=auth_header(analyst),
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["limit"] == 50
+    assert data["offset"] == 0
+    assert data["has_more"] is False
+
+
+@pytest.mark.parametrize("invalid_query", ["limit=150", "limit=0", "offset=-1"])
+def test_list_evidences_pagination_limits_validation(
+    client: TestClient,
+    test_setup: dict[str, object],
+    invalid_query: str,
+) -> None:
+    """Verify limit > 100, limit < 1, or offset < 0 returns HTTP 422 Unprocessable Content."""
+    case: Case = test_setup["case"]  # type: ignore
+    analyst: User = test_setup["analyst"]  # type: ignore
+
+    response = client.get(
+        f"/api/v1/cases/{case.id}/evidences?{invalid_query}",
+        headers=auth_header(analyst),
+    )
+
+    assert response.status_code == 422
+    data = response.json()
+    assert data["error"]["code"] == "VALIDATION_ERROR"
+
+
+# ============================================================================
+# Story 3.4 : Security, RBAC, and Authentication Tests
+# ============================================================================
+
+
+def test_evidence_endpoints_unauthenticated(
+    client: TestClient,
+    test_setup: dict[str, object],
+) -> None:
+    """Verify unauthenticated requests return HTTP 401 UNAUTHORIZED on all GET routes."""
+    case: Case = test_setup["case"]  # type: ignore
+    fake_id = uuid.uuid4()
+
+    # Status endpoint
+    r1 = client.get(f"/api/v1/cases/{case.id}/evidences/{fake_id}/ingestion-status")
+    assert r1.status_code == 401
+    assert r1.json()["error"]["code"] == "UNAUTHORIZED"
+
+    # List endpoint
+    r2 = client.get(f"/api/v1/cases/{case.id}/evidences")
+    assert r2.status_code == 401
+    assert r2.json()["error"]["code"] == "UNAUTHORIZED"
+
+    # Detail endpoint
+    r3 = client.get(f"/api/v1/cases/{case.id}/evidences/{fake_id}")
+    assert r3.status_code == 401
+    assert r3.json()["error"]["code"] == "UNAUTHORIZED"
+
+
+def test_evidence_endpoints_outsider_forbidden(
+    client: TestClient,
+    test_setup: dict[str, object],
+) -> None:
+    """Verify outsider from another organization returns HTTP 403 INSUFFICIENT_PERMISSIONS."""
+    case: Case = test_setup["case"]  # type: ignore
+    outsider: User = test_setup["outsider"]  # type: ignore
+    fake_id = uuid.uuid4()
+
+    # Status endpoint
+    r1 = client.get(
+        f"/api/v1/cases/{case.id}/evidences/{fake_id}/ingestion-status",
+        headers=auth_header(outsider),
+    )
+    assert r1.status_code == 403
+    assert r1.json()["error"]["code"] == "INSUFFICIENT_PERMISSIONS"
+
+    # List endpoint
+    r2 = client.get(
+        f"/api/v1/cases/{case.id}/evidences",
+        headers=auth_header(outsider),
+    )
+    assert r2.status_code == 403
+    assert r2.json()["error"]["code"] == "INSUFFICIENT_PERMISSIONS"
+
+    # Detail endpoint
+    r3 = client.get(
+        f"/api/v1/cases/{case.id}/evidences/{fake_id}",
+        headers=auth_header(outsider),
+    )
+    assert r3.status_code == 403
+    assert r3.json()["error"]["code"] == "INSUFFICIENT_PERMISSIONS"
+
+
+def test_evidence_endpoints_case_not_found(
+    client: TestClient,
+    test_setup: dict[str, object],
+) -> None:
+    """Verify non-existent case_id returns HTTP 404 CASE_NOT_FOUND on all endpoints."""
+    analyst: User = test_setup["analyst"]  # type: ignore
+    fake_case_id = uuid.uuid4()
+    fake_evidence_id = uuid.uuid4()
+
+    # Polling status
+    r1 = client.get(
+        f"/api/v1/cases/{fake_case_id}/evidences/{fake_evidence_id}/ingestion-status",
+        headers=auth_header(analyst),
+    )
+    assert r1.status_code == 404
+    assert r1.json()["error"]["code"] == "CASE_NOT_FOUND"
+
+    # Paged list
+    r2 = client.get(
+        f"/api/v1/cases/{fake_case_id}/evidences",
+        headers=auth_header(analyst),
+    )
+    assert r2.status_code == 404
+    assert r2.json()["error"]["code"] == "CASE_NOT_FOUND"
+
+    # Detail
+    r3 = client.get(
+        f"/api/v1/cases/{fake_case_id}/evidences/{fake_evidence_id}",
+        headers=auth_header(analyst),
+    )
+    assert r3.status_code == 404
+    assert r3.json()["error"]["code"] == "CASE_NOT_FOUND"

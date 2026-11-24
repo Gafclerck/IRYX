@@ -209,6 +209,22 @@ class CaseNotFoundException(NotFoundException):
         self.status_code = status_code
 
 
+class EvidenceNotFoundInCaseException(NotFoundException):
+    """Raised when an evidence is not found in the specified case."""
+
+    def __init__(
+        self,
+        message: str = "La preuve demandée n'existe pas ou n'appartient pas à ce dossier.",
+        code: str = "EVIDENCE_NOT_FOUND_IN_CASE",
+        status_code: int = status.HTTP_404_NOT_FOUND,
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+        )
+        self.status_code = status_code
+
+
 class InvalidStatusTransitionException(IryxException):
     """Raised when an illegal or unsupported case status transition is attempted."""
 
