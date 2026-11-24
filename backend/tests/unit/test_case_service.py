@@ -198,7 +198,132 @@ def test_list_cases_pagination(
     with pytest.raises(ValidationException):
         service.list_cases(org_id=test_org.id, limit=0, offset=0)
     with pytest.raises(ValidationException):
+        service.list_cases(org_id=test_org.id, limit=101, offset=0)
+    with pytest.raises(ValidationException):
         service.list_cases(org_id=test_org.id, limit=10, offset=-1)
+
+
+def test_list_user_cases_nominal_multi_org(
+    db_session: Session, investigator_user: User
+) -> None:
+    """Verify list_user_cases returns cases across all organizations the user belongs to."""
+    service = CaseService(db_session)
+
+    # Org 1: already has investigator_user as member
+    c1 = service.create_case(
+        org_id=investigator_user.memberships[0].organization_id,
+        title="Dossier Org 1 - A",
+        description=None,
+        creator_id=investigator_user.id,
+    )
+    c2 = service.create_case(
+        org_id=investigator_user.memberships[0].organization_id,
+        title="Dossier Org 1 - B",
+        description=None,
+        creator_id=investigator_user.id,
+    )
+
+    # Org 2: add user as member
+    org2 = Organization(name="CERT Secondaire")
+    db_session.add(org2)
+    db_session.commit()
+    db_session.refresh(org2)
+
+    db_session.add(
+        Membership(
+            organization_id=org2.id,
+            user_id=investigator_user.id,
+            role=MembershipRole.ANALYST.value,
+        )
+    )
+    db_session.commit()
+
+    c3 = service.create_case(
+        org_id=org2.id,
+        title="Dossier Org 2 - C",
+        description=None,
+        creator_id=investigator_user.id,
+    )
+
+    # Org 3: user is NOT a member
+    org3 = Organization(name="CERT Tiers Inaccessible")
+    db_session.add(org3)
+    db_session.commit()
+    db_session.refresh(org3)
+
+    c_forbidden = service.create_case(
+        org_id=org3.id,
+        title="Dossier Secret Org 3",
+        description=None,
+        creator_id=investigator_user.id,
+    )
+
+    # Query list_user_cases
+    items, total = service.list_user_cases(user_id=investigator_user.id, limit=20, offset=0)
+
+    assert total == 3
+    assert len(items) == 3
+    retrieved_ids = {item.id for item in items}
+    assert retrieved_ids == {c1.id, c2.id, c3.id}
+    assert c_forbidden.id not in retrieved_ids
+
+
+def test_list_user_cases_user_without_memberships(
+    db_session: Session, outsider_user: User
+) -> None:
+    """Verify list_user_cases returns empty list and total 0 for user with no memberships."""
+    service = CaseService(db_session)
+    items, total = service.list_user_cases(user_id=outsider_user.id, limit=20, offset=0)
+    assert items == []
+    assert total == 0
+
+
+def test_list_user_cases_pagination_and_ordering(
+    db_session: Session, test_org: Organization, investigator_user: User
+) -> None:
+    """Verify deterministic pagination and reverse chronological ordering for list_user_cases."""
+    service = CaseService(db_session)
+    created_cases = []
+    for i in range(5):
+        case = service.create_case(
+            org_id=test_org.id,
+            title=f"Dossier Multi #{i + 1}",
+            description=None,
+            creator_id=investigator_user.id,
+        )
+        created_cases.append(case)
+
+    # Page 1: limit 2, offset 0 -> last 2 created cases
+    p1, total = service.list_user_cases(user_id=investigator_user.id, limit=2, offset=0)
+    assert total == 5
+    assert len(p1) == 2
+    assert p1[0].id == created_cases[4].id
+    assert p1[1].id == created_cases[3].id
+
+    # Page 3: limit 2, offset 4 -> first created case
+    p3, total3 = service.list_user_cases(user_id=investigator_user.id, limit=2, offset=4)
+    assert total3 == 5
+    assert len(p3) == 1
+    assert p3[0].id == created_cases[0].id
+
+
+def test_list_user_cases_invalid_pagination_raises(
+    db_session: Session, investigator_user: User
+) -> None:
+    """Verify list_user_cases rejects invalid pagination bounds."""
+    service = CaseService(db_session)
+
+    # limit < 1
+    with pytest.raises(ValidationException):
+        service.list_user_cases(user_id=investigator_user.id, limit=0, offset=0)
+
+    # limit > 100
+    with pytest.raises(ValidationException):
+        service.list_user_cases(user_id=investigator_user.id, limit=101, offset=0)
+
+    # offset < 0
+    with pytest.raises(ValidationException):
+        service.list_user_cases(user_id=investigator_user.id, limit=10, offset=-1)
 
 
 def test_get_case_by_id_nominal(

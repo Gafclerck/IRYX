@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 11-23-2026 17:18
-last_updated: 11-23-2026 22:25
+last_updated: 11-24-2026 02:26
 project: IRYX
 project_key: NOKEY
 story_location: D:\MY_PROEJCT\IRYX\_bmad-output\implementation-artifacts
@@ -46,7 +46,7 @@ development_status:
   2-1-modèles-organization-et-membership-migration-alembic-et-sché: review
   2-2-api-de-gestion-des-organisations-et-attribution-des-rôles-rb: review
   2-3-modèle-case-migration-alembic-et-gestion-du-cycle-de-vie-des: review
-  2-4-dépendance-de-sécurité-verify_case_access-et-isolation-stric: backlog
+  2-4-dépendance-de-sécurité-verify_case_access-et-isolation-stric: done
   epic-2-retrospective: optional
 
   epic-3: backlog

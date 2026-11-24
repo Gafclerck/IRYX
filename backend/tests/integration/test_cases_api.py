@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from iryx.api.dependencies import get_db
-from iryx.auth.models import MembershipRole, Organization, User
+from iryx.auth.models import Membership, MembershipRole, Organization, User
 from iryx.auth.schemas import UserCreate
 from iryx.auth.services import UserService
 from iryx.core.security import create_access_token
@@ -586,3 +586,196 @@ def test_patch_case_status_invalid_enum_value(client: TestClient, test_setup: di
     )
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+# =========================================================================
+# 5. GET /api/v1/cases (Global Cross-Tenant User Cases Listing) & Zero Leak
+# =========================================================================
+
+
+def test_cross_tenant_isolation_fails(client: TestClient, test_setup: dict) -> None:
+    """Verify strict cross-tenant isolation (Zero Leak) rejects access with HTTP 403.
+
+    Given a user belonging exclusively to organization B (other_admin),
+    When they attempt to access case-alpha belonging to organization A,
+    Then verify_case_access rejects access with HTTP 403 Forbidden and code INSUFFICIENT_PERMISSIONS
+    without disclosing any case metadata or existence details.
+    """
+    org: Organization = test_setup["org"]
+    admin: User = test_setup["admin"]
+    other_admin: User = test_setup["other_admin"]
+
+    create_res = client.post(
+        f"/api/v1/organizations/{org.id}/cases",
+        json={"title": "Case Alpha (Top Secret)", "description": "Données sensibles org A"},
+        headers=auth_header(admin),
+    )
+    assert create_res.status_code == 201
+    case_id = create_res.json()["id"]
+
+    # Attempt cross-tenant access from user in Org B
+    response = client.get(
+        f"/api/v1/cases/{case_id}",
+        headers=auth_header(other_admin),
+    )
+    assert response.status_code == 403
+    data = response.json()
+    assert data["error"]["code"] == "INSUFFICIENT_PERMISSIONS"
+    assert data["error"]["message"] == "Accès refusé à ce dossier."
+    # Ensure zero metadata leakage
+    assert "title" not in data
+    assert "description" not in data
+    assert "status" not in data
+    assert "id" not in data
+
+
+def test_list_user_cases_nominal_multi_org(
+    client: TestClient, test_setup: dict, db_session: Session
+) -> None:
+    """Verify GET /api/v1/cases aggregates cases from all orgs where the user
+    is an active member.
+    """
+    org: Organization = test_setup["org"]
+    other_org: Organization = test_setup["other_org"]
+    admin: User = test_setup["admin"]
+    other_admin: User = test_setup["other_admin"]
+    analyst: User = test_setup["analyst"]
+
+    # Add analyst to other_org as well (multi-membership)
+    db_session.add(
+        Membership(
+            organization_id=other_org.id,
+            user_id=analyst.id,
+            role=MembershipRole.ANALYST.value,
+        )
+    )
+    db_session.commit()
+
+    # Create cases in org (Org A)
+    client.post(
+        f"/api/v1/organizations/{org.id}/cases",
+        json={"title": "Org A Case 1"},
+        headers=auth_header(admin),
+    )
+    time.sleep(0.005)
+    client.post(
+        f"/api/v1/organizations/{org.id}/cases",
+        json={"title": "Org A Case 2"},
+        headers=auth_header(admin),
+    )
+
+    # Create case in other_org (Org B)
+    time.sleep(0.005)
+    client.post(
+        f"/api/v1/organizations/{other_org.id}/cases",
+        json={"title": "Org B Case 1"},
+        headers=auth_header(other_admin),
+    )
+
+    # Third org where analyst is NOT a member
+    user_svc = UserService(db_session)
+    org_svc = OrganizationService(db_session)
+    secret_creator = user_svc.create_user(
+        UserCreate(email="secret@sec.iryx", password="Password123!")
+    )
+    third_org = org_svc.create_organization(name="CERT Tierce", creator_id=secret_creator.id)
+    client.post(
+        f"/api/v1/organizations/{third_org.id}/cases",
+        json={"title": "Secret Third Org Case"},
+        headers=auth_header(secret_creator),
+    )
+
+    # Query GET /api/v1/cases as analyst
+    response = client.get("/api/v1/cases?limit=20&offset=0", headers=auth_header(analyst))
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["total"] == 3
+    assert len(data["items"]) == 3
+    titles = [item["title"] for item in data["items"]]
+    assert titles == ["Org B Case 1", "Org A Case 2", "Org A Case 1"]
+    assert "Secret Third Org Case" not in titles
+
+
+def test_list_user_cases_pagination_multi_page(
+    client: TestClient, test_setup: dict
+) -> None:
+    """Verify GET /api/v1/cases multi-page pagination and has_more behavior."""
+    org: Organization = test_setup["org"]
+    admin: User = test_setup["admin"]
+
+    for i in range(3):
+        time.sleep(0.005)
+        client.post(
+            f"/api/v1/organizations/{org.id}/cases",
+            json={"title": f"Pagination Multi Case {i + 1}"},
+            headers=auth_header(admin),
+        )
+
+    # Page 1: limit=2, offset=0
+    r1 = client.get("/api/v1/cases?limit=2&offset=0", headers=auth_header(admin))
+    assert r1.status_code == 200
+    d1 = r1.json()
+    assert d1["limit"] == 2
+    assert d1["offset"] == 0
+    assert len(d1["items"]) == 2
+    assert d1["has_more"] is True
+
+    # Page 2: limit=2, offset=2
+    r2 = client.get("/api/v1/cases?limit=2&offset=2", headers=auth_header(admin))
+    assert r2.status_code == 200
+    d2 = r2.json()
+    assert d2["limit"] == 2
+    assert d2["offset"] == 2
+    assert len(d2["items"]) == 1
+    assert d2["has_more"] is False
+
+
+def test_list_user_cases_outsider_returns_empty(client: TestClient, test_setup: dict) -> None:
+    """Verify GET /api/v1/cases by user without memberships returns empty collection."""
+    outsider: User = test_setup["outsider"]
+
+    response = client.get("/api/v1/cases", headers=auth_header(outsider))
+    assert response.status_code == 200
+    data = response.json()
+    assert data["items"] == []
+    assert data["total"] == 0
+    assert data["has_more"] is False
+
+
+def test_list_user_cases_pagination_validation_returns_422(
+    client: TestClient, test_setup: dict
+) -> None:
+    """Verify GET /api/v1/cases rejects invalid pagination bounds with HTTP 422 VALIDATION_ERROR."""
+    admin: User = test_setup["admin"]
+
+    # limit = 0
+    r0 = client.get("/api/v1/cases?limit=0", headers=auth_header(admin))
+    assert r0.status_code == 422
+    assert r0.json()["error"]["code"] == "VALIDATION_ERROR"
+
+    # limit = 101
+    r101 = client.get("/api/v1/cases?limit=101", headers=auth_header(admin))
+    assert r101.status_code == 422
+    assert r101.json()["error"]["code"] == "VALIDATION_ERROR"
+
+    # offset = -1
+    r_neg = client.get("/api/v1/cases?offset=-1", headers=auth_header(admin))
+    assert r_neg.status_code == 422
+    assert r_neg.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_get_case_not_found_standardized_message(client: TestClient, test_setup: dict) -> None:
+    """Verify GET /api/v1/cases/{fake_uuid} returns standardized 404 error envelope."""
+    admin: User = test_setup["admin"]
+    fake_case_id = uuid.uuid4()
+
+    response = client.get(f"/api/v1/cases/{fake_case_id}", headers=auth_header(admin))
+    assert response.status_code == 404
+    data = response.json()
+    assert data == {
+        "error": {
+            "code": "CASE_NOT_FOUND",
+            "message": "Le dossier demandé n'existe pas.",
+        }
+    }

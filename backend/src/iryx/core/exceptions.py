@@ -198,7 +198,7 @@ class CaseNotFoundException(NotFoundException):
 
     def __init__(
         self,
-        message: str = "Dossier introuvable.",
+        message: str = "Le dossier demandé n'existe pas.",
         code: str = "CASE_NOT_FOUND",
         status_code: int = status.HTTP_404_NOT_FOUND,
     ) -> None:

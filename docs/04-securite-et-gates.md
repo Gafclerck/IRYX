@@ -36,7 +36,7 @@
 ## 4. Isolation stricte des dossiers (`Case`)
  
 1. **Contrôle d'accès au niveau route** :
-   Chaque requête HTTP accédant à une ressource dépendante d'un `Case` (preuves, observations, findings, rapports) est interceptée par une dépendance FastAPI injectée (`verify_case_membership`).
+   Chaque requête HTTP accédant à une ressource dépendante d'un `Case` (preuves, observations, findings, rapports) est interceptée par une dépendance FastAPI injectée (`verify_case_access`).
 2. **Cloisonnement multi-utilisateurs** :
    Le système vérifie que l'utilisateur authentifié (`User`) est membre actif (`Membership`) de l'organisation détentrice du dossier. L'absence de vérification explicite constitue un défaut bloquant en revue de code.
  

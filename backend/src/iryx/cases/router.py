@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 from iryx.api.dependencies import get_db
 from iryx.auth.dependencies import get_current_user
 from iryx.auth.models import Membership, MembershipRole, User
+from iryx.cases.dependencies import require_case_role, verify_case_access
+from iryx.cases.models import Case
 from iryx.cases.schemas import (
     CaseCreate,
     CaseListResponse,
@@ -92,6 +94,41 @@ def list_cases(
 
 
 @router.get(
+    "/api/v1/cases",
+    response_model=CaseListResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Liste globale des dossiers accessibles",
+    description=(
+        "Retourne la liste paginée des dossiers de toutes les organisations dont "
+        "l'utilisateur est membre actif. "
+        "Isolation stricte multi-tenants garantie par jointure sur les adhésions."
+    ),
+)
+def list_user_cases(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    limit: Annotated[
+        int, Query(ge=1, le=100, description="Nombre maximum de dossiers par page.")
+    ] = 20,
+    offset: Annotated[int, Query(ge=0, description="Index de départ de pagination.")] = 0,
+) -> CaseListResponse:
+    """List all cases accessible to the authenticated user across their organizations."""
+    service = CaseService(db)
+    items, total = service.list_user_cases(
+        user_id=current_user.id, limit=limit, offset=offset
+    )
+    has_more = (offset + len(items)) < total
+    return CaseListResponse(
+        items=[CaseOut.model_validate(item) for item in items],
+        total=total,
+        total_items=total,
+        limit=limit,
+        offset=offset,
+        has_more=has_more,
+    )
+
+
+@router.get(
     "/api/v1/cases/{case_id}",
     response_model=CaseOut,
     status_code=status.HTTP_200_OK,
@@ -101,13 +138,9 @@ def list_cases(
     ),
 )
 def get_case(
-    case_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[Session, Depends(get_db)],
+    case: Annotated[Case, Depends(verify_case_access)],
 ) -> CaseOut:
-    """Retrieve case details enforcing tenant membership."""
-    service = CaseService(db)
-    case = service.get_case_by_id(case_id=case_id, user_id=current_user.id)
+    """Retrieve case details enforcing tenant membership via verify_case_access."""
     return CaseOut.model_validate(case)
 
 
@@ -124,6 +157,16 @@ def get_case(
 def update_case_status(
     case_id: uuid.UUID,
     payload: CaseStatusUpdate,
+    _case: Annotated[
+        Case,
+        Depends(
+            require_case_role(
+                MembershipRole.ADMIN,
+                MembershipRole.INVESTIGATOR,
+                MembershipRole.ANALYST,
+            )
+        ),
+    ],
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> CaseOut:

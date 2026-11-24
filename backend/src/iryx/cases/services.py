@@ -96,9 +96,9 @@ class CaseService:
         offset: int = 0,
     ) -> tuple[list[Case], int]:
         """List cases belonging to an organization with deterministic pagination."""
-        if limit < 1 or offset < 0:
+        if limit < 1 or limit > 100 or offset < 0:
             raise ValidationException(
-                "Les paramètres de pagination sont invalides (limit >= 1, offset >= 0)."
+                "Les paramètres de pagination sont invalides (1 <= limit <= 100, offset >= 0)."
             )
 
         count_stmt = select(func.count(Case.id)).where(Case.organization_id == org_id)
@@ -107,6 +107,43 @@ class CaseService:
         stmt = (
             select(Case)
             .where(Case.organization_id == org_id)
+            .order_by(Case.created_at.desc(), Case.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        items = list(self.db.scalars(stmt).all())
+        return items, total
+
+    def list_user_cases(
+        self,
+        user_id: uuid.UUID,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[Case], int]:
+        """List all cases across organizations where the user is an active member.
+
+        Enforces multi-tenant isolation via an inner join with Membership on user_id.
+
+        Raises:
+            ValidationException: If pagination parameters are invalid
+                (limit < 1 or limit > 100 or offset < 0).
+        """
+        if limit < 1 or limit > 100 or offset < 0:
+            raise ValidationException(
+                "Les paramètres de pagination sont invalides (1 <= limit <= 100, offset >= 0)."
+            )
+
+        count_stmt = (
+            select(func.count(Case.id))
+            .join(Membership, Case.organization_id == Membership.organization_id)
+            .where(Membership.user_id == user_id)
+        )
+        total = self.db.scalar(count_stmt) or 0
+
+        stmt = (
+            select(Case)
+            .join(Membership, Case.organization_id == Membership.organization_id)
+            .where(Membership.user_id == user_id)
             .order_by(Case.created_at.desc(), Case.id.desc())
             .limit(limit)
             .offset(offset)
