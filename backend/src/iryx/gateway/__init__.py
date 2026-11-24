@@ -7,14 +7,24 @@ from iryx.gateway.registry import ToolRegistry, default_registry, get_tool_regis
 from iryx.gateway.runner import ToolRunner, compute_sha256, run_command_safely
 from iryx.gateway.tools.evtx_parser import EvtxParserParameters, EvtxParserTool
 from iryx.gateway.tools.log_parser import LogCsvParserParameters, LogCsvParserTool
+from iryx.gateway.tools.registry_parser import (
+    DEFAULT_KEY_PATHS,
+    RegistryHiveParsingError,
+    RegistryParserParameters,
+    RegistryParserTool,
+)
 
 __all__ = [
     "BaseTool",
+    "DEFAULT_KEY_PATHS",
     "EvtxParserParameters",
     "EvtxParserTool",
     "LogCsvParserParameters",
     "LogCsvParserTool",
     "Observation",
+    "RegistryHiveParsingError",
+    "RegistryParserParameters",
+    "RegistryParserTool",
     "ToolExecution",
     "ToolExecutionContext",
     "ToolExecutionResult",

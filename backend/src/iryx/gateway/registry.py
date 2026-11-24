@@ -119,9 +119,11 @@ def _register_default_tools(registry: ToolRegistry) -> None:
     """Register all implemented built-in forensic tools."""
     from iryx.gateway.tools.evtx_parser import EvtxParserTool
     from iryx.gateway.tools.log_parser import LogCsvParserTool
+    from iryx.gateway.tools.registry_parser import RegistryParserTool
 
     registry.register(LogCsvParserTool())
     registry.register(EvtxParserTool())
+    registry.register(RegistryParserTool())
 
 
 _register_default_tools(default_registry)
