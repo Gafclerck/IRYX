@@ -20,6 +20,7 @@ from iryx.db.base import Base
 
 if TYPE_CHECKING:
     from iryx.auth.models import Organization, User
+    from iryx.evidence.models import Evidence
 
 
 class CaseStatus(StrEnum):
@@ -85,6 +86,12 @@ class Case(Base):
         "User",
         foreign_keys=[created_by],
     )
+    evidences: Mapped[list["Evidence"]] = relationship(
+        "Evidence",
+        back_populates="case",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     def __init__(self, **kw) -> None:
         if kw.get("id") is None:
@@ -95,3 +102,7 @@ class Case(Base):
 
     def __repr__(self) -> str:
         return f"<Case id={self.id!r} title={self.title!r} status={self.status!r}>"
+
+
+# Import evidence models so configure_mappers() resolves Evidence relationship
+import iryx.evidence.models  # noqa: F401, E402
