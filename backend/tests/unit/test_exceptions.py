@@ -6,8 +6,10 @@ from httpx import AsyncClient
 from pydantic import BaseModel
 
 from iryx.core.exceptions import (
+    EmptyFileException,
     ForbiddenException,
     NotFoundException,
+    PayloadTooLargeException,
     UnauthorizedException,
     ValidationException,
 )
@@ -56,6 +58,18 @@ async def trigger_unauthorized_domain() -> None:
 async def trigger_validation_domain() -> None:
     """Endpoint raising domain ValidationException."""
     raise ValidationException("Le format du hash SHA-256 est invalide.")
+
+
+@dummy_router.get("/empty-file-domain")
+async def trigger_empty_file_domain() -> None:
+    """Endpoint raising domain EmptyFileException."""
+    raise EmptyFileException()
+
+
+@dummy_router.get("/payload-too-large-domain")
+async def trigger_payload_too_large_domain() -> None:
+    """Endpoint raising domain PayloadTooLargeException."""
+    raise PayloadTooLargeException()
 
 
 @dummy_router.get("/http-503-error")
@@ -157,6 +171,26 @@ async def test_domain_exceptions_standardized_responses(
     assert r4.status_code == 422
     assert r4.json() == {
         "error": {"code": "VALIDATION_ERROR", "message": "Le format du hash SHA-256 est invalide."}
+    }
+
+    # EmptyFileException -> 400
+    r5 = await async_client.get("/_test/empty-file-domain")
+    assert r5.status_code == 400
+    assert r5.json() == {
+        "error": {
+            "code": "EMPTY_FILE_ERROR",
+            "message": "Le fichier téléversé est vide (0 octet).",
+        }
+    }
+
+    # PayloadTooLargeException -> 413
+    r6 = await async_client.get("/_test/payload-too-large-domain")
+    assert r6.status_code == 413
+    assert r6.json() == {
+        "error": {
+            "code": "PAYLOAD_TOO_LARGE",
+            "message": "La taille du fichier dépasse la limite autorisée.",
+        }
     }
 
 

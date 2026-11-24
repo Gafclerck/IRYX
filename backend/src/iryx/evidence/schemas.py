@@ -9,8 +9,18 @@ from iryx.evidence.models import IngestionStatus
 
 __all__ = [
     "EvidenceRead",
+    "EvidenceUploadResponse",
     "IngestionRunRead",
 ]
+
+
+class EvidenceUploadResponse(BaseModel):
+    """Response payload returned when evidence is successfully accepted for ingestion."""
+
+    evidence_id: uuid.UUID
+    ingestion_run_id: uuid.UUID
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class IngestionRunRead(BaseModel):

@@ -13,6 +13,7 @@ from iryx.cases.router import router as cases_router
 from iryx.core.config import get_settings
 from iryx.core.exceptions import register_exception_handlers
 from iryx.core.logging import setup_logging
+from iryx.evidence.router import router as evidence_router
 from iryx.organizations.router import router as organizations_router
 
 logger = logging.getLogger("iryx.main")
@@ -82,6 +83,7 @@ def create_app() -> FastAPI:
     application.include_router(auth_router)
     application.include_router(organizations_router)
     application.include_router(cases_router)
+    application.include_router(evidence_router)
 
     # Thin Health Check Endpoint (D-03)
     @application.get(

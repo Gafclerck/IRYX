@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Any
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -47,6 +47,7 @@ class Settings(BaseSettings):
 
     # Evidence Storage (ADR-0005, ADR-0010)
     evidence_storage_path: str = "/data/evidence/"
+    evidence_staging_path: str = ""
     max_evidence_size_gb: int = 16
 
     # LLM Settings (D-10, D-11)
@@ -81,6 +82,14 @@ class Settings(BaseSettings):
         if isinstance(v, list):
             return [str(origin).strip().rstrip("/") for origin in v if str(origin).strip()]
         return v
+
+    @model_validator(mode="after")
+    def set_default_staging_path(self) -> "Settings":
+        """Default evidence_staging_path to {evidence_storage_path}/staging if not set."""
+        if not self.evidence_staging_path:
+            base = self.evidence_storage_path.rstrip("/\\")
+            self.evidence_staging_path = f"{base}/staging"
+        return self
 
 
 @lru_cache

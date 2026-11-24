@@ -79,3 +79,22 @@ def test_get_settings_caching() -> None:
     s1 = get_settings()
     s2 = get_settings()
     assert s1 is s2
+
+
+def test_evidence_staging_path_default() -> None:
+    """Verify evidence_staging_path defaults to {evidence_storage_path}/staging."""
+    settings = Settings(secret_key="test-key", evidence_storage_path="/var/evidence/")
+    assert settings.evidence_staging_path == "/var/evidence/staging"
+
+    settings2 = Settings(secret_key="test-key", evidence_storage_path="/var/evidence")
+    assert settings2.evidence_staging_path == "/var/evidence/staging"
+
+
+def test_evidence_staging_path_custom() -> None:
+    """Verify custom evidence_staging_path is preserved."""
+    settings = Settings(
+        secret_key="test-key",
+        evidence_storage_path="/var/evidence/",
+        evidence_staging_path="/custom/staging/path",
+    )
+    assert settings.evidence_staging_path == "/custom/staging/path"

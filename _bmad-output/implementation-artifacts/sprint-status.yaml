@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 11-23-2026 17:18
-last_updated: 11-24-2026 03:52
+last_updated: 11-24-2026 04:24
 project: IRYX
 project_key: NOKEY
 story_location: D:\MY_PROEJCT\IRYX\_bmad-output\implementation-artifacts
@@ -50,8 +50,8 @@ development_status:
   epic-2-retrospective: optional
 
   epic-3: in-progress
-  3-1-modèles-evidence-et-ingestionrun-migrations-alembic-et-confi: review
-  3-2-endpoint-de-téléversement-de-preuves-et-protection-contre-l: backlog
+  3-1-modèles-evidence-et-ingestionrun-migrations-alembic-et-confi: done
+  3-2-endpoint-de-téléversement-de-preuves-et-protection-contre-l: review
   3-3-tâche-celery-d-ingestion-scellement-sha-256-détection-filety: backlog
   3-4-consultation-de-l-état-d-ingestion-par-polling-rest-et-consu: backlog
   epic-3-retrospective: optional

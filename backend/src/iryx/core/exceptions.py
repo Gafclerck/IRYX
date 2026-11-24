@@ -297,6 +297,38 @@ class UserAlreadyExistsException(ConflictException):
         )
 
 
+class EmptyFileException(IryxException):
+    """Raised when an uploaded evidence file is empty (0 bytes)."""
+
+    def __init__(
+        self,
+        message: str = "Le fichier téléversé est vide (0 octet).",
+        code: str = "EMPTY_FILE_ERROR",
+        status_code: int = status.HTTP_400_BAD_REQUEST,
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+            status_code=status_code,
+        )
+
+
+class PayloadTooLargeException(IryxException):
+    """Raised when an uploaded evidence file exceeds maximum configured size."""
+
+    def __init__(
+        self,
+        message: str = "La taille du fichier dépasse la limite autorisée.",
+        code: str = "PAYLOAD_TOO_LARGE",
+        status_code: int = HTTP_413_STATUS,
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+            status_code=status_code,
+        )
+
+
 def _format_error_response(code: str, message: str) -> dict[str, Any]:
     """Return the standardized error response envelope."""
     return {
