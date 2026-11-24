@@ -1,10 +1,11 @@
 """Pydantic v2 schemas for Forensic Gateway tool executions and observations."""
 
+import contextlib
 import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from iryx.gateway.models import ToolExecutionStatus
 
@@ -72,3 +73,60 @@ class ToolMetadataResponse(BaseModel):
     description: str
     timeout_seconds: int
     parameters_schema: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentPayload(BaseModel):
+    """Context-bounded projection of tool execution results for LLM agents."""
+
+    observations: list[dict[str, Any]] = Field(default_factory=list)
+    summary: str = ""
+    is_truncated: bool = False
+    truncated_count: int = 0
+
+
+class ToolExecutionListResponse(BaseModel):
+    """Paginated collection of tool execution records."""
+
+    items: list[ToolExecutionRead]
+    total: int = Field(..., ge=0)
+    total_items: int = Field(default=0, ge=0)
+    limit: int = Field(..., ge=1, le=100)
+    offset: int = Field(..., ge=0)
+    has_more: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_total_items(cls, data: Any) -> Any:
+        """Ensure total_items is populated from total when missing."""
+        if isinstance(data, dict) and data.get("total_items") is None and "total" in data:
+            data["total_items"] = data["total"]
+        elif hasattr(data, "total") and getattr(data, "total_items", None) is None:
+            with contextlib.suppress(AttributeError, TypeError):
+                data.total_items = data.total
+        return data
+
+
+class ObservationListResponse(BaseModel):
+    """Paginated collection of normalized forensic observations."""
+
+    items: list[ObservationRead]
+    total: int = Field(..., ge=0)
+    total_items: int = Field(default=0, ge=0)
+    limit: int = Field(..., ge=1, le=100)
+    offset: int = Field(..., ge=0)
+    has_more: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_total_items(cls, data: Any) -> Any:
+        """Ensure total_items is populated from total when missing."""
+        if isinstance(data, dict) and data.get("total_items") is None and "total" in data:
+            data["total_items"] = data["total"]
+        elif hasattr(data, "total") and getattr(data, "total_items", None) is None:
+            with contextlib.suppress(AttributeError, TypeError):
+                data.total_items = data.total
+        return data

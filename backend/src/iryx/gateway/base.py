@@ -32,6 +32,7 @@ class ToolExecutionResult(BaseModel):
     error_message: str | None = None
     result_sha256: str | None = None
     tool_execution_id: uuid.UUID | None = None
+    agent_payload: Any = Field(default=None)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -46,6 +47,18 @@ class ToolExecutionResult(BaseModel):
     @property
     def output(self) -> Any:
         return self.raw_output
+
+    def to_agent_payload(self) -> Any:
+        """Project tool execution results to context-bounded payload for LLM agents."""
+        if self.agent_payload is not None:
+            return self.agent_payload
+        from iryx.gateway.truncation import truncate_for_agent
+
+        self.agent_payload = truncate_for_agent(
+            observations=self.observations,
+            raw_output=self.raw_output,
+        )
+        return self.agent_payload
 
 
 class BaseTool(ABC):

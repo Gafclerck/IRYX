@@ -377,6 +377,40 @@ class ToolNotFoundException(NotFoundException):
         self.status_code = status_code
 
 
+class ToolExecutionNotFoundException(NotFoundException):
+    """Raised when a tool execution is not found in a case (HTTP 404)."""
+
+    def __init__(
+        self,
+        message: str = (
+            "L'exécution d'outil demandée n'existe pas ou n'appartient pas à ce dossier."
+        ),
+        code: str = "TOOL_EXECUTION_NOT_FOUND",
+        status_code: int = status.HTTP_404_NOT_FOUND,
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+        )
+        self.status_code = status_code
+
+
+class ObservationNotFoundException(NotFoundException):
+    """Raised when an observation is not found in a case (HTTP 404)."""
+
+    def __init__(
+        self,
+        message: str = "L'observation demandée n'existe pas ou n'appartient pas à ce dossier.",
+        code: str = "OBSERVATION_NOT_FOUND",
+        status_code: int = status.HTTP_404_NOT_FOUND,
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+        )
+        self.status_code = status_code
+
+
 class ToolExecutionFailedException(IryxException):
     """Raised when an internal error occurs during tool execution (HTTP 500)."""
 

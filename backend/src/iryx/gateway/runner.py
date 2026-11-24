@@ -242,6 +242,7 @@ class ToolRunner:
         result.result_sha256 = sha256
         result.duration_ms = duration_ms
         result.status = ToolExecutionStatus.SUCCESS
+        result.agent_payload = result.to_agent_payload()
 
         if self.db is not None:
             execution = ToolExecution(
