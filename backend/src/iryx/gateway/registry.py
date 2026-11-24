@@ -115,6 +115,16 @@ class ToolRegistry:
 default_registry = ToolRegistry()
 
 
+def _register_default_tools(registry: ToolRegistry) -> None:
+    """Register all implemented built-in forensic tools."""
+    from iryx.gateway.tools.log_parser import LogCsvParserTool
+
+    registry.register(LogCsvParserTool())
+
+
+_register_default_tools(default_registry)
+
+
 def get_tool_registry() -> ToolRegistry:
     """Dependency provider for tool registry."""
     return default_registry

@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 11-23-2026 17:18
-last_updated: 11-24-2026 08:12
+last_updated: 11-24-2026 15:15
 project: IRYX
 project_key: NOKEY
 story_location: D:\MY_PROEJCT\IRYX\_bmad-output\implementation-artifacts
@@ -58,7 +58,7 @@ development_status:
 
   epic-4: in-progress
   4-1-registre-de-la-gateway-forensique-modèle-toolexecution-et-cl: review
-  4-2-analyseur-de-logs-texte-et-csv-avec-normalisation-des-horoda: backlog
+  4-2-analyseur-de-logs-texte-et-csv-avec-normalisation-des-horoda: review
   4-3-analyseur-de-journaux-d-événements-windows-evtx-python-evtx: backlog
   4-4-analyseur-de-ruches-de-registre-windows-regipy-fr13: backlog
   4-5-analyseur-d-artefacts-d-exécution-windows-prefetch-dissect-f: backlog

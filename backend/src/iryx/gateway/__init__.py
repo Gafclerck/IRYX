@@ -5,9 +5,12 @@ from iryx.gateway.base import BaseTool, ToolExecutionContext, ToolExecutionResul
 from iryx.gateway.models import ToolExecution, ToolExecutionStatus
 from iryx.gateway.registry import ToolRegistry, default_registry, get_tool_registry
 from iryx.gateway.runner import ToolRunner, compute_sha256, run_command_safely
+from iryx.gateway.tools.log_parser import LogCsvParserParameters, LogCsvParserTool
 
 __all__ = [
     "BaseTool",
+    "LogCsvParserParameters",
+    "LogCsvParserTool",
     "Observation",
     "ToolExecution",
     "ToolExecutionContext",
