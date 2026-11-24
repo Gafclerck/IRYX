@@ -443,6 +443,21 @@ class PluginNotWhitelistedException(ForbiddenException):
         self.status_code = status_code
 
 
+class LLMServiceUnavailableException(IryxException):
+    """Raised when the LLM inference provider is unavailable or exhausted retries (HTTP 503)."""
+
+    def __init__(
+        self,
+        message: str = "Service d'inférence LLM temporairement indisponible.",
+        code: str = "LLM_SERVICE_UNAVAILABLE",
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+
 def _format_error_response(code: str, message: str) -> dict[str, Any]:
     """Return the standardized error response envelope."""
     return {

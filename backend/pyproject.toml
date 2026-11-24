@@ -27,6 +27,8 @@ dependencies = [
     "dissect>=3.13.0",
     "volatility3==2.7.0",
     "pefile>=2023.2.7",
+    "openai>=1.50.0",
+    "tenacity>=9.0.0",
 ]
 
 [dependency-groups]
