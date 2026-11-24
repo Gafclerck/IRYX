@@ -697,9 +697,7 @@ def test_list_user_cases_nominal_multi_org(
     assert "Secret Third Org Case" not in titles
 
 
-def test_list_user_cases_pagination_multi_page(
-    client: TestClient, test_setup: dict
-) -> None:
+def test_list_user_cases_pagination_multi_page(client: TestClient, test_setup: dict) -> None:
     """Verify GET /api/v1/cases multi-page pagination and has_more behavior."""
     org: Organization = test_setup["org"]
     admin: User = test_setup["admin"]

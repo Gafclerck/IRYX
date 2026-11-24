@@ -21,6 +21,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from iryx.db.base import Base
 
 if TYPE_CHECKING:
+    from iryx.analytics.models import Observation
     from iryx.auth.models import User
     from iryx.cases.models import Case
 
@@ -78,6 +79,12 @@ class Evidence(Base):
     )
     ingestion_runs: Mapped[list["IngestionRun"]] = relationship(
         "IngestionRun",
+        back_populates="evidence",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    observations: Mapped[list["Observation"]] = relationship(
+        "Observation",
         back_populates="evidence",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -163,5 +170,6 @@ class IngestionRun(Base):
         )
 
 
-# Import case models so configure_mappers() resolves Case relationship
+# Import related models so configure_mappers() resolves relationships
+import iryx.analytics.models  # noqa: F401, E402
 import iryx.cases.models  # noqa: F401, E402

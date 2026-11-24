@@ -57,8 +57,7 @@ def require_case_role(
         InsufficientPermissionsException (HTTP 403): If user lacks membership or permitted role.
     """
     normalized_roles = {
-        r.value.lower() if isinstance(r, MembershipRole) else str(r).lower()
-        for r in allowed_roles
+        r.value.lower() if isinstance(r, MembershipRole) else str(r).lower() for r in allowed_roles
     }
 
     def dependency(

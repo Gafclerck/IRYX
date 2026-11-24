@@ -108,10 +108,7 @@ def process_evidence_ingestion(evidence_id: str, staging_path: str) -> dict[str,
             }
 
         # Idempotence guard: if already completed and sha256 sealed, return immediately
-        if (
-            ingestion_run.status == IngestionStatus.COMPLETED
-            and evidence.sha256 is not None
-        ):
+        if ingestion_run.status == IngestionStatus.COMPLETED and evidence.sha256 is not None:
             logger.info(
                 "Preuve déjà ingérée et scellée, exécution idempotente",
                 extra={

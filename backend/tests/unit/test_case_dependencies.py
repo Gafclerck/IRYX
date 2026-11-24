@@ -181,9 +181,7 @@ def test_verify_case_access_other_org_member_raises_insufficient_permissions(
 # =========================================================================
 
 
-def test_require_case_role_nominal_success(
-    db_session: Session, test_setup: dict
-) -> None:
+def test_require_case_role_nominal_success(db_session: Session, test_setup: dict) -> None:
     """Verify require_case_role allows users holding one of the permitted roles."""
     case: Case = test_setup["case"]
     admin: User = test_setup["admin"]
@@ -219,9 +217,7 @@ def test_require_case_role_case_insensitive_normalization(
         guard(case_id=case.id, current_user=viewer, db=db_session)
 
 
-def test_require_case_role_with_membership_enum(
-    db_session: Session, test_setup: dict
-) -> None:
+def test_require_case_role_with_membership_enum(db_session: Session, test_setup: dict) -> None:
     """Verify require_case_role accepts MembershipRole enum instances."""
     case: Case = test_setup["case"]
     investigator: User = test_setup["investigator"]
@@ -248,9 +244,7 @@ def test_require_case_role_insufficient_role_raises_403(
     assert exc_info.value.message == "Accès refusé à ce dossier."
 
 
-def test_require_case_role_outsider_raises_403(
-    db_session: Session, test_setup: dict
-) -> None:
+def test_require_case_role_outsider_raises_403(db_session: Session, test_setup: dict) -> None:
     """Verify require_case_role raises 403 for user not belonging to the case's organization."""
     case: Case = test_setup["case"]
     outsider: User = test_setup["outsider"]
@@ -264,9 +258,7 @@ def test_require_case_role_outsider_raises_403(
     assert exc_info.value.status_code == 403
 
 
-def test_require_case_role_case_not_found_raises_404(
-    db_session: Session, test_setup: dict
-) -> None:
+def test_require_case_role_case_not_found_raises_404(db_session: Session, test_setup: dict) -> None:
     """Verify require_case_role raises 404 when case does not exist."""
     admin: User = test_setup["admin"]
     fake_case_id = uuid.uuid4()

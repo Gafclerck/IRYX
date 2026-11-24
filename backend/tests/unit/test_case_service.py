@@ -203,9 +203,7 @@ def test_list_cases_pagination(
         service.list_cases(org_id=test_org.id, limit=10, offset=-1)
 
 
-def test_list_user_cases_nominal_multi_org(
-    db_session: Session, investigator_user: User
-) -> None:
+def test_list_user_cases_nominal_multi_org(db_session: Session, investigator_user: User) -> None:
     """Verify list_user_cases returns cases across all organizations the user belongs to."""
     service = CaseService(db_session)
 
@@ -268,9 +266,7 @@ def test_list_user_cases_nominal_multi_org(
     assert c_forbidden.id not in retrieved_ids
 
 
-def test_list_user_cases_user_without_memberships(
-    db_session: Session, outsider_user: User
-) -> None:
+def test_list_user_cases_user_without_memberships(db_session: Session, outsider_user: User) -> None:
     """Verify list_user_cases returns empty list and total 0 for user with no memberships."""
     service = CaseService(db_session)
     items, total = service.list_user_cases(user_id=outsider_user.id, limit=20, offset=0)

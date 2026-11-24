@@ -150,4 +150,3 @@ def test_evidence_schemas_validation_errors() -> None:
     # Negative file_size
     with pytest.raises(ValidationError):
         EvidenceRead.model_validate({**base_data, "file_size": -1})
-

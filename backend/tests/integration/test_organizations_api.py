@@ -122,9 +122,7 @@ def test_create_organization_unauthenticated(client: TestClient) -> None:
     assert response.json()["error"]["code"] == "UNAUTHORIZED"
 
 
-def test_create_organization_validation_error(
-    client: TestClient, admin_user: User
-) -> None:
+def test_create_organization_validation_error(client: TestClient, admin_user: User) -> None:
     """Verify POST /api/v1/organizations returns HTTP 422 for invalid payloads."""
     # Empty name
     r1 = client.post(
@@ -411,9 +409,7 @@ def test_add_member_insufficient_permissions(
 # -------------------------------------------------------------------------
 
 
-def test_list_members_by_member(
-    client: TestClient, admin_user: User, analyst_user: User
-) -> None:
+def test_list_members_by_member(client: TestClient, admin_user: User, analyst_user: User) -> None:
     """Verify member can list members with pagination."""
     create_resp = client.post(
         "/api/v1/organizations",
@@ -602,9 +598,7 @@ def test_update_member_role_unknown_member(
     assert response.json()["error"]["code"] == "MEMBER_NOT_FOUND"
 
 
-def test_update_member_role_cannot_demote_last_admin(
-    client: TestClient, admin_user: User
-) -> None:
+def test_update_member_role_cannot_demote_last_admin(client: TestClient, admin_user: User) -> None:
     """Verify demoting only admin returns HTTP 400 CANNOT_REMOVE_LAST_ADMIN."""
     create_resp = client.post(
         "/api/v1/organizations",
@@ -713,9 +707,7 @@ def test_delete_member_unknown_member(
     assert response.json()["error"]["code"] == "MEMBER_NOT_FOUND"
 
 
-def test_delete_member_cannot_remove_last_admin(
-    client: TestClient, admin_user: User
-) -> None:
+def test_delete_member_cannot_remove_last_admin(client: TestClient, admin_user: User) -> None:
     """Verify deleting only admin returns HTTP 400 CANNOT_REMOVE_LAST_ADMIN."""
     create_resp = client.post(
         "/api/v1/organizations",

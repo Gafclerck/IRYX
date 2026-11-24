@@ -112,9 +112,7 @@ class OrganizationService:
         if org is None:
             raise OrganizationNotFoundException()
 
-        count_stmt = select(func.count(Membership.id)).where(
-            Membership.organization_id == org_id
-        )
+        count_stmt = select(func.count(Membership.id)).where(Membership.organization_id == org_id)
         total = self.db.scalar(count_stmt) or 0
 
         stmt = (

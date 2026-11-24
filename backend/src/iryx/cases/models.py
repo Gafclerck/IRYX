@@ -19,8 +19,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from iryx.db.base import Base
 
 if TYPE_CHECKING:
+    from iryx.analytics.models import Observation
     from iryx.auth.models import Organization, User
     from iryx.evidence.models import Evidence
+    from iryx.gateway.models import ToolExecution
 
 
 class CaseStatus(StrEnum):
@@ -92,6 +94,18 @@ class Case(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    tool_executions: Mapped[list["ToolExecution"]] = relationship(
+        "ToolExecution",
+        back_populates="case",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    observations: Mapped[list["Observation"]] = relationship(
+        "Observation",
+        back_populates="case",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     def __init__(self, **kw) -> None:
         if kw.get("id") is None:
@@ -104,5 +118,7 @@ class Case(Base):
         return f"<Case id={self.id!r} title={self.title!r} status={self.status!r}>"
 
 
-# Import evidence models so configure_mappers() resolves Evidence relationship
+# Import related models so configure_mappers() resolves relationships
+import iryx.analytics.models  # noqa: F401, E402
 import iryx.evidence.models  # noqa: F401, E402
+import iryx.gateway.models  # noqa: F401, E402

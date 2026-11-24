@@ -12,9 +12,7 @@ from sqlalchemy.pool import StaticPool
 
 def _get_migration_002_module():
     """Dynamically import migration module with leading digits."""
-    return importlib.import_module(
-        "migrations.versions.002_create_org_and_membership_tables"
-    )
+    return importlib.import_module("migrations.versions.002_create_org_and_membership_tables")
 
 
 def test_migration_002_metadata() -> None:
@@ -83,9 +81,7 @@ def test_migration_002_upgrade_and_downgrade_live_database() -> None:
         assert org_columns["name"]["nullable"] is False
 
         # Verify memberships columns
-        membership_columns = {
-            col["name"]: col for col in inspector.get_columns("memberships")
-        }
+        membership_columns = {col["name"]: col for col in inspector.get_columns("memberships")}
         assert {"id", "organization_id", "user_id", "role", "created_at"}.issubset(
             membership_columns.keys()
         )
@@ -103,8 +99,7 @@ def test_migration_002_upgrade_and_downgrade_live_database() -> None:
         unique_constraints = inspector.get_unique_constraints("memberships")
         indexes = inspector.get_indexes("memberships")
         composite_unique_found = any(
-            set(uc["column_names"]) == {"organization_id", "user_id"}
-            for uc in unique_constraints
+            set(uc["column_names"]) == {"organization_id", "user_id"} for uc in unique_constraints
         ) or any(
             idx["unique"] and set(idx["column_names"]) == {"organization_id", "user_id"}
             for idx in indexes

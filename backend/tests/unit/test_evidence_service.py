@@ -149,9 +149,7 @@ def test_get_evidence_other_case_raises_404(
 # ============================================================================
 
 
-def test_get_ingestion_status_completed(
-    db_session: Session, test_data: dict[str, object]
-) -> None:
+def test_get_ingestion_status_completed(db_session: Session, test_data: dict[str, object]) -> None:
     """Verify get_ingestion_status returns completed run with sealed sha256 and detected_type."""
     case_a: Case = test_data["case_a"]  # type: ignore
     user: User = test_data["user"]  # type: ignore
@@ -187,9 +185,7 @@ def test_get_ingestion_status_completed(
     assert status_resp.detected_type == "application/x-ms-evtx"
 
 
-def test_get_ingestion_status_processing(
-    db_session: Session, test_data: dict[str, object]
-) -> None:
+def test_get_ingestion_status_processing(db_session: Session, test_data: dict[str, object]) -> None:
     """Verify get_ingestion_status returns processing run with progress and null metadata."""
     case_a: Case = test_data["case_a"]  # type: ignore
     user: User = test_data["user"]  # type: ignore
@@ -224,9 +220,7 @@ def test_get_ingestion_status_processing(
     assert status_resp.detected_type is None
 
 
-def test_get_ingestion_status_failed(
-    db_session: Session, test_data: dict[str, object]
-) -> None:
+def test_get_ingestion_status_failed(db_session: Session, test_data: dict[str, object]) -> None:
     """Verify get_ingestion_status returns failed run with error message."""
     case_a: Case = test_data["case_a"]  # type: ignore
     user: User = test_data["user"]  # type: ignore

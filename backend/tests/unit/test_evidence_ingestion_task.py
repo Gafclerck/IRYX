@@ -404,9 +404,7 @@ def test_process_evidence_ingestion_invalid_uuid(
     assert result["status"] == "failed"
     assert "Invalid UUID" in result["error"]
 
-    error_logs = [
-        r for r in caplog.records if "Identifiant de preuve invalide" in r.message
-    ]
+    error_logs = [r for r in caplog.records if "Identifiant de preuve invalide" in r.message]
     assert len(error_logs) >= 1
     assert error_logs[0].context["evidence_id"] == invalid_id
 
@@ -574,9 +572,7 @@ def test_process_evidence_ingestion_missing_ingestion_run(
     assert result["status"] == "failed"
     assert result["error"] == "IngestionRun not found"
 
-    error_logs = [
-        r for r in caplog.records if "IngestionRun introuvable" in r.message
-    ]
+    error_logs = [r for r in caplog.records if "IngestionRun introuvable" in r.message]
     assert len(error_logs) >= 1
     assert error_logs[0].context["evidence_id"] == str(evidence.id)
 

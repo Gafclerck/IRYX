@@ -70,9 +70,7 @@ def outsider_user(db_session: Session) -> User:
     )
 
 
-def test_require_role_admin_success(
-    db_session: Session, admin_user: User
-) -> None:
+def test_require_role_admin_success(db_session: Session, admin_user: User) -> None:
     """Verify require_role allows user holding the required role."""
     service = OrganizationService(db_session)
     org = service.create_organization("ANSSI SOC", creator_id=admin_user.id)

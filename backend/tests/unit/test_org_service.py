@@ -65,9 +65,7 @@ def user_c(db_session: Session) -> User:
     )
 
 
-def test_create_organization_assigns_creator_as_admin(
-    db_session: Session, user_a: User
-) -> None:
+def test_create_organization_assigns_creator_as_admin(db_session: Session, user_a: User) -> None:
     """Verify create_organization creates org and automatically makes creator an admin."""
     service = OrganizationService(db_session)
     org = service.create_organization(name="  ANSSI SOC  ", creator_id=user_a.id)
@@ -134,24 +132,18 @@ def test_list_user_organizations_pagination(
     assert total == 2
     assert len(items) == 1
 
-    items_page_2, total_2 = service.list_user_organizations(
-        user_id=user_a.id, limit=1, offset=1
-    )
+    items_page_2, total_2 = service.list_user_organizations(user_id=user_a.id, limit=1, offset=1)
     assert total_2 == 2
     assert len(items_page_2) == 1
     assert {items[0].id, items_page_2[0].id} == {org1.id, org2.id}
 
 
-def test_add_member_nominal(
-    db_session: Session, user_a: User, user_b: User
-) -> None:
+def test_add_member_nominal(db_session: Session, user_a: User, user_b: User) -> None:
     """Verify adding a member succeeds and email is properly resolved."""
     service = OrganizationService(db_session)
     org = service.create_organization("SOC Lab", creator_id=user_a.id)
 
-    membership = service.add_member(
-        org_id=org.id, user_id=user_b.id, role=MembershipRole.ANALYST
-    )
+    membership = service.add_member(org_id=org.id, user_id=user_b.id, role=MembershipRole.ANALYST)
     assert membership.organization_id == org.id
     assert membership.user_id == user_b.id
     assert membership.role == "analyst"
@@ -162,9 +154,7 @@ def test_add_member_unknown_organization(db_session: Session, user_b: User) -> N
     """Verify adding member to non-existent organization raises OrganizationNotFoundException."""
     service = OrganizationService(db_session)
     with pytest.raises(OrganizationNotFoundException):
-        service.add_member(
-            org_id=uuid.uuid4(), user_id=user_b.id, role=MembershipRole.ANALYST
-        )
+        service.add_member(org_id=uuid.uuid4(), user_id=user_b.id, role=MembershipRole.ANALYST)
 
 
 def test_add_member_unknown_user(db_session: Session, user_a: User) -> None:
@@ -173,9 +163,7 @@ def test_add_member_unknown_user(db_session: Session, user_a: User) -> None:
     org = service.create_organization("SOC Lab", creator_id=user_a.id)
 
     with pytest.raises(UserNotFoundException):
-        service.add_member(
-            org_id=org.id, user_id=uuid.uuid4(), role=MembershipRole.ANALYST
-        )
+        service.add_member(org_id=org.id, user_id=uuid.uuid4(), role=MembershipRole.ANALYST)
 
 
 def test_add_member_inactive_user_raises_user_not_found(
@@ -188,14 +176,10 @@ def test_add_member_inactive_user_raises_user_not_found(
     db_session.commit()
 
     with pytest.raises(UserNotFoundException):
-        service.add_member(
-            org_id=org.id, user_id=user_b.id, role=MembershipRole.ANALYST
-        )
+        service.add_member(org_id=org.id, user_id=user_b.id, role=MembershipRole.ANALYST)
 
 
-def test_add_member_already_exists(
-    db_session: Session, user_a: User, user_b: User
-) -> None:
+def test_add_member_already_exists(db_session: Session, user_a: User, user_b: User) -> None:
     """Verify adding an already existing member raises MemberAlreadyExistsException."""
     service = OrganizationService(db_session)
     org = service.create_organization("SOC Lab", creator_id=user_a.id)
@@ -205,9 +189,7 @@ def test_add_member_already_exists(
         service.add_member(org_id=org.id, user_id=user_b.id, role=MembershipRole.VIEWER)
 
 
-def test_update_member_role_nominal(
-    db_session: Session, user_a: User, user_b: User
-) -> None:
+def test_update_member_role_nominal(db_session: Session, user_a: User, user_b: User) -> None:
     """Verify updating a member's role succeeds."""
     service = OrganizationService(db_session)
     org = service.create_organization("SOC Lab", creator_id=user_a.id)
@@ -220,9 +202,7 @@ def test_update_member_role_nominal(
     assert updated.email == user_b.email
 
 
-def test_update_member_role_unknown_member(
-    db_session: Session, user_a: User, user_b: User
-) -> None:
+def test_update_member_role_unknown_member(db_session: Session, user_a: User, user_b: User) -> None:
     """Verify updating role of non-member raises MemberNotFoundException."""
     service = OrganizationService(db_session)
     org = service.create_organization("SOC Lab", creator_id=user_a.id)
@@ -233,9 +213,7 @@ def test_update_member_role_unknown_member(
         )
 
 
-def test_update_member_role_cannot_demote_last_admin(
-    db_session: Session, user_a: User
-) -> None:
+def test_update_member_role_cannot_demote_last_admin(db_session: Session, user_a: User) -> None:
     """Verify demoting the only admin raises CannotRemoveLastAdminException."""
     service = OrganizationService(db_session)
     org = service.create_organization("SOC Lab", creator_id=user_a.id)
@@ -260,9 +238,7 @@ def test_update_member_role_can_demote_admin_if_another_exists(
     assert updated.role == "analyst"
 
 
-def test_remove_member_nominal(
-    db_session: Session, user_a: User, user_b: User
-) -> None:
+def test_remove_member_nominal(db_session: Session, user_a: User, user_b: User) -> None:
     """Verify removing a member succeeds."""
     service = OrganizationService(db_session)
     org = service.create_organization("SOC Lab", creator_id=user_a.id)
@@ -274,9 +250,7 @@ def test_remove_member_nominal(
     assert members[0].user_id == user_a.id
 
 
-def test_remove_member_unknown_member(
-    db_session: Session, user_a: User, user_b: User
-) -> None:
+def test_remove_member_unknown_member(db_session: Session, user_a: User, user_b: User) -> None:
     """Verify removing non-member raises MemberNotFoundException."""
     service = OrganizationService(db_session)
     org = service.create_organization("SOC Lab", creator_id=user_a.id)

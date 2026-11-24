@@ -114,9 +114,7 @@ def list_user_cases(
 ) -> CaseListResponse:
     """List all cases accessible to the authenticated user across their organizations."""
     service = CaseService(db)
-    items, total = service.list_user_cases(
-        user_id=current_user.id, limit=limit, offset=offset
-    )
+    items, total = service.list_user_cases(user_id=current_user.id, limit=limit, offset=offset)
     has_more = (offset + len(items)) < total
     return CaseListResponse(
         items=[CaseOut.model_validate(item) for item in items],

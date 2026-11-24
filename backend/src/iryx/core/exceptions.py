@@ -345,6 +345,70 @@ class PayloadTooLargeException(IryxException):
         )
 
 
+class ToolExecutionTimeoutException(IryxException):
+    """Raised when a tool execution exceeds its configured timeout (HTTP 504)."""
+
+    def __init__(
+        self,
+        message: str = "Le délai d'exécution de l'outil a été dépassé.",
+        code: str = "TOOL_EXECUTION_TIMEOUT",
+        status_code: int = status.HTTP_504_GATEWAY_TIMEOUT,
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+            status_code=status_code,
+        )
+
+
+class ToolNotFoundException(NotFoundException):
+    """Raised when a requested tool is not found in the registry (HTTP 404)."""
+
+    def __init__(
+        self,
+        message: str = "L'outil demandé n'est pas enregistré dans le registre.",
+        code: str = "TOOL_NOT_FOUND",
+        status_code: int = status.HTTP_404_NOT_FOUND,
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+        )
+        self.status_code = status_code
+
+
+class ToolExecutionFailedException(IryxException):
+    """Raised when an internal error occurs during tool execution (HTTP 500)."""
+
+    def __init__(
+        self,
+        message: str = "L'exécution de l'outil a échoué en raison d'une erreur interne.",
+        code: str = "TOOL_EXECUTION_FAILED",
+        status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR,
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+            status_code=status_code,
+        )
+
+
+class PluginNotWhitelistedException(ForbiddenException):
+    """Raised when an execution or registration attempts to use a non-whitelisted plugin/tool."""
+
+    def __init__(
+        self,
+        message: str = "Le plugin ou outil demandé n'est pas autorisé par la liste blanche.",
+        code: str = "PLUGIN_NOT_WHITELISTED",
+        status_code: int = status.HTTP_403_FORBIDDEN,
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+        )
+        self.status_code = status_code
+
+
 def _format_error_response(code: str, message: str) -> dict[str, Any]:
     """Return the standardized error response envelope."""
     return {
@@ -396,6 +460,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
         HTTP_422_STATUS: "VALIDATION_ERROR",
         status.HTTP_500_INTERNAL_SERVER_ERROR: "INTERNAL_SERVER_ERROR",
         status.HTTP_503_SERVICE_UNAVAILABLE: "SERVICE_UNAVAILABLE",
+        status.HTTP_504_GATEWAY_TIMEOUT: "GATEWAY_TIMEOUT",
     }
     code = status_code_map.get(exc.status_code, "HTTP_ERROR")
     message = str(exc.detail) if exc.detail else "Une erreur HTTP est survenue."

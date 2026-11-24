@@ -320,5 +320,5 @@ def test_evidence_file_size_non_negative_constraint(db_session: Session) -> None
 def test_configure_mappers_succeeds_without_unmapped_class_error() -> None:
     """Verify SQLAlchemy configure_mappers succeeds cleanly with mutual relationship imports."""
     from sqlalchemy.orm import configure_mappers
-    configure_mappers()
 
+    configure_mappers()
