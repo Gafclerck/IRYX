@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 11-23-2026 17:18
-last_updated: 11-25-2026 06:36
+last_updated: 11-25-2026 08:21
 project: IRYX
 project_key: NOKEY
 story_location: D:\MY_PROEJCT\IRYX\_bmad-output\implementation-artifacts
@@ -79,7 +79,7 @@ development_status:
   6-1-modèle-finding-schémas-pydantic-et-migration-alembic: review
   6-2-agent-analyst-et-formulation-structurée-des-constats-d-enquê: review
   6-3-composant-verifier-déterministe-formel-sans-appel-llm-fr23-n: review
-  6-4-porte-humaine-h2-validation-des-findings-et-api-de-revue-fr1: backlog
+  6-4-porte-humaine-h2-validation-des-findings-et-api-de-revue-fr1: in-progress
   epic-6-retrospective: optional
 
   epic-7: backlog
