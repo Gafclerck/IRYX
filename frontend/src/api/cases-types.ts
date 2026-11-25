@@ -56,3 +56,39 @@ export const SEARCH_DEBOUNCE_POLICY = 'à décider'
 
 export const DEFAULT_PAGE_SIZE = 10
 export const PAGE_SIZE_POLICY = 'à décider'
+
+/**
+ * Paramètres d'architecture et points de dimensionnement (Story F1.7) :
+ * Les typologies d'incident ne sont pas définies dans le contrat cible OpenAPI (openapi.json).
+ * Conformément à la règle de non-invention, la valeur proposée est marquée « à décider ».
+ */
+export const INCIDENT_TYPE_POLICY = 'à décider'
+
+export interface IncidentTypeOption {
+  readonly value: string
+  readonly label: string
+}
+
+export const INCIDENT_TYPE_OPTIONS: readonly IncidentTypeOption[] = [
+  { value: 'a_decider', label: 'À décider (typologie non arrêtée au contrat)' },
+] as const
+
+/**
+ * Données requises pour la création d'un dossier d'investigation (Story F1.7).
+ */
+export interface CreateCasePayload {
+  title: string
+  description: string
+  incident_date: string
+  incident_type: string
+  affected_systems: string
+}
+
+/**
+ * Réponse du serveur lors de la création d'un nouveau dossier d'investigation (Story F1.7).
+ */
+export interface CreateCaseResponse extends CaseItem {
+  incident_date?: string
+  incident_type?: string
+  affected_systems?: string
+}

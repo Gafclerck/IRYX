@@ -36,14 +36,15 @@ Les trois routes d'authentification ci-dessous sont interceptées et simulées p
 | `POST /api/v1/auth/refresh` | Renouvellement silencieux du jeton d'accès via cookie httpOnly | simulée, contrat cible : auth-contrat-cible.yaml |
 | `POST /api/v1/auth/logout` | Déconnexion explicite et suppression du cookie httpOnly (Max-Age=0) | simulée, contrat cible : auth-contrat-cible.yaml |
 
-### 2.2 Référentiel des routes protégées simulées (Stories F1.3, F1.5 et F1.6)
+### 2.2 Référentiel des routes protégées simulées (Stories F1.3, F1.5, F1.6 et F1.7)
 
-Les routes protégées ci-dessous sont interceptées et simulées par Mock Service Worker (MSW) dans `frontend/src/test/mocks/handlers.ts` pour tester l'injection de l'en-tête `Authorization: Bearer <token>`, la détection d'expiration (HTTP 401), ainsi que la pagination et la recherche :
+Les routes protégées ci-dessous sont interceptées et simulées par Mock Service Worker (MSW) dans `frontend/src/test/mocks/handlers.ts` pour tester l'injection de l'en-tête `Authorization: Bearer <token>`, la détection d'expiration (HTTP 401), ainsi que la pagination, la recherche et la création en modale :
 
 | Méthode et route HTTP | Description opérationnelle | Mention de statut |
 |---|---|---|
 | `GET /api/v1/auth/me` | Profil utilisateur connecté (schéma UserResponse préliminaire sans nom ni organisation), requiert l'en-tête Authorization: Bearer en mémoire | simulée, contrat cible : openapi.json (à réaligner pour identité F1.5) |
 | `GET /api/v1/cases` | Consultation paginée et recherche des dossiers (Story F1.6), avec paramètres limit, offset, search, requiert l'en-tête Authorization: Bearer | simulée, contrat cible : openapi.json |
+| `POST /api/v1/cases` | Création d'un nouveau dossier d'investigation en modale (Story F1.7), validation Zod avant envoi, champs titre, date de l'incident, type d'incident, systèmes concernés et description, requiert l'en-tête Authorization: Bearer | simulée, contrat cible : openapi.json |
 
 #### Règle documentée pour les requêtes sans jeton (Story F1.3)
 Lorsqu'aucun jeton d'accès n'est présent en mémoire vive volatile (état initial ou purge), la requête vers un endpoint protégé est transmise sans en-tête `Authorization`. Le serveur récepteur ou l'intercepteur de simulation MSW renvoie alors un code HTTP 401, déclenchant le signal interne « jeton expiré ou absent ». Emplacement réservé pour la politique d'inactivité de l'analyste : à décider (C4).
@@ -97,7 +98,23 @@ Conformément à la spécification de la story F1.6 et au contrat cible de l'Ép
    - Durée de pause de frappe (debounce) et taille de page par défaut : à décider.
    - Palette stricte appliquée sans couleur en dur dans les composants.
 
+### 2.6 Simulation de la création d'un dossier d'investigation en modale (Story F1.7)
 
+Conformément à la spécification de la story F1.7 et au contrat cible de l'Épic E2 (`docs/contrat/openapi.json`) :
+1. **Route interceptée** : `POST /api/v1/cases`
+   - Statut : **simulée, contrat cible** (`openapi.json`).
+   - Requiert l'en-tête `Authorization: Bearer <token>` en mémoire vive volatile.
+2. **Champs du formulaire et validation Zod** :
+   - `title` : chaîne obligatoire, 1 à 255 caractères (aligné sur le schéma OpenAPI `CaseCreate`).
+   - `incident_date` : chaîne obligatoire au format horodaté, pré-remplie par défaut à la date courante UTC à l'ouverture de la modale.
+   - `incident_type` : sélection contrôlée. En l'absence d'énumération de typologie d'incident dans le contrat OpenAPI actuel, la valeur proposée est marquée « à décider » sans invention de données.
+   - `affected_systems` : chaîne obligatoire désignant les actifs et systèmes cibles de l'incident.
+   - `description` : chaîne obligatoire, 1 à 5000 caractères (aligné sur le schéma OpenAPI `CaseCreate`).
+3. **Scénarios simulés par MSW** :
+   - Succès (HTTP 201 Created) : retourne l'objet `CaseOut` créé, ferme la modale, invalide le cache des requêtes TanStack Query `['cases']`, réinitialise la pagination à la page 1 et affiche une notification de confirmation.
+   - Rejet de validation serveur (HTTP 400 ou 422) : simulation via en-tête `X-Simulation-Create-Case: validation-error` ou corps invalide, restitution des messages d'erreur ciblés sous les champs, maintien de la modale ouverte et conservation intégrale des saisies en cours (NFR-ERR-02).
+   - Accès refusé (HTTP 403 Forbidden) : simulation via `mock-forbidden-token` ou en-tête `X-Simulation-Create-Case: forbidden`, affichage de la notification « Vous n'avez pas les autorisations nécessaires pour créer un dossier dans cette organisation. », maintien de la modale ouverte et saisies conservées.
+   - Erreur serveur (HTTP 500) et panne réseau : simulation via `mock-server-error-token` ou en-tête `X-Simulation-Create-Case: server-error`, notification explicite avec bouton « Réessayer », modale maintenue ouverte et saisies conservées en mémoire (NFR-ERR-02).
 
 ---
 

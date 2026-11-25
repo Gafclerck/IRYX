@@ -287,6 +287,16 @@ export const MOCK_CASES = [
   },
 ]
 
+const INITIAL_MOCK_CASES = [...MOCK_CASES]
+
+/**
+ * Réinitialise la liste des dossiers simulés à son état initial (Story F1.7).
+ */
+export function resetMockCases() {
+  MOCK_CASES.length = 0
+  MOCK_CASES.push(...INITIAL_MOCK_CASES)
+}
+
 /**
  * Handlers MSW simulant les routes réseau de l'application IRYX.
  *
@@ -295,9 +305,10 @@ export const MOCK_CASES = [
  * - POST /api/v1/auth/refresh (simulée, contrat cible : auth-contrat-cible.yaml)
  * - POST /api/v1/auth/logout (simulée, contrat cible : auth-contrat-cible.yaml)
  *
- * Routes protégées simulées d'après le contrat OpenAPI (Stories F1.3 et F1.6) :
+ * Routes protégées simulées d'après le contrat OpenAPI (Stories F1.3, F1.6 et F1.7) :
  * - GET /api/v1/auth/me (simulée, contrat cible : openapi.json)
  * - GET /api/v1/cases (simulée, contrat cible : openapi.json)
+ * - POST /api/v1/cases (simulée, contrat cible : openapi.json)
  */
 export const handlers = [
   http.get('*/api/test-simulation', () => {
@@ -567,5 +578,117 @@ export const handlers = [
       },
       { status: 200 },
     )
+  }),
+
+  /**
+   * Création d'un nouveau dossier d'investigation en modale (Story F1.7).
+   * Route cible : POST /api/v1/cases
+   * Contrat cible : openapi.json (simulée E2)
+   */
+  http.post('*/api/v1/cases', async ({ request }) => {
+    const authHeader = request.headers.get('Authorization')
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    const token = authHeader.replace('Bearer ', '').trim()
+
+    if (token === 'mock-expired-token' || token.includes('expired')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    const simHeader =
+      request.headers.get('X-Simulation-Create-Case') || request.headers.get('X-Simulation-Cases')
+
+    // Simulation accès refusé 403 Forbidden (Story F1.7)
+    if (token === 'mock-forbidden-token' || simHeader === 'forbidden') {
+      return HttpResponse.json<ErrorResponse>(
+        {
+          detail:
+            "Vous n'avez pas les autorisations nécessaires pour créer un dossier dans cette organisation.",
+        },
+        { status: 403 },
+      )
+    }
+
+    // Simulation erreur interne 500 (Story F1.7)
+    if (
+      token === 'mock-server-error-token' ||
+      token.includes('server-error') ||
+      simHeader === 'server-error' ||
+      simHeader === '500'
+    ) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Erreur interne du serveur lors de la création du dossier.' },
+        { status: 500 },
+      )
+    }
+
+    // Simulation rejet de validation serveur 400 (Story F1.7)
+    if (simHeader === 'validation-error' || simHeader === '400') {
+      return HttpResponse.json(
+        {
+          detail: 'Données de dossier invalides.',
+          errors: {
+            title: 'Ce titre de dossier est déjà utilisé dans votre organisation.',
+          },
+        },
+        { status: 400 },
+      )
+    }
+
+    let body: Record<string, unknown> = {}
+    try {
+      body = (await request.json()) as Record<string, unknown>
+    } catch {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Format de corps de requête invalide.' },
+        { status: 400 },
+      )
+    }
+
+    const title = typeof body.title === 'string' ? body.title.trim() : ''
+    const description = typeof body.description === 'string' ? body.description.trim() : null
+    const incidentDate = typeof body.incident_date === 'string' ? body.incident_date.trim() : ''
+    const incidentType = typeof body.incident_type === 'string' ? body.incident_type.trim() : ''
+    const affectedSystems =
+      typeof body.affected_systems === 'string' ? body.affected_systems.trim() : ''
+
+    // Validation minimale côté serveur (Story F1.7)
+    if (!title) {
+      return HttpResponse.json(
+        {
+          detail: 'Le titre du dossier est obligatoire.',
+          errors: { title: 'Le titre du dossier est obligatoire.' },
+        },
+        { status: 422 },
+      )
+    }
+
+    const newCase = {
+      id: `case-${Date.now()}`,
+      organization_id: 'org-001',
+      title,
+      description: description || '',
+      status: 'open' as const,
+      created_by: 'analyste@iryx.local',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      evidence_count: 0,
+      incident_date: incidentDate || new Date().toISOString(),
+      incident_type: incidentType || 'a_decider',
+      affected_systems: affectedSystems,
+    }
+
+    MOCK_CASES.unshift(newCase)
+
+    return HttpResponse.json(newCase, { status: 201 })
   }),
 ]
