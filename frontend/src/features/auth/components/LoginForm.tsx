@@ -10,12 +10,14 @@ interface LocationState {
   from?: {
     pathname?: string
   }
+  message?: string
 }
 
 export function LoginForm() {
-  const [generalError, setGeneralError] = useState<string | null>(null)
-  const navigate = useNavigate()
   const location = useLocation()
+  const locationState = location.state as LocationState | null
+  const [generalError, setGeneralError] = useState<string | null>(locationState?.message || null)
+  const navigate = useNavigate()
 
   const {
     register,
@@ -38,8 +40,7 @@ export function LoginForm() {
         password: values.password,
       })
 
-      // Redirection automatique vers /cases après succès
-      const locationState = location.state as LocationState | null
+      // Redirection automatique vers la ressource demandée ou /cases après succès
       const destination = locationState?.from?.pathname || '/cases'
       navigate(destination, { replace: true })
     } catch (error) {

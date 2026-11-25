@@ -1,14 +1,16 @@
 /**
- * Signal interne d'authentification pour la détection du 401 et de l'état de session (Story F1.3).
+ * Signal interne d'authentification pour la détection du 401 et de l'état de session (Story F1.3 et F1.4).
  *
  * RÈGLE D'ARCHITECTURE F1.3 :
  * Une réponse HTTP 401 sur une requête protégée déclenche un signal interne
  * (événement / callback) indiquant « jeton expiré ou absent ».
- * Ce signal ne fait AUCUN renouvellement : le renouvellement silencieux est réservé à F1.4.
- * Un 401 sur la route de connexion (/api/v1/auth/login) n'émet JAMAIS ce signal (identifiants invalides).
+ * En F1.4, le gestionnaire de session écoute ce signal pour engager un appel unique
+ * à POST /api/v1/auth/refresh sans rompre l'isolation des tests de F1.3.
  *
  * Emplacement réservé : Politique d'inactivité de l'analyste : à décider (C4).
  */
+
+import { resetAuthSession } from './auth-session'
 
 export type AuthSignalReason = 'jeton expiré ou absent'
 
@@ -56,10 +58,12 @@ export function emitAuthSignal(details?: { url?: string }): void {
 }
 
 /**
- * Réinitialise tous les écouteurs enregistrés (nettoyage entre les tests).
+ * Réinitialise tous les écouteurs enregistrés et réinitialise l'état de session F1.4.
+ * Garantit l'isolation absolue et le maintien au vert des tests de F1.3.
  */
 export function clearAuthSignalListeners(): void {
   listeners.clear()
+  resetAuthSession()
 }
 
 /**

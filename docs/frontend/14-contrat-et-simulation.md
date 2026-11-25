@@ -26,7 +26,7 @@ Afin de permettre un développement front-end rigoureux et parfaitement synchron
 - **Contrat cible d'authentification** : `docs/contrat/auth-contrat-cible.yaml` (décrit en prose et en schéma d'après `docs/proposals/PROPOSITION-auth-back-E1.md`).
 - **Conséquence sur le front-end** : Les routes présentes dans `openapi.json` disposent de types générés automatiquement ; les routes d'authentification sont simulées via MSW à partir de `auth-contrat-cible.yaml`.
 
-### 2.1 Référentiel des routes d'authentification simulées (Story F1.2)
+### 2.1 Référentiel des routes d'authentification simulées (Stories F1.2 et F1.4)
 
 Les trois routes d'authentification ci-dessous sont interceptées et simulées par Mock Service Worker (MSW) dans `frontend/src/test/mocks/handlers.ts` :
 
@@ -46,7 +46,18 @@ Les routes protégées ci-dessous sont interceptées et simulées par Mock Servi
 | `GET /api/v1/cases` | Liste globale des dossiers accessibles, requiert l'en-tête Authorization: Bearer | simulée, contrat cible : openapi.json |
 
 #### Règle documentée pour les requêtes sans jeton (Story F1.3)
-Lorsqu'aucun jeton d'accès n'est présent en mémoire vive volatile (état initial ou purge), la requête vers un endpoint protégé est transmise sans en-tête `Authorization`. Le serveur récepteur ou l'intercepteur de simulation MSW renvoie alors un code HTTP 401, déclenchant le signal interne « jeton expiré ou absent » sans tentative de renouvellement (renouvellement réservé à la story F1.4). Emplacement réservé pour la politique d'inactivité de l'analyste : à décider (C4).
+Lorsqu'aucun jeton d'accès n'est présent en mémoire vive volatile (état initial ou purge), la requête vers un endpoint protégé est transmise sans en-tête `Authorization`. Le serveur récepteur ou l'intercepteur de simulation MSW renvoie alors un code HTTP 401, déclenchant le signal interne « jeton expiré ou absent ». Emplacement réservé pour la politique d'inactivité de l'analyste : à décider (C4).
+
+### 2.3 Protocole de renouvellement silencieux et éviction (Story F1.4)
+
+Conformément à l'ADR-0011, aux décisions D1, D3, D6 et DP-06 :
+1. **Déclenchement sur 401** : Lorsqu'un code HTTP 401 est intercepté sur une requête protégée (hors `/api/v1/auth/login`), le client réseau émet le signal interne F1.3 « jeton expiré ou absent » et déclenche un appel unique à `POST /api/v1/auth/refresh` (simulée, contrat cible : auth-contrat-cible.yaml).
+2. **Gestion de la concurrence** : Pendant qu'un renouvellement est en cours, toutes les requêtes protégées concurrentes attendent le même appel ; un seul appel à `/api/v1/auth/refresh` part à la fois.
+3. **Rejeu transparent** : Après succès du renouvellement, le nouvel access token (15 minutes) remplace le jeton en mémoire vive volatile et la requête initiale est rejouée une seule fois. Si la requête rejouée échoue à nouveau en 401 (en-tête `X-Retry: 1`), le traitement s'arrête immédiatement sans boucle infinie.
+4. **Renouvellement initial au chargement (DP-06)** : Au chargement de l'application (touche F5 ou accès initial), si aucun jeton d'accès n'est présent en mémoire vive, une tentative unique de renouvellement silencieux est engagée via `POST /api/v1/auth/refresh` avant toute réorientation vers `/login`.
+5. **Éviction et redirection vers `/login`** : En cas d'échec du renouvellement (code HTTP 401 sur `/api/v1/auth/refresh` ou coupure réseau), l'access token est purgé de la mémoire vive, le cache TanStack Query est intégralement réinitialisé et l'opérateur est redirigé vers `/login` avec conservation de l'URL cible (state.from) pour réorientation post-connexion.
+6. **Déconnexion explicite** : L'action de déconnexion sollicite `POST /api/v1/auth/logout` (simulée, contrat cible : auth-contrat-cible.yaml) pour ordonner au navigateur la suppression du cookie de renouvellement (`Max-Age=0`), purge la mémoire vive, détruit le cache de données et redirige vers `/login`. Conformément au modèle stateless D6, aucune révocation côté serveur n'est enregistrée.
+7. **Politique d'inactivité de l'analyste** : point C4, à décider.
 
 
 ---

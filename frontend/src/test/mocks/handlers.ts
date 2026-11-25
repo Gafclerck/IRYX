@@ -9,7 +9,7 @@ import type {
 /**
  * Handlers MSW simulant les routes réseau de l'application IRYX.
  *
- * Routes d'authentification simulées d'après le contrat cible (Story F1.2) :
+ * Routes d'authentification simulées d'après le contrat cible (Stories F1.2 et F1.4) :
  * - POST /api/v1/auth/login (simulée, contrat cible : auth-contrat-cible.yaml)
  * - POST /api/v1/auth/refresh (simulée, contrat cible : auth-contrat-cible.yaml)
  * - POST /api/v1/auth/logout (simulée, contrat cible : auth-contrat-cible.yaml)
@@ -95,8 +95,17 @@ export const handlers = [
       return HttpResponse.json<ErrorResponse>({ detail: 'Origine non autorisée.' }, { status: 403 })
     }
 
+    const simHeader = request.headers.get('X-Simulation-Refresh')
+    if (simHeader === 'network-error') {
+      return HttpResponse.error()
+    }
+
     const cookieHeader = request.headers.get('Cookie')
-    if (cookieHeader?.includes('expired') || cookieHeader?.includes('invalid')) {
+    if (
+      simHeader === 'expired' ||
+      cookieHeader?.includes('expired') ||
+      cookieHeader?.includes('invalid')
+    ) {
       return HttpResponse.json<ErrorResponse>(
         { detail: 'Session expirée. Veuillez vous reconnecter.' },
         { status: 401 },
