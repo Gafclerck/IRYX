@@ -894,6 +894,91 @@ function isTimelineServerError(request: Request, caseId: string): boolean {
  * - GET /api/v1/cases (simulée, contrat cible : openapi.json)
  * - POST /api/v1/cases (simulée, contrat cible : openapi.json)
  */
+
+/**
+ * Simulation de la génération du rapport (Story F5.1, RÈGLE CONTRAT).
+ *
+ * Le contrat openapi.json ne contient aucune route de rapport : les routes ci-dessous
+ * sont simulées depuis ADR-0004 (formats markdown/json) et ADR-0008 (tâche
+ * asynchrone), sans champ inventé au-delà de ces formats. Statut documenté dans
+ * docs/frontend/14 : « simulée, contrat cible : à réaligner avec E8 ».
+ */
+const REPORT_CHAPTERS = [
+  'Résumé managérial',
+  'Périmètre analysé',
+  'Méthodologie et outils',
+  'Chaîne des preuves',
+  'Observations consolidées',
+  'Findings validés en H2',
+  'Chronologie des faits',
+  'Limites techniques',
+] as const
+
+const MOCK_REPORT_TASK_ID = 'task-report-001'
+let mockReportTaskAttempts = 0
+
+function buildMockReportContent(findingsLine: string): string {
+  return [
+    '# Rapport d’incident',
+    ...REPORT_CHAPTERS.map(
+      (title) =>
+        `## ${title}\n\n${
+          title === 'Findings validés en H2'
+            ? findingsLine
+            : 'Aucune donnée supplémentaire transmise par le back-end.'
+        }`,
+    ),
+  ].join('\n\n')
+}
+
+export const MOCK_REPORT_CONTENT = buildMockReportContent(
+  'Détails des findings transmis par le back-end.',
+)
+export const MOCK_REPORT_NO_FINDINGS_CONTENT = buildMockReportContent(
+  'Aucun finding validé en porte H2.',
+)
+
+function buildMockReport(content: string) {
+  return { status: 'validated', format: 'markdown', content } as const
+}
+
+export function resetMockReport() {
+  mockReportTaskAttempts = 0
+}
+
+function isReportForbidden(request: Request, caseId: string): boolean {
+  const token = request.headers.get('Authorization')?.replace('Bearer ', '').trim()
+  return (
+    token === 'mock-forbidden-token' ||
+    request.headers.get('X-Simulation-Report') === 'forbidden' ||
+    caseId === 'case-report-forbidden'
+  )
+}
+
+function isReportServerError(request: Request, caseId: string): boolean {
+  return (
+    request.headers.get('Authorization')?.includes('mock-server-error-token') === true ||
+    request.headers.get('X-Simulation-Report') === 'server-error' ||
+    caseId === 'case-report-server-error'
+  )
+}
+
+function isReportNetworkError(request: Request, caseId: string): boolean {
+  return (
+    request.headers.get('X-Simulation-Report') === 'network-error' ||
+    caseId === 'case-report-network-error'
+  )
+}
+
+function buildMockReportTask(caseId: string, status = 'pending', progress = 0) {
+  return {
+    task_id: MOCK_REPORT_TASK_ID,
+    status,
+    progress,
+    poll_url: `/api/v1/cases/${caseId}/tasks/${MOCK_REPORT_TASK_ID}`,
+  }
+}
+
 export const handlers = [
   http.get('*/api/test-simulation', () => {
     return HttpResponse.json({ status: 'ok', simulation: true })
@@ -2515,5 +2600,151 @@ export const handlers = [
     }
 
     return HttpResponse.json(detail)
+  }),
+
+  /**
+   * Rapport courant (Story F5.1).
+   * Route simulée : GET /api/v1/cases/:caseId/report.
+   * Statut : simulée, contrat cible : ADR-0004 / ADR-0008, à réaligner avec E8.
+   */
+  http.get('*/api/v1/cases/:caseId/report', ({ params, request }) => {
+    const authHeader = request.headers.get('Authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    const caseId = String(params.caseId)
+    const simulation = request.headers.get('X-Simulation-Report')
+
+    if (isReportForbidden(request, caseId)) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Accès refusé. Vous n'avez pas accès au rapport de ce dossier." },
+        { status: 403 },
+      )
+    }
+    if (isReportServerError(request, caseId)) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Échec de la consultation du rapport.' },
+        { status: 500 },
+      )
+    }
+    if (isReportNetworkError(request, caseId)) {
+      return HttpResponse.error()
+    }
+
+    if (simulation === 'ready') {
+      return HttpResponse.json(buildMockReport(MOCK_REPORT_CONTENT))
+    }
+    if (simulation === 'no-findings') {
+      return HttpResponse.json(buildMockReport(MOCK_REPORT_NO_FINDINGS_CONTENT))
+    }
+
+    return HttpResponse.json<ErrorResponse>(
+      { detail: 'Aucun rapport finalisé pour ce dossier.' },
+      { status: 404 },
+    )
+  }),
+
+  /**
+   * Demande de compilation serveur (Story F5.1, DP-03).
+   * Route simulée : POST /api/v1/cases/:caseId/report/generate.
+   * Aucun chapitre n'est produit ici par le front : seule une tâche ADR-0008
+   * est renvoyée, avec Retry-After: 3.
+   */
+  http.post('*/api/v1/cases/:caseId/report/generate', ({ params, request }) => {
+    const authHeader = request.headers.get('Authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    const caseId = String(params.caseId)
+    if (isReportForbidden(request, caseId)) {
+      return HttpResponse.json<ErrorResponse>(
+        {
+          detail:
+            "Accès refusé. Vous n'avez pas les autorisations nécessaires pour compiler ce rapport.",
+        },
+        { status: 403 },
+      )
+    }
+    if (isReportServerError(request, caseId)) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Échec de la demande de compilation du rapport.' },
+        { status: 500 },
+      )
+    }
+    if (isReportNetworkError(request, caseId)) {
+      return HttpResponse.error()
+    }
+
+    mockReportTaskAttempts = 0
+    return HttpResponse.json(buildMockReportTask(caseId), {
+      status: 202,
+      headers: { 'Retry-After': '3' },
+    })
+  }),
+
+  /**
+   * Suivi de la tâche de compilation (Story F5.1, ADR-0008, DP-05).
+   * Route simulée : GET /api/v1/cases/:caseId/tasks/:taskId.
+   * Le motif d'échec est transmis dans l'enveloppe d'erreur `error_message`
+   * (à réaligner avec E8), sans enrichir le document du rapport.
+   */
+  http.get('*/api/v1/cases/:caseId/tasks/:taskId', ({ params, request }) => {
+    const authHeader = request.headers.get('Authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    const caseId = String(params.caseId)
+    const simulation = request.headers.get('X-Simulation-Report')
+
+    if (isReportForbidden(request, caseId)) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Accès refusé. Vous n'avez pas accès à cette tâche." },
+        { status: 403 },
+      )
+    }
+    if (isReportServerError(request, caseId)) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Échec du suivi de la compilation.' },
+        { status: 500 },
+      )
+    }
+    if (isReportNetworkError(request, caseId)) {
+      return HttpResponse.error()
+    }
+
+    if (simulation === 'unknown-status') {
+      return HttpResponse.json(
+        { ...buildMockReportTask(caseId, 'unrecognized_state_code', 0) },
+        { headers: { 'Retry-After': '3' } },
+      )
+    }
+    if (simulation === 'generation-failed') {
+      return HttpResponse.json(
+        {
+          ...buildMockReportTask(caseId, 'failed', 0),
+          error_message: 'Le service de compilation du rapport a signalé une erreur interne.',
+        },
+        { headers: { 'Retry-After': '3' } },
+      )
+    }
+
+    mockReportTaskAttempts += 1
+    const completed = mockReportTaskAttempts >= 2
+    return HttpResponse.json(
+      buildMockReportTask(caseId, completed ? 'completed' : 'processing', completed ? 1 : 0.5),
+      { headers: { 'Retry-After': '3' } },
+    )
   }),
 ]

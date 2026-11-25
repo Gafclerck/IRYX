@@ -72,6 +72,8 @@ export function CaseSidebar({ caseId, caseTitle }: CaseSidebarProps) {
       number: 5,
       label: 'Revue et rapport',
       path: `/cases/${caseId}/review`,
+      /** Le rapport (Story F5.1) appartient à la même étape 5 du canevas. */
+      altPath: `/cases/${caseId}/report`,
       icon: ShieldCheck,
     },
   ]
@@ -130,7 +132,11 @@ export function CaseSidebar({ caseId, caseTitle }: CaseSidebarProps) {
         <nav aria-label="Étapes de l'investigation">
           <ul className="space-y-1">
             {steps.map((step) => {
-              const active = isStepActive(step.path, step.exact)
+              const active =
+                isStepActive(step.path, step.exact) ||
+                ('altPath' in step &&
+                  typeof step.altPath === 'string' &&
+                  isStepActive(step.altPath))
               const StepIcon = step.icon
 
               return (

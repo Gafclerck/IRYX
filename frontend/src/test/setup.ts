@@ -6,6 +6,7 @@ import {
   resetMockEvidences,
   resetMockH1Decisions,
   resetMockPlanPolling,
+  resetMockReport,
   resetMockRunSupervision,
 } from './mocks/handlers'
 import { clearAccessToken, clearSessionListeners } from '../api/auth-memory'
@@ -74,6 +75,7 @@ afterEach(() => {
   resetMockPlanPolling()
   resetMockH1Decisions()
   resetMockRunSupervision()
+  resetMockReport()
   clearAccessToken()
   clearSessionListeners()
   clearAuthSignalListeners()

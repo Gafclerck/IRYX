@@ -7,6 +7,7 @@ import { EvidencePage } from '../pages/EvidencePage'
 import { PlanPage } from '../pages/PlanPage'
 import { RunPage } from '../pages/RunPage'
 import { ResultsPage } from '../pages/ResultsPage'
+import { ReportPage } from '../pages/ReportPage'
 import { AuthGuard } from '../features/auth/components/AuthGuard'
 import { AuthenticatedLayout } from '../components/layout/AuthenticatedLayout'
 
@@ -53,6 +54,10 @@ export const router = createBrowserRouter([
       {
         path: '/cases/:caseId/results',
         element: <ResultsPage />,
+      },
+      {
+        path: '/cases/:caseId/report',
+        element: <ReportPage />,
       },
     ],
   },
