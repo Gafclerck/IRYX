@@ -10,6 +10,11 @@ import { CasesPage } from '../pages/CasesPage'
 import { setAccessToken, clearAccessToken } from '../api/auth-memory'
 import { INCIDENT_TYPE_POLICY, INCIDENT_TYPE_OPTIONS } from '../api/cases-types'
 
+// `delay: null` supprime le délai artificiel entre deux frappes userEvent.
+// Sous la charge parallèle de la suite, le délai par défaut faisait dépasser
+// le testTimeout de 5 s et laissait des frappes en attente qui corrompaient le test suivant.
+// Tous les événements utilisateur et toutes les assertions sont conservés.
+
 function createTestQueryClient() {
   return new QueryClient({
     defaultOptions: {
@@ -79,7 +84,7 @@ describe('Story F1.7 : Création d un nouveau dossier d investigation en modale 
     })
 
     it('ouvre la modale au clic avec focus sur le titre et date courante pré-remplie', async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ delay: null })
       renderCasesPage()
 
       await waitFor(() => {
@@ -115,7 +120,7 @@ describe('Story F1.7 : Création d un nouveau dossier d investigation en modale 
     })
 
     it('ferme la modale au clic sur le bouton Annuler ou la croix de fermeture', async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ delay: null })
       renderCasesPage()
 
       await waitFor(() => {
@@ -157,7 +162,7 @@ describe('Story F1.7 : Création d un nouveau dossier d investigation en modale 
         }),
       )
 
-      const user = userEvent.setup()
+      const user = userEvent.setup({ delay: null })
       renderCasesPage()
 
       await waitFor(() => {
@@ -198,7 +203,7 @@ describe('Story F1.7 : Création d un nouveau dossier d investigation en modale 
 
   describe('3. Succès nominal de création, rafraîchissement et retour page 1', () => {
     it('crée le dossier avec succès, ferme la modale, réinitialise la page à 1 et affiche la notification', async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ delay: null })
       renderCasesPage()
 
       await waitFor(() => {
@@ -271,7 +276,7 @@ describe('Story F1.7 : Création d un nouveau dossier d investigation en modale 
         }),
       )
 
-      const user = userEvent.setup()
+      const user = userEvent.setup({ delay: null })
       renderCasesPage()
 
       await waitFor(() => {
@@ -338,7 +343,7 @@ describe('Story F1.7 : Création d un nouveau dossier d investigation en modale 
         }),
       )
 
-      const user = userEvent.setup()
+      const user = userEvent.setup({ delay: null })
       renderCasesPage()
 
       await waitFor(() => {
@@ -411,7 +416,7 @@ describe('Story F1.7 : Création d un nouveau dossier d investigation en modale 
         }),
       )
 
-      const user = userEvent.setup()
+      const user = userEvent.setup({ delay: null })
       renderCasesPage()
 
       await waitFor(() => {
@@ -465,7 +470,7 @@ describe('Story F1.7 : Création d un nouveau dossier d investigation en modale 
         }),
       )
 
-      const user = userEvent.setup()
+      const user = userEvent.setup({ delay: null })
       renderCasesPage()
 
       await waitFor(() => {
@@ -509,7 +514,7 @@ describe('Story F1.7 : Création d un nouveau dossier d investigation en modale 
 
     it('n effectue aucune écriture dans localStorage ni sessionStorage', async () => {
       const setLocalStorageSpy = vi.spyOn(Storage.prototype, 'setItem')
-      const user = userEvent.setup()
+      const user = userEvent.setup({ delay: null })
       renderCasesPage()
 
       await waitFor(() => {

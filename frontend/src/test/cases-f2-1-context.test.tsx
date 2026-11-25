@@ -9,6 +9,11 @@ import { CaseContextPage } from '../pages/CaseContextPage'
 import { setAccessToken, clearAccessToken } from '../api/auth-memory'
 import { CONTRACT_ALIGNMENT_REQUIRED_LABEL } from '../api/cases-types'
 
+// `delay: null` supprime le délai artificiel entre deux frappes userEvent.
+// Sous la charge parallèle de la suite, le délai par défaut faisait dépasser
+// le testTimeout de 5 s et laissait des frappes en attente qui corrompaient le test suivant.
+// Tous les événements utilisateur et toutes les assertions sont conservés.
+
 function createTestQueryClient() {
   return new QueryClient({
     defaultOptions: {
@@ -183,7 +188,7 @@ describe('Story F2.1 : Consultation et édition du contexte du dossier (E2, open
 
   describe('3. Mode d édition en ligne et validation Zod', () => {
     it('permet de basculer en mode édition, de modifier le titre et la description et d enregistrer avec succès', async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ delay: null })
       renderCaseContextPage('case-001')
 
       await waitFor(() => {
@@ -228,7 +233,7 @@ describe('Story F2.1 : Consultation et édition du contexte du dossier (E2, open
     })
 
     it('applique la validation Zod : refuse la soumission si le titre est vide et affiche une erreur en français', async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ delay: null })
       renderCaseContextPage('case-001')
 
       await waitFor(() => {
@@ -251,7 +256,7 @@ describe('Story F2.1 : Consultation et édition du contexte du dossier (E2, open
     })
 
     it('le bouton « Annuler » annule les saisies en cours et rétablit la vue nominale', async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ delay: null })
       renderCaseContextPage('case-001')
 
       await waitFor(() => {
@@ -289,7 +294,7 @@ describe('Story F2.1 : Consultation et édition du contexte du dossier (E2, open
     })
 
     it('en cas d erreur 500 lors de la sauvegarde, affiche la notification d échec, le bouton Réessayer et conserve les saisies (NFR-ERR-02)', async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ delay: null })
 
       server.use(
         http.patch('*/api/v1/cases/:caseId', () => {
