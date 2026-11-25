@@ -36,6 +36,19 @@ Les trois routes d'authentification ci-dessous sont interceptées et simulées p
 | `POST /api/v1/auth/refresh` | Renouvellement silencieux du jeton d'accès via cookie httpOnly | simulée, contrat cible : auth-contrat-cible.yaml |
 | `POST /api/v1/auth/logout` | Déconnexion explicite et suppression du cookie httpOnly (Max-Age=0) | simulée, contrat cible : auth-contrat-cible.yaml |
 
+### 2.2 Référentiel des routes protégées simulées (Story F1.3)
+
+Les routes protégées ci-dessous sont interceptées et simulées par Mock Service Worker (MSW) dans `frontend/src/test/mocks/handlers.ts` pour tester l'injection de l'en-tête `Authorization: Bearer <token>` et la détection d'expiration (HTTP 401) :
+
+| Méthode et route HTTP | Description opérationnelle | Mention de statut |
+|---|---|---|
+| `GET /api/v1/auth/me` | Profil utilisateur connecté, requiert l'en-tête Authorization: Bearer en mémoire | simulée, contrat cible : openapi.json |
+| `GET /api/v1/cases` | Liste globale des dossiers accessibles, requiert l'en-tête Authorization: Bearer | simulée, contrat cible : openapi.json |
+
+#### Règle documentée pour les requêtes sans jeton (Story F1.3)
+Lorsqu'aucun jeton d'accès n'est présent en mémoire vive volatile (état initial ou purge), la requête vers un endpoint protégé est transmise sans en-tête `Authorization`. Le serveur récepteur ou l'intercepteur de simulation MSW renvoie alors un code HTTP 401, déclenchant le signal interne « jeton expiré ou absent » sans tentative de renouvellement (renouvellement réservé à la story F1.4). Emplacement réservé pour la politique d'inactivité de l'analyste : à décider (C4).
+
+
 ---
 
 ## 3. Inventaire des stories d'intégration dépendantes du contrat

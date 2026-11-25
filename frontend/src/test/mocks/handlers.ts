@@ -9,10 +9,14 @@ import type {
 /**
  * Handlers MSW simulant les routes réseau de l'application IRYX.
  *
- * Routes d'authentification simulées d'après le contrat cible :
+ * Routes d'authentification simulées d'après le contrat cible (Story F1.2) :
  * - POST /api/v1/auth/login (simulée, contrat cible : auth-contrat-cible.yaml)
  * - POST /api/v1/auth/refresh (simulée, contrat cible : auth-contrat-cible.yaml)
  * - POST /api/v1/auth/logout (simulée, contrat cible : auth-contrat-cible.yaml)
+ *
+ * Routes protégées simulées d'après le contrat OpenAPI (Story F1.3) :
+ * - GET /api/v1/auth/me (simulée, contrat cible : openapi.json)
+ * - GET /api/v1/cases (simulée, contrat cible : openapi.json)
  */
 export const handlers = [
   http.get('*/api/test-simulation', () => {
@@ -121,5 +125,82 @@ export const handlers = [
           'refresh_token=; Path=/api/v1/auth/refresh; Max-Age=0; HttpOnly; Secure; SameSite=Strict; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
       },
     })
+  }),
+
+  // GET /api/v1/auth/me (simulée, contrat cible : openapi.json - Story F1.3)
+  http.get('*/api/v1/auth/me', ({ request }) => {
+    const authHeader = request.headers.get('Authorization')
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    const token = authHeader.replace('Bearer ', '').trim()
+
+    if (token === 'mock-expired-token' || token.includes('expired')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    if (token === 'mock-server-error-token' || token.includes('server-error')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Erreur interne du serveur.' },
+        { status: 500 },
+      )
+    }
+
+    return HttpResponse.json(
+      {
+        id: '00000000-0000-0000-0000-000000000001',
+        email: 'analyste@iryx.local',
+        is_active: true,
+        created_at: '2026-11-25T00:00:00Z',
+        updated_at: '2026-11-25T00:00:00Z',
+      },
+      { status: 200 },
+    )
+  }),
+
+  // GET /api/v1/cases (simulée, contrat cible : openapi.json - Story F1.3)
+  http.get('*/api/v1/cases', ({ request }) => {
+    const authHeader = request.headers.get('Authorization')
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    const token = authHeader.replace('Bearer ', '').trim()
+
+    if (token === 'mock-expired-token' || token.includes('expired')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    if (token === 'mock-server-error-token' || token.includes('server-error')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Erreur interne du serveur.' },
+        { status: 500 },
+      )
+    }
+
+    return HttpResponse.json(
+      {
+        items: [],
+        total: 0,
+        limit: 20,
+        offset: 0,
+      },
+      { status: 200 },
+    )
   }),
 ]

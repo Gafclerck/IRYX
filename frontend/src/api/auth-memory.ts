@@ -5,6 +5,8 @@
  * RÈGLE ABSOLUE :
  * Le jeton d'accès est conservé exclusivement en mémoire vive volatile.
  * Aucun jeton d'accès n'est jamais écrit dans localStorage ni sessionStorage.
+ *
+ * Emplacement réservé : Politique d'inactivité de l'analyste : à décider (C4).
  */
 
 let inMemoryAccessToken: string | null = null
