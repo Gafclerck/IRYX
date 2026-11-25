@@ -1,5 +1,6 @@
 """IRYX Analytics and Finding Business Services."""
 
+import contextlib
 import json
 import logging
 import uuid
@@ -22,6 +23,7 @@ from iryx.analytics.schemas import (
     FindingCreate,
     FindingReview,
     FindingUpdate,
+    TimelineCorrelationsResponse,
     TimelineEventOut,
     TimelineListResponse,
     TimelineProjectionResponse,
@@ -269,6 +271,13 @@ def _extract_technical_summary(normalized_content: Any) -> str:
 extract_technical_summary = _extract_technical_summary
 
 
+def _get_timeline_correlator(db: Session) -> Any:
+    """Lazy import of TimelineCorrelator to avoid circular imports during module load."""
+    from iryx.analytics.correlator import TimelineCorrelator
+
+    return TimelineCorrelator(db)
+
+
 def _map_observation_to_event(
     obs: Observation, evidence_name: str | None = None
 ) -> TimelineEventOut | None:
@@ -397,6 +406,9 @@ class _PaginatedTimelineDispatcher:
                 "end_time",
                 "tool_name",
                 "evidence_id",
+                "is_correlated",
+                "correlation_marker",
+                "finding_id",
             ]
             for idx, val in enumerate(pos_args):
                 if idx < len(param_names):
@@ -416,6 +428,9 @@ class _PaginatedTimelineDispatcher:
             end_time = kwargs.pop("end_time", None)
             tool_name = kwargs.pop("tool_name", None)
             evidence_id = kwargs.pop("evidence_id", None)
+            is_correlated = kwargs.pop("is_correlated", None)
+            correlation_marker = kwargs.pop("correlation_marker", None)
+            finding_id = kwargs.pop("finding_id", None)
 
             target_cls = owner if owner is not None else TimelineService
             return target_cls._execute_paginated_timeline(
@@ -427,10 +442,50 @@ class _PaginatedTimelineDispatcher:
                 end_time=end_time,
                 tool_name=tool_name,
                 evidence_id=evidence_id,
+                is_correlated=is_correlated,
+                correlation_marker=correlation_marker,
+                finding_id=finding_id,
             )
 
         dispatcher.__doc__ = (
             "Retrieve paginated chronological timeline events for case (Story 7.2, NFR-PERF-07)."
+        )
+        return dispatcher
+
+
+class _CaseCorrelationsDispatcher:
+    """Descriptor enabling get_case_correlations on class or instance (Story 7.3)."""
+
+    def __get__(self, instance: Any, owner: Any = None) -> Any:
+        def dispatcher(*args: Any, **kwargs: Any) -> TimelineCorrelationsResponse:
+            target_db: Session | None = None
+            pos_args = list(args)
+
+            if pos_args and isinstance(pos_args[0], Session):
+                target_db = pos_args.pop(0)
+            elif instance is not None:
+                target_db = getattr(instance, "db", None)
+
+            if "db" in kwargs:
+                target_db = kwargs.pop("db")
+
+            target_case_id = kwargs.pop("case_id", None)
+            if pos_args and target_case_id is None:
+                target_case_id = pos_args.pop(0)
+
+            if target_db is None:
+                raise ValueError("Database session (db) is required.")
+            if target_case_id is None:
+                raise ValueError("Case ID (case_id) is required.")
+
+            target_cls = owner if owner is not None else TimelineService
+            return target_cls._execute_case_correlations(
+                db=target_db,
+                case_id=target_case_id,
+            )
+
+        dispatcher.__doc__ = (
+            "Retrieve structured multi-source correlation groups for a case (Story 7.3)."
         )
         return dispatcher
 
@@ -448,6 +503,7 @@ class TimelineService:
 
     get_timeline_projection = _TimelineProjectionDispatcher()
     get_paginated_timeline = _PaginatedTimelineDispatcher()
+    get_case_correlations = _CaseCorrelationsDispatcher()
 
     @classmethod
     def _execute_timeline_projection(
@@ -505,6 +561,13 @@ class TimelineService:
                     )
                 )
 
+        correlator = _get_timeline_correlator(db)
+        correlator.enrich_events(
+            events=events,
+            undated_events=undated_events,
+            case_id=parsed_case_id,
+        )
+
         return TimelineProjectionResponse(
             case_id=parsed_case_id,
             events=events,
@@ -524,6 +587,9 @@ class TimelineService:
         end_time: datetime | None = None,
         tool_name: str | None = None,
         evidence_id: uuid.UUID | None = None,
+        is_correlated: bool | None = None,
+        correlation_marker: str | None = None,
+        finding_id: uuid.UUID | None = None,
     ) -> TimelineListResponse:
         """Execute paginated timeline query using composite index (case_id, timestamp_utc)."""
         if not isinstance(case_id, uuid.UUID):
@@ -557,6 +623,7 @@ class TimelineService:
             )
 
         sanitized_tool_name = tool_name.strip() if tool_name and tool_name.strip() else None
+        correlator = _get_timeline_correlator(db)
 
         stmt = (
             select(Observation, Evidence.original_name)
@@ -566,12 +633,9 @@ class TimelineService:
                 Observation.timestamp_utc.is_not(None),
             )
         )
-        count_stmt = (
-            select(func.count(Observation.id))
-            .where(
-                Observation.case_id == parsed_case_id,
-                Observation.timestamp_utc.is_not(None),
-            )
+        count_stmt = select(func.count(Observation.id)).where(
+            Observation.case_id == parsed_case_id,
+            Observation.timestamp_utc.is_not(None),
         )
 
         if st is not None:
@@ -589,6 +653,72 @@ class TimelineService:
         if evidence_id is not None:
             stmt = stmt.where(Observation.source_id == evidence_id)
             count_stmt = count_stmt.where(Observation.source_id == evidence_id)
+
+        if finding_id is not None:
+            f = db.scalar(
+                select(Finding).where(
+                    Finding.id == finding_id,
+                    Finding.case_id == parsed_case_id,
+                    Finding.status == FindingStatus.VALIDATED,
+                )
+            )
+            raw_refs = list(f.observation_refs) if f and f.observation_refs else []
+            obs_refs: list[uuid.UUID] = []
+            for r in raw_refs:
+                if isinstance(r, uuid.UUID):
+                    obs_refs.append(r)
+                else:
+                    with contextlib.suppress(ValueError, TypeError):
+                        obs_refs.append(uuid.UUID(str(r)))
+            if not obs_refs:
+                return TimelineListResponse(
+                    items=[],
+                    events=[],
+                    total=0,
+                    total_items=0,
+                    limit=limit,
+                    offset=offset,
+                    has_more=False,
+                )
+            stmt = stmt.where(Observation.id.in_(obs_refs))
+            count_stmt = count_stmt.where(Observation.id.in_(obs_refs))
+
+        if correlation_marker is not None:
+            marker_str = correlation_marker.strip()
+            _, obs_markers, _, _ = correlator.build_correlation_metadata(parsed_case_id)
+            marker_obs_ids = [oid for oid, markers in obs_markers.items() if marker_str in markers]
+            if not marker_obs_ids:
+                return TimelineListResponse(
+                    items=[],
+                    events=[],
+                    total=0,
+                    total_items=0,
+                    limit=limit,
+                    offset=offset,
+                    has_more=False,
+                )
+            stmt = stmt.where(Observation.id.in_(marker_obs_ids))
+            count_stmt = count_stmt.where(Observation.id.in_(marker_obs_ids))
+
+        if is_correlated is not None:
+            _, _, correlated_obs_ids, _ = correlator.build_correlation_metadata(parsed_case_id)
+            if is_correlated is True:
+                if not correlated_obs_ids:
+                    return TimelineListResponse(
+                        items=[],
+                        events=[],
+                        total=0,
+                        total_items=0,
+                        limit=limit,
+                        offset=offset,
+                        has_more=False,
+                    )
+                stmt = stmt.where(Observation.id.in_(list(correlated_obs_ids)))
+                count_stmt = count_stmt.where(Observation.id.in_(list(correlated_obs_ids)))
+            else:
+                if correlated_obs_ids:
+                    stmt = stmt.where(Observation.id.not_in(list(correlated_obs_ids)))
+                    count_stmt = count_stmt.where(Observation.id.not_in(list(correlated_obs_ids)))
 
         total = db.scalar(count_stmt) or 0
 
@@ -617,6 +747,8 @@ class TimelineService:
             if event is not None:
                 events.append(event)
 
+        correlator.enrich_events(events=events, case_id=parsed_case_id)
+
         has_more = (offset + len(events)) < total
 
         return TimelineListResponse(
@@ -628,3 +760,22 @@ class TimelineService:
             offset=offset,
             has_more=has_more,
         )
+
+    @classmethod
+    def _execute_case_correlations(
+        cls,
+        db: Session,
+        case_id: uuid.UUID | str,
+    ) -> TimelineCorrelationsResponse:
+        """Execute deterministic multi-source correlation calculation for case (Story 7.3)."""
+        if not isinstance(case_id, uuid.UUID):
+            try:
+                parsed_case_id = uuid.UUID(str(case_id))
+            except (ValueError, TypeError, AttributeError) as exc:
+                msg = f"Invalid case_id format: {case_id}"
+                raise ValueError(msg) from exc
+        else:
+            parsed_case_id = case_id
+
+        correlator = _get_timeline_correlator(db)
+        return correlator.get_case_correlations(case_id=parsed_case_id)

@@ -239,8 +239,10 @@ def test_get_timeline_filter_time_window(
     assert len(data["items"]) == 3
     for item in data["items"]:
         dt = datetime.fromisoformat(item["timestamp_utc"])
-        assert datetime(2026, 11, 23, 10, 0, 0, tzinfo=UTC) <= dt <= datetime(
-            2026, 11, 23, 12, 0, 0, tzinfo=UTC
+        assert (
+            datetime(2026, 11, 23, 10, 0, 0, tzinfo=UTC)
+            <= dt
+            <= datetime(2026, 11, 23, 12, 0, 0, tzinfo=UTC)
         )
 
 
@@ -382,9 +384,7 @@ def test_get_timeline_unauthenticated_returns_401(client: TestClient, test_setup
     assert resp.status_code == 401
 
 
-def test_get_timeline_cross_organization_forbidden(
-    client: TestClient, test_setup: dict
-) -> None:
+def test_get_timeline_cross_organization_forbidden(client: TestClient, test_setup: dict) -> None:
     """Verify user from another organization receives HTTP 403."""
     case: Case = test_setup["case"]
     other_admin: User = test_setup["other_admin"]

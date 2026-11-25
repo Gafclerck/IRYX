@@ -18,6 +18,7 @@ from iryx.analytics.schemas import (
     FindingOut,
     FindingReview,
     FindingUpdate,
+    TimelineCorrelationsResponse,
     TimelineFilterParams,
     TimelineListResponse,
 )
@@ -274,4 +275,29 @@ def get_timeline(
         end_time=filter_params.end_time,
         tool_name=filter_params.tool_name,
         evidence_id=filter_params.evidence_id,
+        is_correlated=filter_params.is_correlated,
+        correlation_marker=filter_params.correlation_marker,
+        finding_id=filter_params.finding_id,
     )
+
+
+@router.get(
+    "/api/v1/cases/{case_id}/timeline/correlations",
+    response_model=TimelineCorrelationsResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["Timeline"],
+    summary="Consultation des groupes de corrélations multi-sources d'une enquête",
+    description=(
+        "Retourne la liste structurée des groupes de corrélation multi-sources "
+        "identifiés à partir des Findings validés superposés aux observations "
+        "sources (Invariant 2, projection pure)."
+    ),
+)
+def get_timeline_correlations(
+    case_id: uuid.UUID,
+    _case: Annotated[Case, Depends(verify_case_access)],
+    db: Annotated[Session, Depends(get_db)],
+) -> TimelineCorrelationsResponse:
+    """Retrieve structured multi-source correlation groups for a case."""
+    service = TimelineService(db)
+    return service.get_case_correlations(case_id=case_id)

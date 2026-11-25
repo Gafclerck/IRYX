@@ -1,0 +1,40 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/Hp/AppData/Roaming/uv/tools/bmad-loop/Scripts/bmad-loop.exe relay SessionStart",
+            "timeout": 60000
+          }
+        ]
+      }
+    ],
+    "AfterAgent": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/Hp/AppData/Roaming/uv/tools/bmad-loop/Scripts/bmad-loop.exe relay Stop",
+            "timeout": 60000
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/Hp/AppData/Roaming/uv/tools/bmad-loop/Scripts/bmad-loop.exe relay SessionEnd",
+            "timeout": 60000
+          }
+        ]
+      }
+    ]
+  }
+}

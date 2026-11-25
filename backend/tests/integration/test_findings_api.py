@@ -723,9 +723,7 @@ def test_review_finding_cross_tenant_forbidden_403(
     assert response.status_code == 403
 
 
-def test_review_finding_nonexistent_finding_404(
-    client: TestClient, test_setup: dict
-) -> None:
+def test_review_finding_nonexistent_finding_404(client: TestClient, test_setup: dict) -> None:
     """Verify reviewing nonexistent finding returns HTTP 404 Not Found."""
     case: Case = test_setup["case"]
     analyst: User = test_setup["analyst"]

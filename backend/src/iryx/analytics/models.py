@@ -165,9 +165,7 @@ class Observation(Base):
         foreign_keys=[tool_execution_id],
     )
 
-    __table_args__ = (
-        Index("ix_observations_case_id_timestamp_utc", "case_id", "timestamp_utc"),
-    )
+    __table_args__ = (Index("ix_observations_case_id_timestamp_utc", "case_id", "timestamp_utc"),)
 
     def __init__(self, **kw: Any) -> None:
         if kw.get("id") is None:

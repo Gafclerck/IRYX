@@ -1208,9 +1208,7 @@ def test_arbitrate_gate_h2_reject_nominal_200(
     """Rejet de session à la Porte H2: HTTP 200, status completed, current_phase gate_h2."""
     case = test_setup["case"]
     headers = test_setup["analyst_headers"]
-    run, _ = _setup_paused_h2_run(
-        db_session, case.id, findings_statuses=[FindingStatus.PROPOSED]
-    )
+    run, _ = _setup_paused_h2_run(db_session, case.id, findings_statuses=[FindingStatus.PROPOSED])
 
     resp = client.post(
         f"/api/v1/cases/{case.id}/investigations/{run.id}/gates/h2",
