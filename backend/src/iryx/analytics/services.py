@@ -23,6 +23,7 @@ from iryx.analytics.schemas import (
     FindingReview,
     FindingUpdate,
     TimelineEventOut,
+    TimelineListResponse,
     TimelineProjectionResponse,
     UndatedFactOut,
 )
@@ -268,6 +269,42 @@ def _extract_technical_summary(normalized_content: Any) -> str:
 extract_technical_summary = _extract_technical_summary
 
 
+def _map_observation_to_event(
+    obs: Observation, evidence_name: str | None = None
+) -> TimelineEventOut | None:
+    """Map an Observation ORM entity with valid timestamp to a TimelineEventOut schema."""
+    summary = _extract_technical_summary(obs.normalized_content)
+    if isinstance(obs.normalized_content, dict):
+        details = obs.normalized_content
+    elif obs.normalized_content is not None:
+        details = {"raw": obs.normalized_content}
+    else:
+        details = {}
+
+    ts = obs.timestamp_utc
+    if isinstance(ts, str):
+        try:
+            ts = datetime.fromisoformat(ts)
+        except (ValueError, TypeError):
+            ts = None
+
+    if ts is None:
+        return None
+
+    ts = ts.replace(tzinfo=UTC) if ts.tzinfo is None else ts.astimezone(UTC)
+    return TimelineEventOut(
+        timestamp_utc=ts,
+        observation_id=obs.id,
+        tool_name=obs.tool_name,
+        tool_execution_id=obs.tool_execution_id,
+        evidence_id=obs.source_id,
+        evidence_name=evidence_name,
+        summary=summary,
+        source_location=obs.source_location,
+        details=details,
+    )
+
+
 class _TimelineProjectionDispatcher:
     """Descriptor enabling get_timeline_projection on class or instance."""
 
@@ -336,6 +373,68 @@ class _TimelineProjectionDispatcher:
         return dispatcher
 
 
+class _PaginatedTimelineDispatcher:
+    """Descriptor enabling get_paginated_timeline on class or instance."""
+
+    def __get__(self, instance: Any, owner: Any = None) -> Any:
+        def dispatcher(*args: Any, **kwargs: Any) -> TimelineListResponse:
+            target_db: Session | None = None
+            pos_args = list(args)
+
+            if pos_args and isinstance(pos_args[0], Session):
+                target_db = pos_args.pop(0)
+            elif instance is not None:
+                target_db = getattr(instance, "db", None)
+
+            if "db" in kwargs:
+                target_db = kwargs.pop("db")
+
+            param_names = [
+                "case_id",
+                "limit",
+                "offset",
+                "start_time",
+                "end_time",
+                "tool_name",
+                "evidence_id",
+            ]
+            for idx, val in enumerate(pos_args):
+                if idx < len(param_names):
+                    name = param_names[idx]
+                    if name not in kwargs:
+                        kwargs[name] = val
+
+            target_case_id = kwargs.pop("case_id", None)
+            if target_db is None:
+                raise ValueError("Database session (db) is required.")
+            if target_case_id is None:
+                raise ValueError("Case ID (case_id) is required.")
+
+            limit = kwargs.pop("limit", 50)
+            offset = kwargs.pop("offset", 0)
+            start_time = kwargs.pop("start_time", None)
+            end_time = kwargs.pop("end_time", None)
+            tool_name = kwargs.pop("tool_name", None)
+            evidence_id = kwargs.pop("evidence_id", None)
+
+            target_cls = owner if owner is not None else TimelineService
+            return target_cls._execute_paginated_timeline(
+                db=target_db,
+                case_id=target_case_id,
+                limit=limit,
+                offset=offset,
+                start_time=start_time,
+                end_time=end_time,
+                tool_name=tool_name,
+                evidence_id=evidence_id,
+            )
+
+        dispatcher.__doc__ = (
+            "Retrieve paginated chronological timeline events for case (Story 7.2, NFR-PERF-07)."
+        )
+        return dispatcher
+
+
 class TimelineService:
     """Service governing deterministic unified timeline projections (FR24, Invariant 2).
 
@@ -348,6 +447,7 @@ class TimelineService:
         self.db = db
 
     get_timeline_projection = _TimelineProjectionDispatcher()
+    get_paginated_timeline = _PaginatedTimelineDispatcher()
 
     @classmethod
     def _execute_timeline_projection(
@@ -377,38 +477,20 @@ class TimelineService:
         undated_events: list[UndatedFactOut] = []
 
         for obs, evidence_name in rows:
-            summary = _extract_technical_summary(obs.normalized_content)
-            if isinstance(obs.normalized_content, dict):
-                details = obs.normalized_content
-            elif obs.normalized_content is not None:
-                details = {"raw": obs.normalized_content}
+            event = _map_observation_to_event(obs, evidence_name)
+            if event is not None:
+                events.append(event)
             else:
-                details = {}
-
-            ts = obs.timestamp_utc
-            if isinstance(ts, str):
-                try:
-                    ts = datetime.fromisoformat(ts)
-                except (ValueError, TypeError):
-                    ts = None
-
-            if ts is not None:
-                ts = ts.replace(tzinfo=UTC) if ts.tzinfo is None else ts.astimezone(UTC)
-
-                events.append(
-                    TimelineEventOut(
-                        timestamp_utc=ts,
-                        observation_id=obs.id,
-                        tool_name=obs.tool_name,
-                        tool_execution_id=obs.tool_execution_id,
-                        evidence_id=obs.source_id,
-                        evidence_name=evidence_name,
-                        summary=summary,
-                        source_location=obs.source_location,
-                        details=details,
+                summary = _extract_technical_summary(obs.normalized_content)
+                details = (
+                    obs.normalized_content
+                    if isinstance(obs.normalized_content, dict)
+                    else (
+                        {"raw": obs.normalized_content}
+                        if obs.normalized_content is not None
+                        else {}
                     )
                 )
-            else:
                 undated_events.append(
                     UndatedFactOut(
                         observation_id=obs.id,
@@ -429,4 +511,120 @@ class TimelineService:
             undated_events=undated_events,
             total_events=len(events),
             total_undated=len(undated_events),
+        )
+
+    @classmethod
+    def _execute_paginated_timeline(
+        cls,
+        db: Session,
+        case_id: uuid.UUID | str,
+        limit: int = 50,
+        offset: int = 0,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        tool_name: str | None = None,
+        evidence_id: uuid.UUID | None = None,
+    ) -> TimelineListResponse:
+        """Execute paginated timeline query using composite index (case_id, timestamp_utc)."""
+        if not isinstance(case_id, uuid.UUID):
+            try:
+                parsed_case_id = uuid.UUID(str(case_id))
+            except (ValueError, TypeError, AttributeError) as exc:
+                msg = f"Invalid case_id format: {case_id}"
+                raise ValueError(msg) from exc
+        else:
+            parsed_case_id = case_id
+
+        st: datetime | None = None
+        et: datetime | None = None
+        if start_time is not None:
+            st = (
+                start_time.replace(tzinfo=UTC)
+                if start_time.tzinfo is None
+                else start_time.astimezone(UTC)
+            )
+        if end_time is not None:
+            et = (
+                end_time.replace(tzinfo=UTC)
+                if end_time.tzinfo is None
+                else end_time.astimezone(UTC)
+            )
+
+        if st is not None and et is not None and st > et:
+            raise ValidationException(
+                message="start_time must be before end_time",
+                code="VALIDATION_ERROR",
+            )
+
+        sanitized_tool_name = tool_name.strip() if tool_name and tool_name.strip() else None
+
+        stmt = (
+            select(Observation, Evidence.original_name)
+            .outerjoin(Evidence, Observation.source_id == Evidence.id)
+            .where(
+                Observation.case_id == parsed_case_id,
+                Observation.timestamp_utc.is_not(None),
+            )
+        )
+        count_stmt = (
+            select(func.count(Observation.id))
+            .where(
+                Observation.case_id == parsed_case_id,
+                Observation.timestamp_utc.is_not(None),
+            )
+        )
+
+        if st is not None:
+            stmt = stmt.where(Observation.timestamp_utc >= st)
+            count_stmt = count_stmt.where(Observation.timestamp_utc >= st)
+
+        if et is not None:
+            stmt = stmt.where(Observation.timestamp_utc <= et)
+            count_stmt = count_stmt.where(Observation.timestamp_utc <= et)
+
+        if sanitized_tool_name is not None:
+            stmt = stmt.where(Observation.tool_name == sanitized_tool_name)
+            count_stmt = count_stmt.where(Observation.tool_name == sanitized_tool_name)
+
+        if evidence_id is not None:
+            stmt = stmt.where(Observation.source_id == evidence_id)
+            count_stmt = count_stmt.where(Observation.source_id == evidence_id)
+
+        total = db.scalar(count_stmt) or 0
+
+        # Avoid redundant query when total == 0 or offset >= total
+        if total == 0 or offset >= total:
+            return TimelineListResponse(
+                items=[],
+                events=[],
+                total=total,
+                total_items=total,
+                limit=limit,
+                offset=offset,
+                has_more=False,
+            )
+
+        stmt = (
+            stmt.order_by(Observation.timestamp_utc.asc(), Observation.id.asc())
+            .limit(limit)
+            .offset(offset)
+        )
+        rows = db.execute(stmt).all()
+
+        events: list[TimelineEventOut] = []
+        for obs, evidence_name in rows:
+            event = _map_observation_to_event(obs, evidence_name)
+            if event is not None:
+                events.append(event)
+
+        has_more = (offset + len(events)) < total
+
+        return TimelineListResponse(
+            items=events,
+            events=events,
+            total=total,
+            total_items=total,
+            limit=limit,
+            offset=offset,
+            has_more=has_more,
         )

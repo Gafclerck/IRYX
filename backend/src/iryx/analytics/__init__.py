@@ -19,6 +19,8 @@ from iryx.analytics.schemas import (
     FindingUpdate,
     TimelineEventOut,
     TimelineFactBase,
+    TimelineFilterParams,
+    TimelineListResponse,
     TimelineProjectionResponse,
     UndatedFactOut,
 )
@@ -44,6 +46,8 @@ __all__ = [
     "Observation",
     "TimelineEventOut",
     "TimelineFactBase",
+    "TimelineFilterParams",
+    "TimelineListResponse",
     "TimelineProjectionResponse",
     "TimelineService",
     "UUIDList",

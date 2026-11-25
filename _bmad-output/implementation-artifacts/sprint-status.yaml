@@ -84,7 +84,7 @@ development_status:
 
   epic-7: in-progress
   7-1-service-de-reconstruction-et-de-corrélation-de-la-chronologi: review
-  7-2-api-de-consultation-paginée-et-filtrage-de-la-timeline-d-enq: backlog
+  7-2-api-de-consultation-paginée-et-filtrage-de-la-timeline-d-enq: done
   7-3-moteur-de-corrélation-multi-sources-et-mise-en-correspondanc: backlog
   epic-7-retrospective: optional
 

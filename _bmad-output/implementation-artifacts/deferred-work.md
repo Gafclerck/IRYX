@@ -14,11 +14,3 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-4-5-analyseur-d-artefacts-d-execution-windows-prefetch-dissect.md`
   summary: Ajouter une fixture Prefetch binaire compressée MAM réelle pour tester la décompression de bout en bout sans mock de dissect.util.lzxpress_huffman.
   evidence: Les tests unitaires actuels mockent lzxpress_huffman.decompress pour simuler des données SCCA valides; intégrer un fichier .pf Windows 10 réel exercera le décodage LZ-Xpress natif en conditions réelles.
-
-- source_spec: `D:\MY_PROEJCT\IRYX\_bmad-output\implementation-artifacts\spec-7-1-service-reconstruction-correlation-chronologie-utc.md`
-  summary: Implémentation du streaming de résultats et de la pagination pour les requêtes volumineuses de timeline.
-  evidence: Dans TimelineService.get_timeline_projection, l'ensemble des observations du dossier est chargé en mémoire d'un bloc via .all(); la pagination (limit, offset) et le filtrage temporel sont explicitement prévus et isolés dans la Story 7.2 (NFR-PERF-07).
-
-- source_spec: `D:\MY_PROEJCT\IRYX\_bmad-output\implementation-artifacts\spec-7-1-service-reconstruction-correlation-chronologie-utc.md`
-  summary: Création d'un index composite relationnel sur (case_id, timestamp_utc) pour la table observations via migration Alembic.
-  evidence: La table observations possède des index séparés sur case_id et timestamp_utc; l'ajout d'un index composite accélérera les tris chronologiques ordonnés par dossier lors de l'implémentation de l'API de consultation paginée (Story 7.2).

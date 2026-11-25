@@ -630,12 +630,26 @@ async def validation_exception_handler(
     """Handle FastAPI / Pydantic RequestValidationError (HTTP 422).
 
     Returns a standardized error response without leaking stack traces or internal schemas.
+    Extracts custom error message for Pydantic ValueError while preserving default for others.
     """
+    message = "Données de requête invalides."
+    for error in exc.errors():
+        err_type = error.get("type", "")
+        if err_type == "value_error":
+            msg = str(error.get("msg", ""))
+            prefix = "Value error, "
+            custom_msg = (
+                msg[len(prefix) :].strip() if msg.startswith(prefix) else msg.strip()
+            )
+            if custom_msg:
+                message = custom_msg
+                break
+
     return JSONResponse(
         status_code=HTTP_422_STATUS,
         content=_format_error_response(
             code="VALIDATION_ERROR",
-            message="Données de requête invalides.",
+            message=message,
         ),
     )
 

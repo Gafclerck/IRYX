@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from iryx.analytics import (
     Observation,
+    TimelineListResponse,
     TimelineProjectionResponse,
     TimelineService,
     UndatedFactOut,
@@ -675,3 +676,221 @@ class TestCallingConventionsAndEdgeCases:
         resp = TimelineService.get_timeline_projection(db_session, test_case.id)
         assert len(resp.events) == 1
         assert resp.events[0].details == {"raw": ["record1", "record2"]}
+
+
+class TestTimelineServicePaginated:
+    """Unit tests for TimelineService.get_paginated_timeline (Story 7.2, NFR-PERF-07)."""
+
+    def test_paginated_timeline_instance_and_class_dispatch(
+        self, db_session: Session, test_case: Case, test_evidence: Evidence
+    ) -> None:
+        """Verify both instance and class dispatch work identically for get_paginated_timeline."""
+        obs = Observation(
+            id=uuid.uuid4(),
+            case_id=test_case.id,
+            source_id=test_evidence.id,
+            tool_name="test_tool",
+            normalized_content={"msg": "dispatch test"},
+            timestamp_utc=datetime(2026, 11, 25, 12, 0, 0, tzinfo=UTC),
+        )
+        db_session.add(obs)
+        db_session.commit()
+
+        # Class call: TimelineService.get_paginated_timeline(db, case_id)
+        resp_class = TimelineService.get_paginated_timeline(db_session, test_case.id)
+        assert isinstance(resp_class, TimelineListResponse)
+        assert resp_class.total == 1
+        assert len(resp_class.items) == 1
+        assert resp_class.items[0].observation_id == obs.id
+
+        # Instance call: TimelineService(db).get_paginated_timeline(case_id)
+        service = TimelineService(db_session)
+        resp_inst = service.get_paginated_timeline(test_case.id)
+        assert isinstance(resp_inst, TimelineListResponse)
+        assert resp_inst.total == 1
+        assert len(resp_inst.items) == 1
+        assert resp_inst.items[0].observation_id == obs.id
+
+    def test_paginated_timeline_positional_arguments_dispatch(
+        self, db_session: Session, test_case: Case
+    ) -> None:
+        """Verify positional arguments (case_id, limit, offset) are honored in dispatcher."""
+        base_time = datetime(2026, 11, 25, 10, 0, 0, tzinfo=UTC)
+        for i in range(15):
+            db_session.add(
+                Observation(
+                    id=uuid.uuid4(),
+                    case_id=test_case.id,
+                    tool_name="test_tool",
+                    normalized_content={"idx": i},
+                    timestamp_utc=base_time + timedelta(minutes=i),
+                )
+            )
+        db_session.commit()
+
+        service = TimelineService(db_session)
+        # Call with positional args: case_id, limit=5, offset=10
+        resp = service.get_paginated_timeline(test_case.id, 5, 10)
+        assert resp.total == 15
+        assert resp.limit == 5
+        assert resp.offset == 10
+        assert len(resp.items) == 5
+        assert resp.has_more is False
+
+    def test_paginated_timeline_keyword_arguments_dispatch(
+        self, db_session: Session, test_case: Case, test_evidence: Evidence
+    ) -> None:
+        """Verify keyword arguments are properly accepted and filtered."""
+        base_time = datetime(2026, 11, 25, 10, 0, 0, tzinfo=UTC)
+        obs1 = Observation(
+            id=uuid.uuid4(),
+            case_id=test_case.id,
+            source_id=test_evidence.id,
+            tool_name="python-evtx",
+            normalized_content={"msg": "evtx"},
+            timestamp_utc=base_time,
+        )
+        obs2 = Observation(
+            id=uuid.uuid4(),
+            case_id=test_case.id,
+            source_id=None,
+            tool_name="volatility",
+            normalized_content={"msg": "volatility"},
+            timestamp_utc=base_time + timedelta(minutes=5),
+        )
+        db_session.add_all([obs1, obs2])
+        db_session.commit()
+
+        service = TimelineService(db_session)
+        resp = service.get_paginated_timeline(
+            case_id=test_case.id,
+            limit=10,
+            offset=0,
+            tool_name="python-evtx",
+            evidence_id=test_evidence.id,
+        )
+        assert resp.total == 1
+        assert len(resp.items) == 1
+        assert resp.items[0].observation_id == obs1.id
+
+    def test_paginated_timeline_non_utc_timezone_conversion(
+        self, db_session: Session, test_case: Case
+    ) -> None:
+        """Verify timezone-aware non-UTC datetimes are correctly converted to UTC for filtering."""
+        # 12:00 UTC
+        obs_utc = datetime(2026, 11, 25, 12, 0, 0, tzinfo=UTC)
+        db_session.add(
+            Observation(
+                id=uuid.uuid4(),
+                case_id=test_case.id,
+                tool_name="test_tz",
+                normalized_content={"msg": "noon utc"},
+                timestamp_utc=obs_utc,
+            )
+        )
+        db_session.commit()
+
+        # 14:00 in UTC+2 is 12:00 UTC (exact match)
+        tz_plus_2 = timezone(timedelta(hours=2))
+        start_tz = datetime(2026, 11, 25, 13, 0, 0, tzinfo=tz_plus_2)  # 11:00 UTC
+        end_tz = datetime(2026, 11, 25, 15, 0, 0, tzinfo=tz_plus_2)  # 13:00 UTC
+
+        resp = TimelineService.get_paginated_timeline(
+            db=db_session,
+            case_id=test_case.id,
+            start_time=start_tz,
+            end_time=end_tz,
+        )
+        assert resp.total == 1
+        assert len(resp.items) == 1
+        assert resp.items[0].timestamp_utc == obs_utc
+
+    def test_paginated_timeline_empty_tool_name_treated_as_none(
+        self, db_session: Session, test_case: Case
+    ) -> None:
+        """Verify empty and whitespace tool_name strings are sanitized and return all events."""
+        base_time = datetime(2026, 11, 25, 10, 0, 0, tzinfo=UTC)
+        db_session.add(
+            Observation(
+                id=uuid.uuid4(),
+                case_id=test_case.id,
+                tool_name="tool_a",
+                normalized_content={"msg": "a"},
+                timestamp_utc=base_time,
+            )
+        )
+        db_session.add(
+            Observation(
+                id=uuid.uuid4(),
+                case_id=test_case.id,
+                tool_name="tool_b",
+                normalized_content={"msg": "b"},
+                timestamp_utc=base_time + timedelta(minutes=1),
+            )
+        )
+        db_session.commit()
+
+        service = TimelineService(db_session)
+        resp_empty = service.get_paginated_timeline(test_case.id, tool_name="")
+        assert resp_empty.total == 2
+
+        resp_whitespace = service.get_paginated_timeline(test_case.id, tool_name="   ")
+        assert resp_whitespace.total == 2
+
+    def test_paginated_timeline_deterministic_tie_breaking(
+        self, db_session: Session, test_case: Case
+    ) -> None:
+        """Verify identical timestamps are sorted deterministically by observation id ASC."""
+        same_time = datetime(2026, 11, 25, 10, 0, 0, tzinfo=UTC)
+        id1 = uuid.UUID("00000000-0000-0000-0000-000000000001")
+        id2 = uuid.UUID("00000000-0000-0000-0000-000000000002")
+        id3 = uuid.UUID("00000000-0000-0000-0000-000000000003")
+
+        # Add in reverse id order
+        for oid in [id3, id1, id2]:
+            db_session.add(
+                Observation(
+                    id=oid,
+                    case_id=test_case.id,
+                    tool_name="tie_tool",
+                    normalized_content={"id": str(oid)},
+                    timestamp_utc=same_time,
+                )
+            )
+        db_session.commit()
+
+        service = TimelineService(db_session)
+        resp = service.get_paginated_timeline(test_case.id)
+        assert resp.total == 3
+        returned_ids = [item.observation_id for item in resp.items]
+        assert returned_ids == [id1, id2, id3]
+
+    def test_paginated_timeline_early_exit_on_empty_or_offset_exceeded(
+        self, db_session: Session, test_case: Case
+    ) -> None:
+        """Verify early exit when total == 0 or offset >= total returns empty response."""
+        # Empty case
+        service = TimelineService(db_session)
+        resp_empty = service.get_paginated_timeline(test_case.id)
+        assert resp_empty.total == 0
+        assert resp_empty.items == []
+        assert resp_empty.has_more is False
+
+        # Populate 2 items
+        base_time = datetime(2026, 11, 25, 10, 0, 0, tzinfo=UTC)
+        db_session.add(
+            Observation(
+                id=uuid.uuid4(),
+                case_id=test_case.id,
+                tool_name="tool",
+                normalized_content={"msg": "1"},
+                timestamp_utc=base_time,
+            )
+        )
+        db_session.commit()
+
+        # offset >= total
+        resp_offset = service.get_paginated_timeline(test_case.id, limit=10, offset=5)
+        assert resp_offset.total == 1
+        assert resp_offset.items == []
+        assert resp_offset.has_more is False

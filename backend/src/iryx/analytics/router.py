@@ -18,8 +18,10 @@ from iryx.analytics.schemas import (
     FindingOut,
     FindingReview,
     FindingUpdate,
+    TimelineFilterParams,
+    TimelineListResponse,
 )
-from iryx.analytics.services import FindingService
+from iryx.analytics.services import FindingService, TimelineService
 from iryx.api.dependencies import get_db
 from iryx.auth.dependencies import get_current_user
 from iryx.auth.models import MembershipRole, User
@@ -242,3 +244,34 @@ def review_finding(
         user_id=current_user.id,
     )
     return FindingOut.model_validate(finding)
+
+
+@router.get(
+    "/api/v1/cases/{case_id}/timeline",
+    response_model=TimelineListResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["Timeline"],
+    summary="Consultation paginée et filtrage de la Timeline d'enquête (NFR-PERF-07)",
+    description=(
+        "Retourne la liste paginée et filtrée des événements chronologiques de la timeline "
+        "d'un dossier. Projection dynamique purement calculée (Invariant 2) ordonnée par "
+        "timestamp_utc ASC, id ASC."
+    ),
+)
+def get_timeline(
+    case_id: uuid.UUID,
+    _case: Annotated[Case, Depends(verify_case_access)],
+    db: Annotated[Session, Depends(get_db)],
+    filter_params: Annotated[TimelineFilterParams, Query()],
+) -> TimelineListResponse:
+    """Retrieve paginated and filtered timeline events for a case."""
+    service = TimelineService(db)
+    return service.get_paginated_timeline(
+        case_id=case_id,
+        limit=filter_params.limit,
+        offset=filter_params.offset,
+        start_time=filter_params.start_time,
+        end_time=filter_params.end_time,
+        tool_name=filter_params.tool_name,
+        evidence_id=filter_params.evidence_id,
+    )

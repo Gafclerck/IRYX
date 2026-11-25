@@ -35,3 +35,4 @@ mulder_repo/
 .bmad-loop/cache/
 .bmad-loop/policy.toml
 _bmad/render/
+.claude/
