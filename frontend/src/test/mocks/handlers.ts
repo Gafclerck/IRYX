@@ -551,6 +551,159 @@ export function resetMockH1Decisions() {
   mockH1States.clear()
 }
 
+/**
+ * État de session conservé en mémoire pour la supervision F4.3 (reprise effective).
+ * Les statuts hors contrat (`canceled`, codes inconnus) sont explicitement simulés
+ * pour éprouver la robustesse et marqués « à réaligner » dans la documentation.
+ */
+interface MockRunState {
+  readonly status: string
+  readonly current_phase: string
+  readonly phases: readonly components['schemas']['PhaseOut'][]
+}
+
+const mockRunStates = new Map<string, MockRunState>()
+
+function mockRunKey(caseId: string, runId: string): string {
+  return `${caseId}::${runId}`
+}
+
+/** Réinitialise les sessions simulées de supervision entre deux scénarios de test. */
+export function resetMockRunSupervision() {
+  mockRunStates.clear()
+}
+
+function mockRunPhase(
+  runId: string,
+  phaseName: string,
+  status: components['schemas']['PhaseStatus'],
+  startedAt: string,
+  completedAt: string | null = null,
+): components['schemas']['PhaseOut'] {
+  return {
+    id: `phase-${phaseName}`,
+    investigation_run_id: runId,
+    phase_name: phaseName,
+    status,
+    started_at: startedAt,
+    completed_at: completedAt,
+  }
+}
+
+function buildDefaultRunPhases(runId: string): readonly components['schemas']['PhaseOut'][] {
+  return [
+    mockRunPhase(runId, 'planner', 'completed', '2026-11-20T09:00:00Z', '2026-11-20T09:02:00Z'),
+    mockRunPhase(runId, 'executor', 'active', '2026-11-20T09:02:00Z'),
+    mockRunPhase(runId, 'analyst', 'pending', '2026-11-20T09:02:00Z'),
+    mockRunPhase(runId, 'verifier', 'pending', '2026-11-20T09:02:00Z'),
+    mockRunPhase(runId, 'reporting', 'pending', '2026-11-20T09:02:00Z'),
+  ]
+}
+
+function buildMockRunDetail(caseId: string, runId: string, simulation: string | null) {
+  const override = mockRunStates.get(mockRunKey(caseId, runId))
+  if (override) {
+    return {
+      id: runId,
+      case_id: caseId,
+      status: override.status,
+      current_phase: override.current_phase,
+      validated_plan: {},
+      iteration_count: 0,
+      error_count: 0,
+      started_at: '2026-11-20T09:00:00Z',
+      updated_at: '2026-11-20T09:05:00Z',
+      phases: [...override.phases],
+    }
+  }
+
+  const scenario = simulation ?? (caseId.startsWith('case-run-') ? caseId : '')
+  const defaultPhases = buildDefaultRunPhases(runId)
+  let status = 'running'
+  let currentPhase = 'execution'
+  let phases: readonly components['schemas']['PhaseOut'][] = defaultPhases
+
+  if (scenario === 'case-run-pending' || scenario === 'pending') {
+    status = 'pending'
+    currentPhase = 'planning'
+    phases = [
+      mockRunPhase(runId, 'planner', 'pending', '2026-11-20T09:00:00Z'),
+      mockRunPhase(runId, 'executor', 'pending', '2026-11-20T09:00:00Z'),
+      mockRunPhase(runId, 'analyst', 'pending', '2026-11-20T09:00:00Z'),
+      mockRunPhase(runId, 'verifier', 'pending', '2026-11-20T09:00:00Z'),
+      mockRunPhase(runId, 'reporting', 'pending', '2026-11-20T09:00:00Z'),
+    ]
+  } else if (scenario === 'case-run-paused' || scenario === 'paused') {
+    status = 'paused'
+  } else if (scenario === 'case-run-partial' || scenario === 'partial-failure') {
+    currentPhase = 'analysis'
+    phases = [
+      mockRunPhase(runId, 'planner', 'completed', '2026-11-20T09:00:00Z', '2026-11-20T09:02:00Z'),
+      mockRunPhase(runId, 'executor', 'failed', '2026-11-20T09:02:00Z', '2026-11-20T09:04:00Z'),
+      mockRunPhase(runId, 'analyst', 'active', '2026-11-20T09:04:00Z'),
+      mockRunPhase(runId, 'verifier', 'pending', '2026-11-20T09:04:00Z'),
+      mockRunPhase(runId, 'reporting', 'pending', '2026-11-20T09:04:00Z'),
+    ]
+  } else if (scenario === 'case-run-completed' || scenario === 'completed') {
+    status = 'completed'
+    currentPhase = 'reporting'
+    phases = [
+      mockRunPhase(runId, 'planner', 'completed', '2026-11-20T09:00:00Z', '2026-11-20T09:02:00Z'),
+      mockRunPhase(runId, 'executor', 'completed', '2026-11-20T09:02:00Z', '2026-11-20T09:06:00Z'),
+      mockRunPhase(runId, 'analyst', 'completed', '2026-11-20T09:06:00Z', '2026-11-20T09:09:00Z'),
+      mockRunPhase(runId, 'verifier', 'completed', '2026-11-20T09:09:00Z', '2026-11-20T09:11:00Z'),
+      mockRunPhase(runId, 'reporting', 'completed', '2026-11-20T09:11:00Z', '2026-11-20T09:12:00Z'),
+    ]
+  } else if (scenario === 'case-run-canceled' || scenario === 'canceled') {
+    // Statut demandé par la story mais absent de InvestigationStatus : à réaligner.
+    status = 'canceled'
+  } else if (scenario === 'case-run-unknown' || scenario === 'unknown-status') {
+    status = 'unrecognized_run_code'
+    currentPhase = 'unrecognized_phase_code'
+  }
+
+  return {
+    id: runId,
+    case_id: caseId,
+    status,
+    current_phase: currentPhase,
+    validated_plan: {},
+    iteration_count: 0,
+    error_count: 0,
+    started_at: '2026-11-20T09:00:00Z',
+    updated_at: '2026-11-20T09:05:00Z',
+    phases: [...phases],
+  }
+}
+
+function isRunForbidden(request: Request, caseId: string): boolean {
+  const authHeader = request.headers.get('Authorization')
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.replace('Bearer ', '').trim() : ''
+  return (
+    token === 'mock-forbidden-token' ||
+    request.headers.get('X-Simulation-Run') === 'forbidden' ||
+    caseId === 'case-forbidden' ||
+    caseId === 'case-run-forbidden'
+  )
+}
+
+function isRunServerError(request: Request, caseId: string): boolean {
+  const authHeader = request.headers.get('Authorization')
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.replace('Bearer ', '').trim() : ''
+  return (
+    token === 'mock-server-error-token' ||
+    request.headers.get('X-Simulation-Run') === 'server-error' ||
+    caseId === 'case-run-error'
+  )
+}
+
+function isRunNetworkError(request: Request, caseId: string): boolean {
+  return (
+    request.headers.get('X-Simulation-Run') === 'network-error' ||
+    caseId === 'case-run-network-error'
+  )
+}
+
 const MOCK_PLAN_STEPS: components['schemas']['InvestigationPlanStep'][] = [
   {
     step_id: 1,
@@ -1293,6 +1446,97 @@ export const handlers = [
       )
     },
   ),
+
+  /**
+   * Supervision temps réel de l'orchestration des agents (Story F4.3).
+   * Route cible : GET /api/v1/cases/{case_id}/investigations/{run_id}
+   * Statut : simulée, contrat cible : openapi.json.
+   * `phases` est le seul vecteur contractuel d'état par agent : progression,
+   * messages, diagnostic et journal d'événements restent « à réaligner ».
+   */
+  http.get('*/api/v1/cases/:caseId/investigations/:runId', ({ params, request }) => {
+    const authHeader = request.headers.get('Authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    const caseId = String(params.caseId)
+    const runId = String(params.runId)
+    if (isRunForbidden(request, caseId)) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Vous n'avez pas accès à cette session." },
+        { status: 403 },
+      )
+    }
+    if (isRunServerError(request, caseId)) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Erreur interne lors de la consultation de la session.' },
+        { status: 500 },
+      )
+    }
+    if (isRunNetworkError(request, caseId)) return HttpResponse.error()
+
+    return HttpResponse.json(
+      buildMockRunDetail(caseId, runId, request.headers.get('X-Simulation-Run')),
+      {
+        headers: { 'Retry-After': '3' },
+      },
+    )
+  }),
+
+  /**
+   * Reprise d'une session en pause (Story F4.3).
+   * Route cible : POST /api/v1/cases/{case_id}/investigations/{run_id}/resume
+   * Statut : simulée, contrat cible : openapi.json (aucun corps de requête).
+   */
+  http.post('*/api/v1/cases/:caseId/investigations/:runId/resume', ({ params, request }) => {
+    const authHeader = request.headers.get('Authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    const caseId = String(params.caseId)
+    const runId = String(params.runId)
+    if (isRunForbidden(request, caseId)) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Accès refusé. Vous n'avez pas les autorisations nécessaires." },
+        { status: 403 },
+      )
+    }
+    if (isRunServerError(request, caseId)) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Erreur interne lors de la reprise de la session.' },
+        { status: 500 },
+      )
+    }
+    if (isRunNetworkError(request, caseId)) return HttpResponse.error()
+
+    const key = mockRunKey(caseId, runId)
+    const current = mockRunStates.get(key) ?? buildMockRunDetail(caseId, runId, null)
+    if (current.status !== 'paused') {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Seules les sessions en pause peuvent être reprises.' },
+        { status: 400 },
+      )
+    }
+
+    const resumed: MockRunState = {
+      status: 'running',
+      current_phase: 'execution',
+      phases: buildDefaultRunPhases(runId),
+    }
+    mockRunStates.set(key, resumed)
+    return HttpResponse.json(
+      { ...buildMockRunDetail(caseId, runId, null), ...resumed },
+      { headers: { 'Retry-After': '3' } },
+    )
+  }),
 
   /**
    * Consultation unitaire d'un dossier d'investigation (Story F2.1).

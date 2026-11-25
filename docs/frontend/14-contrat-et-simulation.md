@@ -290,6 +290,33 @@ Conformément à la story F4.2, au parcours nominal étape 5 (`docs/frontend/12`
    - Motif vide ou décision inconnue (HTTP 422) : rejet sans mutation d'état.
 7. **Périmètre exclu** : aucun suivi des agents (F4.3), aucun ajout d'étape, aucun écran d'audit (DP-02). Aucune écriture dans `localStorage` ni `sessionStorage` ; palette stricte (`ink`, `deep`, `teal`, `cyan`, `mist`) sans couleur en dur, le bouton de validation étant cyan avec texte ink.
 
+### 2.14 Simulation de la supervision temps réel de l'orchestration (Story F4.3)
+
+Conformément à la story F4.3, à l'ADR-0008, à DP-05, aux écrans `docs/frontend/11` et `12` et au contrat cible de l'épic E5 (`docs/contrat/openapi.json`) :
+
+1. **Routes interceptées** :
+   - `GET /api/v1/cases/{case_id}/investigations/{run_id}` : **simulée, contrat cible : openapi.json (`InvestigationRunOut`)**.
+   - `POST /api/v1/cases/{case_id}/investigations/{run_id}/resume` : **simulée, contrat cible : openapi.json** (reprise, sans corps de requête).
+   - La sélection de la session courante réutilise `GET /api/v1/cases/{case_id}/investigations` (F4.1). Toutes exigent l'en-tête `Authorization: Bearer` conservé en mémoire vive.
+2. **Fidélité au contrat et absence d'invention** : les cartes d'agents sont dérivées des seules phases `PhaseOut` présentes dans la session. Les noms d'agents proviennent de la story ; le Corrélateur n'a aucune phase `PhaseName` correspondante et reste « à réaligner ». Aucun champ de progression, de dernier message, de diagnostic d'agent ni de journal d'événements n'existe dans le contrat : ces valeurs sont affichées « à réaligner » ou déduites des seuls horodatages contractuels (`started_at`, `completed_at`). Le statut `canceled`, demandé par la story mais absent de `InvestigationStatus`, est signalé « à réaligner ».
+3. **Cadence de scrutation (ADR-0008)** : `Retry-After: 3` est renvoyé par la simulation ; le client applique 3 secondes par défaut, un recul exponentiel plafonné sur erreur de transport, et arrête la scrutation aux états terminaux (`completed`, `failed`, `canceled`) ainsi qu'au départ de la page. Aucune cadence supplémentaire n'est inventée.
+4. **Commandes** : la reprise appelle la route contractuelle uniquement depuis l'état `paused`. La pause, l'annulation et la relance unitaire d'un agent n'ont aucune route dans `openapi.json` : les boutons sont présents mais désactivés ou signalés « à réaligner ». Le bouton « Annuler la session » ouvre toujours un dialogue de confirmation explicite ; aucune annulation n'est transmise sans cet accord, et aucun appel réseau n'est émis tant que le contrat ne prévoit pas la route.
+5. **Échec partiel** : une phase `failed` met en évidence la carte correspondante (« ÉCHEC », icône, diagnostic à réaligner, bouton « Réessayer cet agent » désactivé) sans interrompre la scrutation ni les autres agents.
+6. **États simulés et affichés** : chargement, attente, en cours, pause, échec partiel, terminé avec lien mis en avant vers `/cases/:caseId/results` (F4.5), annulé, erreur avec « Réessayer », accès refusé 403 avec redirection vers `/cases`, nominal, et statut non répertorié restitué sous la forme « État inconnu (code_brut) » avec commandes désactivées. Le journal horodaté UTC est en police mono et en lecture seule ; la mention « Initialisation du flux d'activité... » s'affiche sans événement.
+7. **Décision DP-05** : après une coupure prolongée, la scrutation s'arrête et le bouton « Réessayer la connexion » est proposé. Le seuil reste « à décider » dans `docs/frontend/15-decisions-ouvertes.md`.
+8. **Scénarios simulés par MSW** :
+   - Nominal : dossier `case-001` ou en-tête `X-Simulation-Run: running`.
+   - Attente : dossier `case-plan-pending` (aucune session) ou `case-run-pending` / en-tête `X-Simulation-Run: pending`.
+   - Pause : dossier `case-run-paused` ou en-tête `X-Simulation-Run: paused` ; la reprise bascule la session simulée en `running`.
+   - Échec partiel : dossier `case-run-partial` ou en-tête `X-Simulation-Run: partial-failure`.
+   - Terminé : dossier `case-run-completed` ou en-tête `X-Simulation-Run: completed`.
+   - Annulé : dossier `case-run-canceled` ou en-tête `X-Simulation-Run: canceled` (**à réaligner**).
+   - Statut inconnu : dossier `case-run-unknown` ou en-tête `X-Simulation-Run: unknown-status` (code `unrecognized_run_code`).
+   - Accès refusé (HTTP 403) : dossier `case-forbidden` / `case-run-forbidden`, jeton `mock-forbidden-token` ou en-tête `X-Simulation-Run: forbidden`.
+   - Erreur serveur (HTTP 500) : dossier `case-run-error`, jeton `mock-server-error-token` ou en-tête `X-Simulation-Run: server-error`.
+   - Coupure de transport : dossier `case-run-network-error` ou en-tête `X-Simulation-Run: network-error` (recul puis DP-05).
+9. **Périmètre exclu** : aucune réouverture du plan ni de la porte H1 (F4.1/F4.2), aucun résultat détaillé (F4.5), aucun écran d'audit (DP-02). Aucune écriture dans `localStorage` ni `sessionStorage` ; palette stricte (`ink`, `deep`, `teal`, `cyan`, `mist`) sans couleur en dur.
+
 ---
 
 ## 3. Inventaire des stories d'intégration dépendantes du contrat
@@ -355,7 +382,7 @@ Pour chaque lot fonctionnel, le remplacement de la simulation par la connectivit
 | F1 : Socle, connexion et dossiers | E1 (Auth), E2 (Cases) | Brouillon openapi.json (routes auth en attente) | Simulation active (auth-contrat-cible.yaml) |
 | F2 : Contexte du dossier | E2 (Cases) | Brouillon openapi.json (PATCH à réaligner) | Simulation active (openapi.json + à réaligner) |
 | F3 : Registre des preuves | E3 (Evidence, Ingestion) | Brouillon openapi.json | Simulation active (POST, GET et GET détail openapi.json) |
-| F4 : Plan, agents, résultats, revues | E4, E5, E6, E7 | Brouillon openapi.json (plan et arbitrage H1 simulés, agent et état vide à réaligner ; 409 H1 à réaligner) | Simulation active pour F4.1 (GET investigations et GET plan) et F4.2 (POST gates/h1) ; reste en attente pour F4.3 à F4.8 |
+| F4 : Plan, agents, résultats, revues | E4, E5, E6, E7 | Brouillon openapi.json (plan, arbitrage H1 et supervision simulés ; agent, progression, messages, journal, pause/annulation/relance et 409 H1 à réaligner) | Simulation active pour F4.1 (GET investigations et GET plan), F4.2 (POST gates/h1) et F4.3 (GET détail session et POST resume) ; reste en attente pour F4.4 à F4.8 |
 | F5 : Rapports et clôture | E8 (Reports), E9 (Déploiement) | En attente | En attente de contrat / Simulation planifiée |
 
 ---
