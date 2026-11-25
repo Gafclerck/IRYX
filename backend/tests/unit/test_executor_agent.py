@@ -422,8 +422,9 @@ async def test_executor_agent_full_db_lifecycle_and_phase_transition(
 
     # Set phase to executor for execution
     active_phase = db_session.scalar(
-        select(Phase)
-        .where(Phase.investigation_run_id == run.id, Phase.status == PhaseStatus.ACTIVE)
+        select(Phase).where(
+            Phase.investigation_run_id == run.id, Phase.status == PhaseStatus.ACTIVE
+        )
     )
     if active_phase:
         active_phase.status = PhaseStatus.COMPLETED
@@ -457,9 +458,7 @@ async def test_executor_agent_full_db_lifecycle_and_phase_transition(
 
     # Verify ToolExecution trace in DB
     tool_execs = list(
-        db_session.scalars(
-            select(ToolExecution).where(ToolExecution.case_id == test_case.id)
-        ).all()
+        db_session.scalars(select(ToolExecution).where(ToolExecution.case_id == test_case.id)).all()
     )
     assert len(tool_execs) == 1
     assert tool_execs[0].tool_name == "dummy_success_tool"

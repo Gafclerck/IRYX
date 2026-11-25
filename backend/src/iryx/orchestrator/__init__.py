@@ -1,5 +1,10 @@
 """IRYX Investigation Orchestration Package."""
 
+from iryx.orchestrator.checkpointer import (
+    get_checkpointer,
+    get_checkpointer_dependency,
+    reset_memory_saver,
+)
 from iryx.orchestrator.executor import ExecutorAgent, ExecutorResult
 from iryx.orchestrator.graph import build_investigation_graph
 from iryx.orchestrator.models import (
@@ -38,4 +43,7 @@ __all__ = [
     "PlannerAgent",
     "PlannerResult",
     "build_investigation_graph",
+    "get_checkpointer",
+    "get_checkpointer_dependency",
+    "reset_memory_saver",
 ]

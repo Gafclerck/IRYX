@@ -475,4 +475,3 @@ def test_graph_compilation_with_checkpointer() -> None:
     state_snapshot = graph.get_state(config)
     assert state_snapshot is not None
     assert state_snapshot.values["current_phase"] == "reporting"
-

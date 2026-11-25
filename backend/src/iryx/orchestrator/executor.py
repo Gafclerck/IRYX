@@ -85,9 +85,7 @@ class ExecutorAgent:
                     )
 
         # Fallback to database validated_plan if plan is omitted
-        has_run_context = (
-            session_db is not None and case_id is not None and run_id is not None
-        )
+        has_run_context = session_db is not None and case_id is not None and run_id is not None
         if plan_obj is None and has_run_context:
             try:
                 from iryx.orchestrator.models import InvestigationRun

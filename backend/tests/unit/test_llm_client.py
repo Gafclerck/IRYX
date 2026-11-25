@@ -217,9 +217,7 @@ async def test_client_completion_with_dict_and_none_messages() -> None:
 async def test_client_complete_request_schema() -> None:
     """Verify complete_request consumes an LLMRequest and returns an LLMResponse."""
     client = UnifiedLLMClient(role=LLMRole.PLANNER, retry_wait=wait_none())
-    mock_resp = _create_mock_chat_completion(
-        content="Request completed", model="analyst-model"
-    )
+    mock_resp = _create_mock_chat_completion(content="Request completed", model="analyst-model")
     client._client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
     request = LLMRequest(
@@ -292,9 +290,7 @@ async def test_client_retries_transient_429_then_succeeds(
     mock_resp = _create_mock_chat_completion(content="Success after retry")
 
     # Fail on attempt 1, succeed on attempt 2
-    client._client.chat.completions.create = AsyncMock(
-        side_effect=[rate_limit_err, mock_resp]
-    )
+    client._client.chat.completions.create = AsyncMock(side_effect=[rate_limit_err, mock_resp])
 
     response = await client.complete([{"role": "user", "content": "test"}])
 
@@ -318,9 +314,7 @@ async def test_client_retries_transient_503_then_succeeds() -> None:
     )
     mock_resp = _create_mock_chat_completion(content="Success after 503")
 
-    client._client.chat.completions.create = AsyncMock(
-        side_effect=[server_err, mock_resp]
-    )
+    client._client.chat.completions.create = AsyncMock(side_effect=[server_err, mock_resp])
 
     response = await client.complete([{"role": "user", "content": "test"}])
     assert response.content == "Success after 503"
@@ -335,9 +329,7 @@ async def test_client_retries_transient_timeout_then_succeeds() -> None:
     timeout_err = openai.APITimeoutError(request=_create_http_request())
     mock_resp = _create_mock_chat_completion(content="Success after timeout")
 
-    client._client.chat.completions.create = AsyncMock(
-        side_effect=[timeout_err, mock_resp]
-    )
+    client._client.chat.completions.create = AsyncMock(side_effect=[timeout_err, mock_resp])
 
     response = await client.complete([{"role": "user", "content": "test"}])
     assert response.content == "Success after timeout"

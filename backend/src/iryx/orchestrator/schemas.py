@@ -41,9 +41,7 @@ class InvestigationPlanStep(BaseModel):
     )
     continue_on_error: bool = Field(
         default=True,
-        description=(
-            "Indique si l'Executor doit poursuivre les étapes suivantes en cas d'erreur."
-        ),
+        description=("Indique si l'Executor doit poursuivre les étapes suivantes en cas d'erreur."),
     )
 
     model_config = ConfigDict(from_attributes=True)
@@ -155,4 +153,3 @@ class H1DecisionResponse(BaseModel):
     phases: list[PhaseOut] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
-

@@ -12,9 +12,7 @@ from sqlalchemy.pool import StaticPool
 
 def _get_migration_006_module():
     """Dynamically import migration module 006."""
-    return importlib.import_module(
-        "migrations.versions.006_create_investigation_and_phase_tables"
-    )
+    return importlib.import_module("migrations.versions.006_create_investigation_and_phase_tables")
 
 
 def test_migration_006_metadata() -> None:

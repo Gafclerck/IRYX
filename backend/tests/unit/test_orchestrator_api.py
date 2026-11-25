@@ -175,9 +175,7 @@ def test_create_investigation_by_admin_and_analyst_201(
     assert resp_admin.status_code == 201
 
     # Analyst initiates on case 2
-    resp_analyst = client.post(
-        f"/api/v1/cases/{case_2.id}/investigations", headers=analyst_headers
-    )
+    resp_analyst = client.post(f"/api/v1/cases/{case_2.id}/investigations", headers=analyst_headers)
     assert resp_analyst.status_code == 201
 
 
@@ -296,9 +294,7 @@ def test_cross_case_investigation_isolation_404(
     run_id_1 = create_resp.json()["id"]
 
     # Attempt to retrieve run_1 under case 2
-    cross_resp = client.get(
-        f"/api/v1/cases/{case_2.id}/investigations/{run_id_1}", headers=headers
-    )
+    cross_resp = client.get(f"/api/v1/cases/{case_2.id}/investigations/{run_id_1}", headers=headers)
     assert cross_resp.status_code == 404
     assert cross_resp.json()["error"]["code"] == "INVESTIGATION_NOT_FOUND"
 
@@ -427,16 +423,12 @@ def test_get_investigation_run_not_found_404(
     headers = test_setup["investigator_headers"]
     random_run_id = uuid.uuid4()
 
-    resp = client.get(
-        f"/api/v1/cases/{case.id}/investigations/{random_run_id}", headers=headers
-    )
+    resp = client.get(f"/api/v1/cases/{case.id}/investigations/{random_run_id}", headers=headers)
     assert resp.status_code == 404
     assert resp.json()["error"]["code"] == "INVESTIGATION_NOT_FOUND"
 
 
-def test_unauthenticated_request_401(
-    client: TestClient, test_setup: dict[str, object]
-) -> None:
+def test_unauthenticated_request_401(client: TestClient, test_setup: dict[str, object]) -> None:
     """Unauthenticated requests return 401 UNAUTHORIZED."""
     case = test_setup["case"]
 
@@ -523,9 +515,7 @@ def test_get_investigation_plan_nominal_200(
     headers = test_setup["analyst_headers"]
     run, evidence = _setup_paused_h1_run(db_session, case.id, with_plan=True)
 
-    resp = client.get(
-        f"/api/v1/cases/{case.id}/investigations/{run.id}/plan", headers=headers
-    )
+    resp = client.get(f"/api/v1/cases/{case.id}/investigations/{run.id}/plan", headers=headers)
     assert resp.status_code == 200
     data = resp.json()
     assert data["summary"] == "Plan forensique pour analyse des logs"
@@ -542,9 +532,7 @@ def test_get_investigation_plan_not_found_404(
     headers = test_setup["analyst_headers"]
     run, _ = _setup_paused_h1_run(db_session, case.id, with_plan=False)
 
-    resp = client.get(
-        f"/api/v1/cases/{case.id}/investigations/{run.id}/plan", headers=headers
-    )
+    resp = client.get(f"/api/v1/cases/{case.id}/investigations/{run.id}/plan", headers=headers)
     assert resp.status_code == 404
     assert resp.json()["error"]["code"] == "PLAN_NOT_FOUND"
 
@@ -557,9 +545,7 @@ def test_get_investigation_plan_viewer_allowed_200(
     headers = test_setup["viewer_headers"]
     run, _ = _setup_paused_h1_run(db_session, case.id, with_plan=True)
 
-    resp = client.get(
-        f"/api/v1/cases/{case.id}/investigations/{run.id}/plan", headers=headers
-    )
+    resp = client.get(f"/api/v1/cases/{case.id}/investigations/{run.id}/plan", headers=headers)
     assert resp.status_code == 200
 
 
@@ -1089,5 +1075,3 @@ def test_arbitrate_h1_modify_evidence_without_sha256_422(
     )
     assert resp.status_code == 422
     assert resp.json()["error"]["code"] == "INVALID_PLAN"
-
-

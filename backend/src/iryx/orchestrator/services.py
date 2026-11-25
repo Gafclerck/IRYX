@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from iryx.cases.models import Case, CaseStatus
 from iryx.core.exceptions import (
+    CannotResumeTerminatedSessionException,
     CaseNotFoundException,
     InvalidGateStateException,
     InvalidPlanException,
@@ -19,6 +20,8 @@ from iryx.core.exceptions import (
     PlanNotFoundException,
     ValidationException,
 )
+from iryx.orchestrator.checkpointer import get_checkpointer
+from iryx.orchestrator.graph import build_investigation_graph
 from iryx.orchestrator.models import (
     InvestigationRun,
     InvestigationStatus,
@@ -40,8 +43,9 @@ logger = logging.getLogger("iryx.orchestrator")
 class InvestigationService:
     """Service handling investigation run lifecycles, concurrency checks, and phase transitions."""
 
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: Session, checkpointer: Any | None = None) -> None:
         self.db = db
+        self.checkpointer = checkpointer or get_checkpointer()
 
     def start_investigation(self, case_id: uuid.UUID) -> InvestigationRun:
         """Create a new investigation run and initial triage phase for a case.
@@ -338,15 +342,11 @@ class InvestigationService:
             )
 
         # Invariant check: run must be paused at gate H1
-        is_gate_h1 = (
-            run.status == InvestigationStatus.PAUSED
-            and str(run.current_phase)
-            in (
-                PhaseName.GATE_H1,
-                PhaseName.WAITING_H1,
-                "gate_h1",
-                "waiting_h1",
-            )
+        is_gate_h1 = run.status == InvestigationStatus.PAUSED and str(run.current_phase) in (
+            PhaseName.GATE_H1,
+            PhaseName.WAITING_H1,
+            "gate_h1",
+            "waiting_h1",
         )
         if not is_gate_h1:
             raise InvalidGateStateException(
@@ -393,8 +393,7 @@ class InvestigationService:
             )
             self.db.add(next_phase)
             message = (
-                "Plan d'investigation approuvé avec succès. "
-                "Transition vers la phase d'exécution."
+                "Plan d'investigation approuvé avec succès. Transition vers la phase d'exécution."
             )
 
         elif decision_request.decision == H1Decision.MODIFY:
@@ -507,8 +506,7 @@ class InvestigationService:
                 run.status = InvestigationStatus.COMPLETED
                 run.current_phase = PhaseName.GATE_H1
                 message = (
-                    "Plan d'investigation rejeté par l'analyste. "
-                    "Session d'investigation terminée."
+                    "Plan d'investigation rejeté par l'analyste. Session d'investigation terminée."
                 )
         else:
             raise ValidationException(
@@ -658,4 +656,142 @@ class InvestigationService:
         )
         return run
 
+    def resume_investigation(
+        self,
+        case_id: uuid.UUID,
+        run_id: uuid.UUID,
+    ) -> InvestigationRun:
+        """Resume an interrupted or paused investigation session from its checkpoint.
 
+        Acquires a row-level lock on InvestigationRun to prevent race conditions.
+        Rejects resumption of sessions with terminal status ('completed' or 'failed')
+        with CannotResumeTerminatedSessionException (HTTP 400).
+        Restores state from checkpointer and continues LangGraph state graph execution.
+        """
+        run = self.db.scalar(
+            select(InvestigationRun)
+            .where(
+                InvestigationRun.id == run_id,
+                InvestigationRun.case_id == case_id,
+            )
+            .with_for_update()
+        )
+        if run is None:
+            raise InvestigationNotFoundException(
+                message=(
+                    "La session d'investigation demandée n'existe pas ou "
+                    "n'appartient pas à ce dossier."
+                )
+            )
+
+        if run.status in (InvestigationStatus.COMPLETED, InvestigationStatus.FAILED):
+            msg = (
+                f"Impossible de reprendre une session d'investigation terminée ou échouée "
+                f"(statut : '{run.status}')."
+            )
+            raise CannotResumeTerminatedSessionException(
+                message=msg,
+                code="CANNOT_RESUME_TERMINATED_SESSION",
+            )
+
+        # Build graph with configured checkpointer
+        graph = build_investigation_graph(checkpointer=self.checkpointer)
+        config = {"configurable": {"thread_id": str(run.id)}}
+
+        # Retrieve state snapshot from checkpointer
+        state_snapshot = graph.get_state(config)
+
+        # Inject transient runtime context into graph
+        from iryx.gateway.registry import get_tool_registry
+        from iryx.gateway.runner import ToolRunner
+        from iryx.orchestrator.graph import set_runtime_context
+
+        set_runtime_context(
+            {
+                "db": self.db,
+                "tool_registry": get_tool_registry(),
+                "tool_runner": ToolRunner(db=self.db),
+            }
+        )
+
+        try:
+            if state_snapshot and state_snapshot.values:
+                state_update: dict[str, Any] = {}
+
+                if run.current_phase in (PhaseName.EXECUTOR, PhaseName.EXECUTION):
+                    state_update["h1_approved"] = True
+                    state_update["current_phase"] = "executor"
+                    state_update["status"] = "running"
+                    if run.validated_plan is not None:
+                        state_update["plan"] = run.validated_plan
+
+                result = graph.invoke(state_update, config=config)
+            else:
+                run_status_str = (
+                    "running" if run.status == InvestigationStatus.RUNNING else str(run.status)
+                )
+                initial_state: dict[str, Any] = {
+                    "case_id": str(run.case_id),
+                    "run_id": str(run.id),
+                    "status": run_status_str,
+                    "current_phase": str(run.current_phase),
+                    "iteration_count": run.iteration_count,
+                    "error_count": run.error_count,
+                    "plan": run.validated_plan,
+                }
+                if run.current_phase in (PhaseName.EXECUTOR, PhaseName.EXECUTION):
+                    initial_state["h1_approved"] = True
+
+                result = graph.invoke(initial_state, config=config)
+        finally:
+            set_runtime_context({})
+
+        now = datetime.now(UTC)
+        new_phase_str = result.get("current_phase", run.current_phase)
+        new_status_str = result.get("status", "running")
+
+        run.current_phase = new_phase_str
+        if new_status_str in ("running", "paused", "completed", "failed", "pending"):
+            run.status = InvestigationStatus(new_status_str)
+        run.error_count = result.get("error_count", run.error_count)
+        run.updated_at = now
+
+        if result.get("plan") is not None and run.validated_plan is None:
+            run.validated_plan = result["plan"]
+
+        # Synchronize Phase history in DB
+        active_phase = self.db.scalar(
+            select(Phase)
+            .where(
+                Phase.investigation_run_id == run.id,
+                Phase.status == PhaseStatus.ACTIVE,
+            )
+            .order_by(Phase.started_at.desc())
+        )
+        if active_phase is not None and active_phase.phase_name != new_phase_str:
+            active_phase.status = PhaseStatus.COMPLETED
+            active_phase.completed_at = now
+            next_phase = Phase(
+                id=uuid.uuid4(),
+                investigation_run_id=run.id,
+                phase_name=new_phase_str,
+                status=PhaseStatus.ACTIVE,
+                started_at=now,
+            )
+            self.db.add(next_phase)
+
+        self.db.commit()
+        self.db.refresh(run)
+
+        logger.info(
+            "Investigation run resumed successfully",
+            extra={
+                "context": {
+                    "case_id": str(case_id),
+                    "run_id": str(run.id),
+                    "current_phase": str(run.current_phase),
+                    "status": str(run.status),
+                }
+            },
+        )
+        return self.get_investigation_run(case_id=case_id, run_id=run.id)

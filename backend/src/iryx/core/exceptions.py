@@ -535,6 +535,22 @@ class InvalidGateStateException(ValidationException):
         )
 
 
+class CannotResumeTerminatedSessionException(IryxException):
+    """Raised when attempting to resume a session that is completed or failed (HTTP 400)."""
+
+    def __init__(
+        self,
+        message: str = "Impossible de reprendre une session d'investigation terminée ou échouée.",
+        code: str = "CANNOT_RESUME_TERMINATED_SESSION",
+        status_code: int = status.HTTP_400_BAD_REQUEST,
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+            status_code=status_code,
+        )
+
+
 def _format_error_response(code: str, message: str) -> dict[str, Any]:
     """Return the standardized error response envelope."""
     return {

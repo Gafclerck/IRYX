@@ -1,5 +1,6 @@
 """LangGraph state graph initialization and compilation for digital forensics investigation."""
 
+import contextvars
 import logging
 import uuid
 from typing import Any
@@ -10,6 +11,27 @@ from langgraph.graph.state import CompiledStateGraph
 from iryx.orchestrator.state import InvestigationState
 
 logger = logging.getLogger("iryx.orchestrator.graph")
+
+_runtime_context: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar(
+    "_runtime_context", default=None
+)
+
+
+def set_runtime_context(ctx: dict[str, Any]) -> None:
+    """Set transient runtime dependencies (e.g. db, tool_runner) for graph nodes."""
+    _runtime_context.set(ctx)
+
+
+def get_runtime_context() -> dict[str, Any]:
+    """Retrieve transient runtime dependencies."""
+    return _runtime_context.get() or {}
+
+
+def _sanitize_context(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Strip non-serializable runtime objects so checkpointers can serialize state."""
+    non_serializable_keys = {"db", "tool_registry", "tool_runner", "llm_client"}
+    return {k: v for k, v in ctx.items() if k not in non_serializable_keys}
+
 
 # 9 Required Nodes:
 # triage, planner, gate_h1, executor, analyst, verifier, gate_h2, gate_h3, reporting
@@ -26,10 +48,11 @@ def planner_node(state: InvestigationState) -> dict[str, Any]:
     from iryx.orchestrator.planner import PlannerAgent
     from iryx.orchestrator.schemas import InvestigationPlan
 
+    runtime_ctx = get_runtime_context()
     context = dict(state.get("context") or {})
-    llm_client = context.get("llm_client")
-    tool_registry = context.get("tool_registry")
-    db = context.get("db")
+    llm_client = context.get("llm_client") or runtime_ctx.get("llm_client")
+    tool_registry = context.get("tool_registry") or runtime_ctx.get("tool_registry")
+    db = context.get("db") or runtime_ctx.get("db")
 
     # If plan is already provided in state, validate against InvestigationPlan
     if state.get("plan") is not None:
@@ -59,9 +82,7 @@ def planner_node(state: InvestigationState) -> dict[str, Any]:
     )
 
     replan_feedback = context.get("replan_feedback")
-    base_desc = (
-        context.get("incident_description") or state.get("incident_description") or ""
-    )
+    base_desc = context.get("incident_description") or state.get("incident_description") or ""
     if replan_feedback:
         incident_desc = f"{base_desc}\nFeedback analyste : {replan_feedback}".strip()
     else:
@@ -81,7 +102,7 @@ def planner_node(state: InvestigationState) -> dict[str, Any]:
             "status": "failed",
             "plan": None,
             "errors": [str(exc)],
-            "context": context,
+            "context": _sanitize_context(context),
         }
 
     if result.status == "paused" or result.plan is None:
@@ -92,7 +113,7 @@ def planner_node(state: InvestigationState) -> dict[str, Any]:
             "current_phase": "planner",
             "status": "paused",
             "plan": None,
-            "context": {**context, "notification": notification},
+            "context": _sanitize_context({**context, "notification": notification}),
         }
 
     plan_dict = result.plan.model_dump(mode="json")
@@ -100,7 +121,7 @@ def planner_node(state: InvestigationState) -> dict[str, Any]:
         "current_phase": "gate_h1",
         "status": "running",
         "plan": plan_dict,
-        "context": context,
+        "context": _sanitize_context(context),
     }
 
 
@@ -129,9 +150,7 @@ def gate_h1_node(state: InvestigationState) -> dict[str, Any]:
     if state.get("h1_rejected"):
         if state.get("return_to_planner"):
             feedback = (
-                state.get("feedback")
-                or context.get("feedback")
-                or context.get("replan_feedback")
+                state.get("feedback") or context.get("feedback") or context.get("replan_feedback")
             )
             updated_context = dict(context)
             if feedback:
@@ -151,7 +170,8 @@ def gate_h1_node(state: InvestigationState) -> dict[str, Any]:
         }
 
     # Automatically suspend execution at Gate H1
-    db = context.get("db")
+    runtime_ctx = get_runtime_context()
+    db = context.get("db") or runtime_ctx.get("db")
     case_id = state.get("case_id")
     run_id = state.get("run_id")
 
@@ -199,10 +219,11 @@ def executor_node(state: InvestigationState) -> dict[str, Any]:
     """
     from iryx.orchestrator.executor import ExecutorAgent
 
+    runtime_ctx = get_runtime_context()
     context = dict(state.get("context") or {})
-    db = context.get("db")
-    tool_registry = context.get("tool_registry")
-    tool_runner = context.get("tool_runner")
+    db = context.get("db") or runtime_ctx.get("db")
+    tool_registry = context.get("tool_registry") or runtime_ctx.get("tool_registry")
+    tool_runner = context.get("tool_runner") or runtime_ctx.get("tool_runner")
 
     agent = ExecutorAgent(
         tool_runner=tool_runner,

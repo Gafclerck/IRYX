@@ -30,6 +30,7 @@ dependencies = [
     "openai>=1.50.0",
     "tenacity>=9.0.0",
     "langgraph>=0.2.20",
+    "langgraph-checkpoint-postgres>=3.2.1",
 ]
 
 [dependency-groups]

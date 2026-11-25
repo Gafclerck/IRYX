@@ -4,6 +4,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from sqlalchemy.orm import Session
 
 from iryx.api.dependencies import get_db
@@ -11,6 +12,7 @@ from iryx.auth.dependencies import get_current_user
 from iryx.auth.models import MembershipRole, User
 from iryx.cases.dependencies import require_case_role, verify_case_access
 from iryx.cases.models import Case
+from iryx.orchestrator.checkpointer import get_checkpointer_dependency
 from iryx.orchestrator.schemas import (
     H1DecisionRequest,
     H1DecisionResponse,
@@ -75,8 +77,7 @@ def list_investigations(
     status_code=status.HTTP_200_OK,
     summary="Consultation d'une session d'investigation",
     description=(
-        "Récupère les détails, la phase active et les métadonnées "
-        "d'une session d'investigation."
+        "Récupère les détails, la phase active et les métadonnées d'une session d'investigation."
     ),
 )
 def get_investigation(
@@ -148,3 +149,35 @@ def arbitrate_gate_h1(
         user_id=current_user.id,
     )
 
+
+@router.post(
+    "/api/v1/cases/{case_id}/investigations/{run_id}/resume",
+    response_model=InvestigationRunOut,
+    status_code=status.HTTP_200_OK,
+    summary="Reprise d'une session d'investigation",
+    description=(
+        "Reprend une session d'investigation interrompue ou en pause. "
+        "Recharge l'état exact depuis le checkpointer PostgreSQL et poursuit l'exécution. "
+        "Rejette toute tentative de reprise sur une session terminée ou échouée (HTTP 400). "
+        "Réservé aux rôles ADMIN, INVESTIGATOR et ANALYST (interdit aux VIEWERS)."
+    ),
+)
+def resume_investigation(
+    case_id: uuid.UUID,
+    run_id: uuid.UUID,
+    _case: Annotated[
+        Case,
+        Depends(
+            require_case_role(
+                MembershipRole.ADMIN,
+                MembershipRole.INVESTIGATOR,
+                MembershipRole.ANALYST,
+            )
+        ),
+    ],
+    db: Annotated[Session, Depends(get_db)],
+    checkpointer: Annotated[BaseCheckpointSaver, Depends(get_checkpointer_dependency)],
+) -> InvestigationRunOut:
+    """Resume an investigation run from its last checkpoint."""
+    service = InvestigationService(db=db, checkpointer=checkpointer)
+    return service.resume_investigation(case_id=case_id, run_id=run_id)
