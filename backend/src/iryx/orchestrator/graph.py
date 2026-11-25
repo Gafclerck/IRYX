@@ -381,8 +381,65 @@ def route_verifier(state: InvestigationState) -> str:
 
 
 def gate_h2_node(state: InvestigationState) -> dict[str, Any]:
-    """Human Gate H2: validation of intermediate findings."""
-    return {"current_phase": "gate_h2"}
+    """Human Gate H2: validation of intermediate findings (Story 6.4, FR19).
+
+    Automatically suspends execution awaiting analyst arbitration (status: paused,
+    current_phase: waiting_h2). When h2_approved is True, unblocks execution towards
+    the gate_h3 node. When h2_rejected is True, terminates execution.
+    """
+    context = dict(state.get("context") or {})
+
+    if state.get("h2_approved"):
+        return {
+            "current_phase": "gate_h2",
+            "status": "running",
+            "h2_approved": True,
+        }
+    if state.get("h2_rejected"):
+        return {
+            "current_phase": "gate_h2",
+            "status": "completed",
+            "h2_rejected": True,
+        }
+
+    # Automatically suspend execution at Gate H2
+    runtime_ctx = get_runtime_context()
+    db = context.get("db") or runtime_ctx.get("db")
+    case_id = state.get("case_id")
+    run_id = state.get("run_id")
+
+    if db is not None and case_id is not None and run_id is not None:
+        try:
+            from iryx.orchestrator.services import InvestigationService
+
+            case_uuid = uuid.UUID(str(case_id))
+            run_uuid = uuid.UUID(str(run_id))
+            InvestigationService(db).pause_at_gate_h2(case_id=case_uuid, run_id=run_uuid)
+        except Exception as exc:
+            logger.warning("Could not persist gate_h2 paused state in DB: %s", exc)
+    else:
+        logger.debug(
+            "DB session or identifiers omitted from context during gate_h2 pause",
+            extra={
+                "context": {
+                    "has_db": db is not None,
+                    "case_id": str(case_id) if case_id else None,
+                    "run_id": str(run_id) if run_id else None,
+                }
+            },
+        )
+
+    return {
+        "current_phase": "waiting_h2",
+        "status": "paused",
+    }
+
+
+def route_gate_h2(state: InvestigationState) -> str:
+    """Conditional edge from gate_h2: route to gate_h3 if approved, else END."""
+    if state.get("h2_approved"):
+        return "gate_h3"
+    return END
 
 
 def gate_h3_node(state: InvestigationState) -> dict[str, Any]:
@@ -454,7 +511,14 @@ def build_investigation_graph(checkpointer: Any | None = None) -> CompiledStateG
             END: END,
         },
     )
-    workflow.add_edge("gate_h2", "gate_h3")
+    workflow.add_conditional_edges(
+        "gate_h2",
+        route_gate_h2,
+        {
+            "gate_h3": "gate_h3",
+            END: END,
+        },
+    )
     workflow.add_edge("gate_h3", "reporting")
     workflow.add_edge("reporting", END)
 

@@ -322,8 +322,49 @@ def test_resume_investigation_nominal_with_approved_plan(
 
     resumed_run = service.resume_investigation(case_id=case.id, run_id=run.id)
     assert resumed_run.id == run.id
-    # Mock executor completed and transitions to reporting in basic graph
-    assert resumed_run.status in (InvestigationStatus.RUNNING, InvestigationStatus.COMPLETED)
+    # Run executes tools, analyst, verifier and suspends at Gate H2 (waiting_h2)
+    # awaiting human review (FR19)
+    assert resumed_run.status == InvestigationStatus.PAUSED
+    assert resumed_run.current_phase == PhaseName.WAITING_H2
+
+
+def test_resume_investigation_nominal_from_gate_h3(
+    db_session: Session,
+    test_setup: dict[str, Any],
+) -> None:
+    """Verify resuming an investigation from GATE_H3 advances past H2 to reporting."""
+    case: Case = test_setup["case"]
+    now = datetime.now(UTC)
+
+    run = InvestigationRun(
+        id=uuid.uuid4(),
+        case_id=case.id,
+        status=InvestigationStatus.RUNNING,
+        current_phase=PhaseName.GATE_H3,
+        validated_plan=sample_plan_dict(),
+        started_at=now,
+        updated_at=now,
+    )
+    db_session.add(run)
+    db_session.flush()
+
+    phase_h3 = Phase(
+        id=uuid.uuid4(),
+        investigation_run_id=run.id,
+        phase_name=PhaseName.GATE_H3,
+        status=PhaseStatus.ACTIVE,
+        started_at=now,
+    )
+    db_session.add(phase_h3)
+    db_session.commit()
+
+    checkpointer = MemorySaver()
+    service = InvestigationService(db=db_session, checkpointer=checkpointer)
+
+    resumed_run = service.resume_investigation(case_id=case.id, run_id=run.id)
+    assert resumed_run.id == run.id
+    assert resumed_run.status == InvestigationStatus.RUNNING
+    assert resumed_run.current_phase == PhaseName.REPORTING
 
 
 def test_resume_investigation_terminated_completed_raises_400(

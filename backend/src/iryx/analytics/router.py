@@ -16,6 +16,7 @@ from iryx.analytics.schemas import (
     FindingCreate,
     FindingListResponse,
     FindingOut,
+    FindingReview,
     FindingUpdate,
 )
 from iryx.analytics.services import FindingService
@@ -202,3 +203,42 @@ def delete_finding(
     """Delete a finding."""
     service = FindingService(db)
     service.delete_finding(case_id=case_id, finding_id=finding_id)
+
+
+@router.post(
+    "/api/v1/cases/{case_id}/findings/{finding_id}/review",
+    response_model=FindingOut,
+    status_code=status.HTTP_200_OK,
+    summary="Revue humaine d'un constat d'investigation (Gate H2)",
+    description=(
+        "Permet à un analyste SOC/DFIR de valider ou rejeter un constat d'investigation "
+        "en ajustant optionnellement sa sévérité et son niveau de confiance. "
+        "Exige un rôle opérationnel ('admin', 'investigator', 'analyst')."
+    ),
+)
+def review_finding(
+    case_id: uuid.UUID,
+    finding_id: uuid.UUID,
+    payload: FindingReview,
+    _case: Annotated[
+        Case,
+        Depends(
+            require_case_role(
+                MembershipRole.ADMIN,
+                MembershipRole.INVESTIGATOR,
+                MembershipRole.ANALYST,
+            )
+        ),
+    ],
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> FindingOut:
+    """Review and validate or reject a finding."""
+    service = FindingService(db)
+    finding = service.review_finding(
+        case_id=case_id,
+        finding_id=finding_id,
+        payload=payload,
+        user_id=current_user.id,
+    )
+    return FindingOut.model_validate(finding)

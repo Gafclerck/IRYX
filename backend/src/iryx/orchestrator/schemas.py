@@ -153,3 +153,40 @@ class H1DecisionResponse(BaseModel):
     phases: list[PhaseOut] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class H2Decision(StrEnum):
+    """Arbitration decisions for Human Gate H2."""
+
+    PROCEED = "proceed"
+    REJECT = "reject"
+
+
+class H2DecisionRequest(BaseModel):
+    """Payload submitted by analyst to arbitrate Human Gate H2."""
+
+    decision: H2Decision = Field(
+        ...,
+        description="Arbitration decision: 'proceed' or 'reject'.",
+    )
+    feedback: str | None = Field(
+        default=None,
+        max_length=2000,
+        description="Analyst feedback or observations.",
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class H2DecisionResponse(BaseModel):
+    """Response returned after Human Gate H2 arbitration."""
+
+    run_id: uuid.UUID
+    case_id: uuid.UUID
+    status: InvestigationStatus
+    current_phase: PhaseName | str
+    decision: H2Decision
+    message: str
+    phases: list[PhaseOut] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)

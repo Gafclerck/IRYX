@@ -56,5 +56,6 @@ class InvestigationState(TypedDict, total=False):
     h1_rejected: bool
     return_to_planner: bool
     h2_approved: bool
+    h2_rejected: bool
     h3_approved: bool
     context: dict[str, Any]

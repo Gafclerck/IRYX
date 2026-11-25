@@ -53,11 +53,12 @@ class ValidationException(IryxException):
         self,
         message: str = "Données de requête invalides.",
         code: str = "VALIDATION_ERROR",
+        status_code: int = HTTP_422_STATUS,
     ) -> None:
         super().__init__(
             message=message,
             code=code,
-            status_code=HTTP_422_STATUS,
+            status_code=status_code,
         )
 
 
@@ -551,7 +552,7 @@ class PlanNotFoundException(NotFoundException):
 
 
 class InvalidGateStateException(ValidationException):
-    """Raised when an arbitration action is submitted on a run not paused at H1 (HTTP 422)."""
+    """Raised when an arbitration action is submitted on a run not paused at a gate."""
 
     def __init__(
         self,
@@ -560,10 +561,28 @@ class InvalidGateStateException(ValidationException):
             "pour cette porte de contrôle."
         ),
         code: str = "INVALID_GATE_STATE",
+        status_code: int = HTTP_422_STATUS,
     ) -> None:
         super().__init__(
             message=message,
             code=code,
+            status_code=status_code,
+        )
+
+
+class UnreviewedFindingsException(ValidationException):
+    """Raised when Gate H2 proceed is attempted while proposed findings remain unreviewed."""
+
+    def __init__(
+        self,
+        message: str = "Des constats sont encore en attente de validation humaine.",
+        code: str = "UNREVIEWED_FINDINGS_EXIST",
+        status_code: int = status.HTTP_400_BAD_REQUEST,
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+            status_code=status_code,
         )
 
 

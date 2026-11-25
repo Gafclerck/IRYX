@@ -13,8 +13,8 @@ from iryx.analytics.models import (
     FindingStatus,
     FindingType,
 )
-from iryx.analytics.schemas import FindingCreate, FindingUpdate
-from iryx.core.exceptions import FindingNotFoundException
+from iryx.analytics.schemas import FindingCreate, FindingReview, FindingUpdate
+from iryx.core.exceptions import FindingNotFoundException, ValidationException
 
 
 class FindingService:
@@ -116,3 +116,42 @@ class FindingService:
         finding = self.get_finding(case_id=case_id, finding_id=finding_id)
         self.db.delete(finding)
         self.db.commit()
+
+    def review_finding(
+        self,
+        case_id: uuid.UUID,
+        finding_id: uuid.UUID,
+        payload: FindingReview,
+        user_id: uuid.UUID | None = None,
+    ) -> Finding:
+        """Apply human-in-the-loop review decision to a finding (Story 6.4, FR19)."""
+        stmt = (
+            select(Finding)
+            .where(Finding.id == finding_id, Finding.case_id == case_id)
+            .with_for_update()
+        )
+        finding = self.db.scalar(stmt)
+        if finding is None:
+            raise FindingNotFoundException()
+
+        if payload.action not in ("validate", "reject"):
+            raise ValidationException(
+                message=f"Action de revue invalide : '{payload.action}'.",
+                code="INVALID_REVIEW_ACTION",
+            )
+
+        if payload.action == "validate":
+            finding.status = FindingStatus.VALIDATED
+            if payload.severity is not None:
+                finding.severity = payload.severity
+            if payload.confidence is not None:
+                finding.confidence = payload.confidence
+        elif payload.action == "reject":
+            finding.status = FindingStatus.REJECTED
+
+        if user_id is not None:
+            finding.created_by = user_id
+
+        self.db.commit()
+        self.db.refresh(finding)
+        return finding

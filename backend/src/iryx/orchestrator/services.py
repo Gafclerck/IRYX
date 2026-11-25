@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from iryx.cases.models import Case, CaseStatus
@@ -18,6 +18,7 @@ from iryx.core.exceptions import (
     InvestigationAlreadyRunningException,
     InvestigationNotFoundException,
     PlanNotFoundException,
+    UnreviewedFindingsException,
     ValidationException,
 )
 from iryx.orchestrator.checkpointer import get_checkpointer
@@ -33,6 +34,9 @@ from iryx.orchestrator.schemas import (
     H1Decision,
     H1DecisionRequest,
     H1DecisionResponse,
+    H2Decision,
+    H2DecisionRequest,
+    H2DecisionResponse,
     InvestigationPlan,
     PhaseOut,
 )
@@ -544,6 +548,215 @@ class InvestigationService:
             phases=[PhaseOut.model_validate(p) for p in run.phases],
         )
 
+    def pause_at_gate_h2(self, case_id: uuid.UUID, run_id: uuid.UUID) -> InvestigationRun:
+        """Pause an investigation run at Human Gate H2 awaiting analyst validation of findings.
+
+        Sets run.status to paused and current_phase to waiting_h2, closing the previous
+        active phase and ensuring a gate_h2 phase is active.
+        """
+        run = self.get_investigation_run(case_id=case_id, run_id=run_id)
+
+        if run.status in (InvestigationStatus.COMPLETED, InvestigationStatus.FAILED):
+            raise ValidationException(
+                message=f"Impossible de suspendre une session avec le statut '{run.status}'.",
+                code="INVALID_STATUS_TRANSITION",
+            )
+
+        now = datetime.now(UTC)
+        run.status = InvestigationStatus.PAUSED
+        run.current_phase = PhaseName.WAITING_H2
+        run.updated_at = now
+
+        # Close currently active phase if not already gate_h2
+        active_phase = self.db.scalar(
+            select(Phase).where(
+                Phase.investigation_run_id == run.id,
+                Phase.status == PhaseStatus.ACTIVE,
+            )
+        )
+        if active_phase is not None and active_phase.phase_name != PhaseName.GATE_H2:
+            active_phase.status = PhaseStatus.COMPLETED
+            active_phase.completed_at = now
+            gate_phase = Phase(
+                id=uuid.uuid4(),
+                investigation_run_id=run.id,
+                phase_name=PhaseName.GATE_H2,
+                status=PhaseStatus.ACTIVE,
+                started_at=now,
+            )
+            self.db.add(gate_phase)
+        elif active_phase is None:
+            gate_phase = Phase(
+                id=uuid.uuid4(),
+                investigation_run_id=run.id,
+                phase_name=PhaseName.GATE_H2,
+                status=PhaseStatus.ACTIVE,
+                started_at=now,
+            )
+            self.db.add(gate_phase)
+
+        self.db.commit()
+        self.db.refresh(run)
+
+        logger.info(
+            "Investigation run paused at Human Gate H2",
+            extra={
+                "context": {
+                    "case_id": str(case_id),
+                    "run_id": str(run_id),
+                    "current_phase": str(run.current_phase),
+                    "status": str(run.status),
+                }
+            },
+        )
+        return run
+
+    def arbitrate_gate_h2(
+        self,
+        case_id: uuid.UUID,
+        run_id: uuid.UUID,
+        decision_request: H2DecisionRequest,
+        user_id: uuid.UUID | None = None,
+    ) -> H2DecisionResponse:
+        """Arbitrate Human Gate H2: proceed to gate_h3 or reject after validating findings."""
+        # Pessimistic row-level lock on InvestigationRun
+        run = self.db.scalar(
+            select(InvestigationRun)
+            .options(selectinload(InvestigationRun.phases))
+            .where(
+                InvestigationRun.id == run_id,
+                InvestigationRun.case_id == case_id,
+            )
+            .with_for_update()
+        )
+        if run is None:
+            raise InvestigationNotFoundException(
+                message=(
+                    "La session d'investigation demandée n'existe pas ou "
+                    "n'appartient pas à ce dossier."
+                )
+            )
+
+        # Invariant check: run must be paused at gate H2
+        is_gate_h2 = run.status == InvestigationStatus.PAUSED and str(run.current_phase) in (
+            PhaseName.GATE_H2,
+            PhaseName.WAITING_H2,
+            "gate_h2",
+            "waiting_h2",
+        )
+        if not is_gate_h2:
+            raise InvalidGateStateException(
+                message=(
+                    "La session d'investigation n'est pas en attente d'arbitrage sur la porte H2."
+                ),
+                code="INVALID_GATE_STATE",
+                status_code=400,
+            )
+
+        now = datetime.now(UTC)
+        run.updated_at = now
+
+        message: str
+
+        if decision_request.decision == H2Decision.PROCEED:
+            from iryx.analytics.models import Finding, FindingStatus
+
+            proposed_count = (
+                self.db.scalar(
+                    select(func.count(Finding.id)).where(
+                        Finding.case_id == case_id,
+                        Finding.status == FindingStatus.PROPOSED,
+                    )
+                )
+                or 0
+            )
+            if proposed_count > 0:
+                raise UnreviewedFindingsException(
+                    message=(
+                        f"Impossible de valider la porte H2 : {proposed_count} constat(s) "
+                        "sont encore en attente de revue ('proposed')."
+                    ),
+                )
+
+            # Close current active gate phase
+            active_phase = self.db.scalar(
+                select(Phase).where(
+                    Phase.investigation_run_id == run.id,
+                    Phase.status == PhaseStatus.ACTIVE,
+                )
+            )
+            if active_phase is not None:
+                active_phase.status = PhaseStatus.COMPLETED
+                active_phase.completed_at = now
+
+            run.status = InvestigationStatus.RUNNING
+            run.current_phase = PhaseName.GATE_H3
+
+            next_phase = Phase(
+                id=uuid.uuid4(),
+                investigation_run_id=run.id,
+                phase_name=PhaseName.GATE_H3,
+                status=PhaseStatus.ACTIVE,
+                started_at=now,
+            )
+            self.db.add(next_phase)
+            message = (
+                "Validation des constats approuvée à la porte H2. "
+                "Transition vers la phase suivante."
+            )
+
+        elif decision_request.decision == H2Decision.REJECT:
+            # Close current active gate phase
+            active_phase = self.db.scalar(
+                select(Phase).where(
+                    Phase.investigation_run_id == run.id,
+                    Phase.status == PhaseStatus.ACTIVE,
+                )
+            )
+            if active_phase is not None:
+                active_phase.status = PhaseStatus.COMPLETED
+                active_phase.completed_at = now
+
+            run.status = InvestigationStatus.COMPLETED
+            run.current_phase = PhaseName.GATE_H2
+            message = (
+                "Session d'investigation rejetée à la porte H2 par l'analyste. Session terminée."
+            )
+        else:
+            raise ValidationException(
+                message=f"Décision d'arbitrage invalide : '{decision_request.decision}'.",
+                code="INVALID_DECISION",
+                status_code=400,
+            )
+
+        self.db.commit()
+        self.db.refresh(run)
+
+        logger.info(
+            "Human Gate H2 arbitration recorded",
+            extra={
+                "context": {
+                    "case_id": str(case_id),
+                    "run_id": str(run.id),
+                    "user_id": str(user_id) if user_id else None,
+                    "decision": str(decision_request.decision),
+                    "feedback": decision_request.feedback,
+                    "current_phase": str(run.current_phase),
+                    "status": str(run.status),
+                }
+            },
+        )
+
+        return H2DecisionResponse(
+            run_id=run.id,
+            case_id=run.case_id,
+            status=run.status,
+            current_phase=run.current_phase,
+            decision=decision_request.decision,
+            message=message,
+            phases=[PhaseOut.model_validate(p) for p in run.phases],
+        )
+
     def complete_executor_phase(
         self,
         case_id: uuid.UUID,
@@ -724,6 +937,13 @@ class InvestigationService:
                     state_update["status"] = "running"
                     if run.validated_plan is not None:
                         state_update["plan"] = run.validated_plan
+                elif run.current_phase in (PhaseName.GATE_H3, "gate_h3"):
+                    state_update["h1_approved"] = True
+                    state_update["h2_approved"] = True
+                    state_update["current_phase"] = "gate_h3"
+                    state_update["status"] = "running"
+                    if run.validated_plan is not None:
+                        state_update["plan"] = run.validated_plan
 
                 result = graph.invoke(state_update, config=config)
             else:
@@ -741,6 +961,10 @@ class InvestigationService:
                 }
                 if run.current_phase in (PhaseName.EXECUTOR, PhaseName.EXECUTION):
                     initial_state["h1_approved"] = True
+                elif run.current_phase in (PhaseName.GATE_H3, "gate_h3"):
+                    initial_state["h1_approved"] = True
+                    initial_state["h2_approved"] = True
+                    initial_state["plan"] = run.validated_plan
 
                 result = graph.invoke(initial_state, config=config)
         finally:

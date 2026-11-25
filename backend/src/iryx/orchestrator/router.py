@@ -16,6 +16,8 @@ from iryx.orchestrator.checkpointer import get_checkpointer_dependency
 from iryx.orchestrator.schemas import (
     H1DecisionRequest,
     H1DecisionResponse,
+    H2DecisionRequest,
+    H2DecisionResponse,
     InvestigationPlan,
     InvestigationRunOut,
 )
@@ -143,6 +145,45 @@ def arbitrate_gate_h1(
     """Arbitrate the Human Gate H1 for an investigation run."""
     service = InvestigationService(db)
     return service.arbitrate_gate_h1(
+        case_id=case_id,
+        run_id=run_id,
+        decision_request=payload,
+        user_id=current_user.id,
+    )
+
+
+@router.post(
+    "/api/v1/cases/{case_id}/investigations/{run_id}/gates/h2",
+    response_model=H2DecisionResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Arbitrage de la porte de validation humaine H2",
+    description=(
+        "Permet à un analyste ou enquêteur de valider ('proceed') ou rejeter ('reject') "
+        "l'ensemble des constats formulés à la porte H2. "
+        "La décision 'proceed' exige que tous les constats soient préalablement arbitrés. "
+        "Réservé aux rôles ADMIN, INVESTIGATOR et ANALYST (interdit aux VIEWERS)."
+    ),
+)
+def arbitrate_gate_h2(
+    case_id: uuid.UUID,
+    run_id: uuid.UUID,
+    payload: H2DecisionRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    _case: Annotated[
+        Case,
+        Depends(
+            require_case_role(
+                MembershipRole.ADMIN,
+                MembershipRole.INVESTIGATOR,
+                MembershipRole.ANALYST,
+            )
+        ),
+    ],
+    db: Annotated[Session, Depends(get_db)],
+) -> H2DecisionResponse:
+    """Arbitrate the Human Gate H2 for an investigation run."""
+    service = InvestigationService(db)
+    return service.arbitrate_gate_h2(
         case_id=case_id,
         run_id=run_id,
         decision_request=payload,

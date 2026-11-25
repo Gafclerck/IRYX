@@ -23,6 +23,7 @@ from iryx.orchestrator.graph import (
     route_analyst,
     route_executor,
     route_gate_h1,
+    route_gate_h2,
     route_planner,
     route_verifier,
     triage_node,
@@ -131,7 +132,20 @@ def test_node_functions_return_expected_updates() -> None:
         "current_phase": "gate_h2",
         "status": "running",
     }
-    assert gate_h2_node(state_without_evidence) == {"current_phase": "gate_h2"}
+    assert gate_h2_node(state_without_evidence) == {
+        "current_phase": "waiting_h2",
+        "status": "paused",
+    }
+    assert gate_h2_node({"h2_approved": True}) == {
+        "current_phase": "gate_h2",
+        "status": "running",
+        "h2_approved": True,
+    }
+    assert gate_h2_node({"h2_rejected": True}) == {
+        "current_phase": "gate_h2",
+        "status": "completed",
+        "h2_rejected": True,
+    }
     assert gate_h3_node(state_without_evidence) == {"current_phase": "gate_h3"}
     assert reporting_node(state_without_evidence) == {"current_phase": "reporting"}
 
@@ -580,6 +594,7 @@ def test_graph_execution_flow_with_approved_plan() -> None:
         "run_id": "test-run-456",
         "plan": _create_sample_pre_set_plan(),
         "h1_approved": True,
+        "h2_approved": True,
         "iteration_count": 0,
         "error_count": 0,
     }
@@ -598,6 +613,7 @@ def test_graph_sequential_stream_nodes() -> None:
         "run_id": "stream-run",
         "plan": _create_sample_pre_set_plan(),
         "h1_approved": True,
+        "h2_approved": True,
         "iteration_count": 0,
         "error_count": 0,
     }
@@ -726,6 +742,7 @@ def test_graph_compilation_with_checkpointer() -> None:
         "run_id": "checkpointer-run",
         "plan": _create_sample_pre_set_plan(),
         "h1_approved": True,
+        "h2_approved": True,
         "iteration_count": 0,
         "error_count": 0,
     }
@@ -739,3 +756,94 @@ def test_graph_compilation_with_checkpointer() -> None:
     state_snapshot = graph.get_state(config)
     assert state_snapshot is not None
     assert state_snapshot.values["current_phase"] == "reporting"
+
+
+def test_gate_h2_node_and_route_gate_h2() -> None:
+    """Verify route_gate_h2 routes to gate_h3 when h2_approved is True, else END."""
+    assert route_gate_h2({"h2_approved": True}) == "gate_h3"
+    assert route_gate_h2({"h2_rejected": True}) == END
+    assert route_gate_h2({"status": "paused"}) == END
+    assert route_gate_h2({}) == END
+
+
+def test_graph_stream_halts_at_gate_h2_when_unapproved() -> None:
+    """Verify via graph.stream that execution stops at gate_h2 when h2_approved is not set."""
+    graph = build_investigation_graph()
+    initial_state: InvestigationState = {
+        "case_id": "stream-case-h2-pause",
+        "run_id": "stream-run-h2-pause",
+        "plan": _create_sample_pre_set_plan(),
+        "h1_approved": True,
+        "iteration_count": 0,
+        "error_count": 0,
+    }
+
+    traversed_nodes: list[str] = []
+    for event in graph.stream(initial_state):
+        for node_name in event:
+            traversed_nodes.append(node_name)
+
+    expected_sequence = [
+        "triage",
+        "planner",
+        "gate_h1",
+        "executor",
+        "analyst",
+        "verifier",
+        "gate_h2",
+    ]
+    assert traversed_nodes == expected_sequence
+
+
+def test_gate_h2_node_persists_pause_when_db_in_context() -> None:
+    """Verify gate_h2_node invokes pause_at_gate_h2 when db session is in context."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from iryx.auth.schemas import UserCreate
+    from iryx.auth.services import UserService
+    from iryx.cases.services import CaseService
+    from iryx.db.base import Base
+    from iryx.orchestrator.models import InvestigationStatus, PhaseName
+    from iryx.orchestrator.services import InvestigationService
+    from iryx.organizations.services import OrganizationService
+
+    engine = create_engine("sqlite:///:memory:", poolclass=StaticPool)
+    Base.metadata.create_all(bind=engine)
+    session = sessionmaker(bind=engine)()
+
+    user_svc = UserService(session)
+    org_svc = OrganizationService(session)
+    case_svc = CaseService(session)
+    user = user_svc.create_user(UserCreate(email="analyst-h2@soc.fr", password="Password123!"))
+    org = org_svc.create_organization(name="SOC Lab H2", creator_id=user.id)
+    case = case_svc.create_case(
+        org_id=org.id,
+        title="Test Case H2",
+        description="Test Case Description H2",
+        creator_id=user.id,
+    )
+
+    inv_svc = InvestigationService(session)
+    run = inv_svc.start_investigation(case.id)
+    assert run.status == InvestigationStatus.RUNNING
+
+    state: InvestigationState = {
+        "case_id": str(case.id),
+        "run_id": str(run.id),
+        "context": {"db": session},
+        "iteration_count": 0,
+        "error_count": 0,
+    }
+
+    res = gate_h2_node(state)
+    assert res["current_phase"] == "waiting_h2"
+    assert res["status"] == "paused"
+
+    session.refresh(run)
+    assert run.status == InvestigationStatus.PAUSED
+    assert run.current_phase == PhaseName.WAITING_H2
+
+    session.close()
+    Base.metadata.drop_all(bind=engine)

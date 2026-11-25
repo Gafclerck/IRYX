@@ -49,6 +49,7 @@ class PhaseName(StrEnum):
     VERIFIER = "verifier"
     VERIFICATION = "verification"
     GATE_H2 = "gate_h2"
+    WAITING_H2 = "waiting_h2"
     PSEUDONYMIZATION = "pseudonymization"
     GATE_H3 = "gate_h3"
     REPORTING = "reporting"

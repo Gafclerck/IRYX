@@ -2,7 +2,7 @@
 title: "Story 6.4 : Porte Humaine H2 (Validation des findings) et API de revue"
 type: 'feature'
 created: '2026-11-25'
-status: 'in-progress'
+status: 'done'
 baseline_commit: 'f1d7a8b6c344c803da9343f9acc97fb6bdd0727e'
 route: 'dispatch'
 review_loop_iteration: 0
@@ -66,16 +66,16 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `backend/src/iryx/analytics/services.py` -- Implémenter la méthode `review_finding` sur `FindingService` -- Mettre à jour statut (`validated`/`rejected`), sévérité, confiance et `created_by` (FR19).
-- [ ] `backend/src/iryx/analytics/router.py` -- Créer l'endpoint `POST /api/v1/cases/{case_id}/findings/{finding_id}/review` -- Exposer la revue unitaire sous contrôle `require_case_role` (FR19, D-04).
-- [ ] `backend/src/iryx/orchestrator/models.py` -- Ajouter `WAITING_H2 = "waiting_h2"` dans `PhaseName` -- Normaliser la phase de pause H2 (D-09).
-- [ ] `backend/src/iryx/orchestrator/schemas.py` -- Définir `H2Decision`, `H2DecisionRequest`, `H2DecisionResponse` -- Formaliser les schémas d'arbitrage H2 (D-04).
-- [ ] `backend/src/iryx/orchestrator/services.py` -- Implémenter `pause_at_gate_h2`, `arbitrate_gate_h2` et gestion de phase H2 dans `resume_investigation` -- Assurer la persistance et l'arbitrage avec verrouillage pessimiste et vérification des constats (FR19).
-- [ ] `backend/src/iryx/orchestrator/graph.py` -- Adapter `gate_h2_node`, `route_gate_h2` et `build_investigation_graph` -- Câbler la suspension automatique et la conditional edge vers `gate_h3` ou `END` (D-09).
-- [ ] `backend/src/iryx/orchestrator/router.py` -- Ajouter l'endpoint `POST /api/v1/cases/{case_id}/investigations/{run_id}/gates/h2` -- Permettre le déblocage humain de la session (FR19).
-- [ ] `backend/tests/integration/test_findings_api.py` -- Ajouter tests d'intégration de revue de finding (validation, rejet, 403 viewer, 404 not found) -- Garantir l'intégrité de l'API de revue.
-- [ ] `backend/tests/unit/test_orchestrator_api.py` -- Ajouter tests d'arbitrage H2 (proceed nominal, 400 constats proposed, reject, 403 viewer, 400 invalid state) -- Garantir le contrôle d'état H2.
-- [ ] `backend/tests/unit/test_orchestrator_graph.py` -- Ajouter tests du nœud `gate_h2_node` et conditional edge `route_gate_h2` -- Valider la suspension et la reprise dans LangGraph.
+- [x] `backend/src/iryx/analytics/services.py` -- Implémenter la méthode `review_finding` sur `FindingService` -- Mettre à jour statut (`validated`/`rejected`), sévérité, confiance et `created_by` (FR19).
+- [x] `backend/src/iryx/analytics/router.py` -- Créer l'endpoint `POST /api/v1/cases/{case_id}/findings/{finding_id}/review` -- Exposer la revue unitaire sous contrôle `require_case_role` (FR19, D-04).
+- [x] `backend/src/iryx/orchestrator/models.py` -- Ajouter `WAITING_H2 = "waiting_h2"` dans `PhaseName` -- Normaliser la phase de pause H2 (D-09).
+- [x] `backend/src/iryx/orchestrator/schemas.py` -- Définir `H2Decision`, `H2DecisionRequest`, `H2DecisionResponse` -- Formaliser les schémas d'arbitrage H2 (D-04).
+- [x] `backend/src/iryx/orchestrator/services.py` -- Implémenter `pause_at_gate_h2`, `arbitrate_gate_h2` et gestion de phase H2 dans `resume_investigation` -- Assurer la persistance et l'arbitrage avec verrouillage pessimiste et vérification des constats (FR19).
+- [x] `backend/src/iryx/orchestrator/graph.py` -- Adapter `gate_h2_node`, `route_gate_h2` et `build_investigation_graph` -- Câbler la suspension automatique et la conditional edge vers `gate_h3` ou `END` (D-09).
+- [x] `backend/src/iryx/orchestrator/router.py` -- Ajouter l'endpoint `POST /api/v1/cases/{case_id}/investigations/{run_id}/gates/h2` -- Permettre le déblocage humain de la session (FR19).
+- [x] `backend/tests/integration/test_findings_api.py` -- Ajouter tests d'intégration de revue de finding (validation, rejet, 403 viewer, 404 not found) -- Garantir l'intégrité de l'API de revue.
+- [x] `backend/tests/unit/test_orchestrator_api.py` -- Ajouter tests d'arbitrage H2 (proceed nominal, 400 constats proposed, reject, 403 viewer, 400 invalid state) -- Garantir le contrôle d'état H2.
+- [x] `backend/tests/unit/test_orchestrator_graph.py` -- Ajouter tests du nœud `gate_h2_node` et conditional edge `route_gate_h2` -- Valider la suspension et la reprise dans LangGraph.
 
 **Acceptance Criteria:**
 - Given une session d'enquête atteignant l'état `gate_h2`, when le graphe LangGraph s'exécute, then la session se met en pause avec le statut `waiting_h2` (`InvestigationRun.status = "paused"`).
@@ -90,6 +90,32 @@ context:
 ## Spec Change Log
 
 ## Review Triage Log
+
+### 2026-11-25 — Review pass 1
+- verdicts: 22 findings — high 0, medium 3, low 7, false 12, maybe-false 0
+- findings:
+  - `[low]` `[patch]` B1 Blind Hunter — `UnreviewedFindingsException` non instancié dans `arbitrate_gate_h2` — Corrigé : importé et levé directement en remplacement de l'exception générique.
+  - `[false]` `[reject]` B2 Blind Hunter — Statut HTTP 400 vs 422 pour `InvalidGateStateException` — Rejeté : le code HTTP 400 est formellement exigé par la matrice I/O de la spécification 6.4.
+  - `[medium]` `[patch]` B3 Blind Hunter — Reprise à froid depuis `GATE_H3` bloquée à H1 dans `resume_investigation` — Corrigé : ajout de `h1_approved = True` et réinjection du plan lors de la reprise depuis GATE_H3.
+  - `[false]` `[reject]` B4 Blind Hunter — `gate_h2_node` redéfinit `current_phase` à `"gate_h2"` lors de la reprise — Rejeté : comportement nominal de machine d'états où le nœud s'exécute avant le franchissement de la transition vers `gate_h3`.
+  - `[false]` `[reject]` B5 Blind Hunter — `Finding.created_by` écrasé lors de la revue — Rejeté : l'AC de la spécification exige expressément l'enregistrement de l'identifiant de l'analyste dans `created_by`.
+  - `[false]` `[reject]` B6 Blind Hunter — Absence de champ commentaire dans `FindingReview` — Rejeté : hors périmètre MVP de la Story 6.4 non prévu dans les contrats de données.
+  - `[low]` `[patch]` B7 Blind Hunter — Verrouillage pessimiste manquant dans `review_finding` — Corrigé : ajout de `.with_for_update()` lors de la récupération du constat.
+  - `[false]` `[reject]` B8 Blind Hunter — Contrôle des constats proposed au niveau dossier plutôt que run — Rejeté : dans IRYX, les constats appartiennent à un `Case` et il n'y a qu'une seule enquête active par dossier.
+  - `[false]` `[reject]` B9 Blind Hunter — Branche `h2_rejected` inaccessible dans LangGraph en production — Rejeté : conception intentionnelle pour la testabilité des nœuds de graphe en isolation.
+  - `[false]` `[reject]` B10 Blind Hunter — Écart de statut entre `sprint-status.yaml` et spec — Rejeté : la synchronisation du statut intervient lors de l'achèvement de la revue conformément au workflow BMAD.
+  - `[false]` `[reject]` B11 Blind Hunter — Modifications README globales incluses dans le diff — Rejeté : mise à jour documentaire légitime et synchronisée décrivant les portes H1 et H2.
+  - `[false]` `[reject]` B12 Blind Hunter — Re-revue possible de constats déjà validés/rejetés — Rejeté : flexibilité nominale accordée à l'analyste avant le déblocage définitif de la porte H2.
+  - `[false]` `[reject]` B13 Blind Hunter — Verrouillage pessimiste manquant dans `pause_at_gate_h2` — Rejeté : le verrouillage est appliqué lors de l'arbitrage concurrentiel ; la pause est séquentielle.
+  - `[false]` `[reject]` B14 Blind Hunter — Exception de persistance DB interceptée dans `gate_h2_node` — Rejeté : aligné sur Gate H1 pour autoriser les tests unitaires du graphe hors base relationnelle.
+  - `[low]` `[patch]` B15 Blind Hunter — Sévérité et confiance modifiables même lors d'un rejet — Corrigé : conditionnement des modifications uniquement à `action == "validate"`.
+  - `[medium]` `[patch]` E1 Edge Case Hunter — Reprise depuis `gate_h3` sans checkpointer bloquée à H1 — Corrigé (identique B3) : `h1_approved` et plan initialisés.
+  - `[low]` `[patch]` E2 Edge Case Hunter — Action de revue ni validate ni reject non vérifiée au niveau service — Corrigé : levée d'une `ValidationException` défensive.
+  - `[low]` `[patch]` E3 Edge Case Hunter — `active_phase` marquée terminée avant la vérification des constats proposed — Corrigé : vérification déplacée avant toute modification d'état.
+  - `[low]` `[patch]` V1 Verification Gap — Assertions faibles dans `test_resume_investigation_nominal_with_approved_plan` — Corrigé : assertions strictes sur `PAUSED` et `WAITING_H2`.
+  - `[medium]` `[patch]` V2 Verification Gap — Absence de test de reprise depuis `PhaseName.GATE_H3` — Corrigé : test unitaire dédié `test_resume_investigation_nominal_from_gate_h3` ajouté au vert.
+  - `[low]` `[patch]` V3 Verification Gap — `UnreviewedFindingsException` non exploité — Corrigé (identique B1) : utilisé dans `arbitrate_gate_h2`.
+  - `[false]` `[reject]` V4 Verification Gap — Risque d'import circulaire entre `cases` et `analytics` — Rejeté : vérifié et réfuté, `cases.models` n'importe pas le routeur analytics.
 
 ## Design Notes
 

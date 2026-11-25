@@ -600,3 +600,203 @@ def test_delete_finding_nominal_and_subsequent_404(
         headers=auth_header(analyst),
     )
     assert resp_get.status_code == 404
+
+
+# =========================================================================
+# 6. POST /api/v1/cases/{case_id}/findings/{finding_id}/review (Gate H2 Review)
+# =========================================================================
+
+
+def test_review_finding_validate_nominal(
+    client: TestClient, test_setup: dict, db_session: Session
+) -> None:
+    """Verify validating a finding updates status to validated and adjusts attributes (FR19)."""
+    case: Case = test_setup["case"]
+    analyst: User = test_setup["analyst"]
+
+    finding = Finding(
+        case_id=case.id,
+        title="Constat à valider",
+        severity=FindingSeverity.LOW,
+        confidence=FindingConfidence.LOW,
+        status=FindingStatus.PROPOSED,
+    )
+    db_session.add(finding)
+    db_session.commit()
+
+    payload = {
+        "action": "validate",
+        "severity": "high",
+        "confidence": "high",
+    }
+
+    response = client.post(
+        f"/api/v1/cases/{case.id}/findings/{finding.id}/review",
+        json=payload,
+        headers=auth_header(analyst),
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == str(finding.id)
+    assert data["status"] == "validated"
+    assert data["severity"] == "high"
+    assert data["confidence"] == "high"
+    assert data["created_by"] == str(analyst.id)
+
+    # Verify DB persistence
+    refreshed = db_session.get(Finding, finding.id)
+    assert refreshed.status == FindingStatus.VALIDATED
+    assert refreshed.severity == FindingSeverity.HIGH
+    assert refreshed.confidence == FindingConfidence.HIGH
+    assert refreshed.created_by == analyst.id
+
+
+def test_review_finding_reject_nominal(
+    client: TestClient, test_setup: dict, db_session: Session
+) -> None:
+    """Verify rejecting a finding updates its status to rejected."""
+    case: Case = test_setup["case"]
+    analyst: User = test_setup["analyst"]
+
+    finding = Finding(
+        case_id=case.id,
+        title="Constat à rejeter",
+        status=FindingStatus.PROPOSED,
+    )
+    db_session.add(finding)
+    db_session.commit()
+
+    payload = {"action": "reject"}
+
+    response = client.post(
+        f"/api/v1/cases/{case.id}/findings/{finding.id}/review",
+        json=payload,
+        headers=auth_header(analyst),
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "rejected"
+
+    refreshed = db_session.get(Finding, finding.id)
+    assert refreshed.status == FindingStatus.REJECTED
+
+
+def test_review_finding_viewer_forbidden_403(
+    client: TestClient, test_setup: dict, db_session: Session
+) -> None:
+    """Verify user with VIEWER role cannot review a finding (HTTP 403 Forbidden)."""
+    case: Case = test_setup["case"]
+    viewer: User = test_setup["viewer"]
+
+    finding = Finding(case_id=case.id, title="Constat Protégé Viewer")
+    db_session.add(finding)
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/cases/{case.id}/findings/{finding.id}/review",
+        json={"action": "validate"},
+        headers=auth_header(viewer),
+    )
+
+    assert response.status_code == 403
+
+
+def test_review_finding_cross_tenant_forbidden_403(
+    client: TestClient, test_setup: dict, db_session: Session
+) -> None:
+    """Verify cross-tenant finding review attempt returns HTTP 403 Forbidden."""
+    case: Case = test_setup["case"]
+    other_admin: User = test_setup["other_admin"]
+
+    finding = Finding(case_id=case.id, title="Constat Cross Tenant")
+    db_session.add(finding)
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/cases/{case.id}/findings/{finding.id}/review",
+        json={"action": "validate"},
+        headers=auth_header(other_admin),
+    )
+
+    assert response.status_code == 403
+
+
+def test_review_finding_nonexistent_finding_404(
+    client: TestClient, test_setup: dict
+) -> None:
+    """Verify reviewing nonexistent finding returns HTTP 404 Not Found."""
+    case: Case = test_setup["case"]
+    analyst: User = test_setup["analyst"]
+    fake_finding_id = uuid.uuid4()
+
+    response = client.post(
+        f"/api/v1/cases/{case.id}/findings/{fake_finding_id}/review",
+        json={"action": "validate"},
+        headers=auth_header(analyst),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "FINDING_NOT_FOUND"
+
+
+def test_review_finding_invalid_action_422(
+    client: TestClient, test_setup: dict, db_session: Session
+) -> None:
+    """Verify invalid action returns HTTP 422 Unprocessable Content."""
+    case: Case = test_setup["case"]
+    analyst: User = test_setup["analyst"]
+
+    finding = Finding(case_id=case.id, title="Constat Test Action")
+    db_session.add(finding)
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/cases/{case.id}/findings/{finding.id}/review",
+        json={"action": "archive"},
+        headers=auth_header(analyst),
+    )
+
+    assert response.status_code == 422
+
+
+def test_review_finding_reject_ignores_severity_and_confidence(
+    client: TestClient, test_setup: dict, db_session: Session
+) -> None:
+    """Verify rejecting a finding does not modify its severity or confidence."""
+    case: Case = test_setup["case"]
+    analyst: User = test_setup["analyst"]
+
+    finding = Finding(
+        case_id=case.id,
+        title="Constat Rejet Strict",
+        severity=FindingSeverity.LOW,
+        confidence=FindingConfidence.LOW,
+        status=FindingStatus.PROPOSED,
+    )
+    db_session.add(finding)
+    db_session.commit()
+
+    payload = {
+        "action": "reject",
+        "severity": "critical",
+        "confidence": "high",
+    }
+
+    response = client.post(
+        f"/api/v1/cases/{case.id}/findings/{finding.id}/review",
+        json=payload,
+        headers=auth_header(analyst),
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "rejected"
+    assert data["severity"] == "low"
+    assert data["confidence"] == "low"
+
+    refreshed = db_session.get(Finding, finding.id)
+    assert refreshed.status == FindingStatus.REJECTED
+    assert refreshed.severity == FindingSeverity.LOW
+    assert refreshed.confidence == FindingConfidence.LOW
