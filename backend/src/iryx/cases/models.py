@@ -19,7 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from iryx.db.base import Base
 
 if TYPE_CHECKING:
-    from iryx.analytics.models import Observation
+    from iryx.analytics.models import Finding, Observation
     from iryx.auth.models import Organization, User
     from iryx.evidence.models import Evidence
     from iryx.gateway.models import ToolExecution
@@ -109,6 +109,12 @@ class Case(Base):
     )
     investigation_runs: Mapped[list["InvestigationRun"]] = relationship(
         "InvestigationRun",
+        back_populates="case",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    findings: Mapped[list["Finding"]] = relationship(
+        "Finding",
         back_populates="case",
         cascade="all, delete-orphan",
         passive_deletes=True,

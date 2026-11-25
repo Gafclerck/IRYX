@@ -411,6 +411,24 @@ class ObservationNotFoundException(NotFoundException):
         self.status_code = status_code
 
 
+class FindingNotFoundException(NotFoundException):
+    """Raised when a finding is not found in a case (HTTP 404)."""
+
+    def __init__(
+        self,
+        message: str = (
+            "Le constat (finding) demandé n'existe pas ou n'appartient pas à ce dossier."
+        ),
+        code: str = "FINDING_NOT_FOUND",
+        status_code: int = status.HTTP_404_NOT_FOUND,
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+        )
+        self.status_code = status_code
+
+
 class ToolExecutionFailedException(IryxException):
     """Raised when an internal error occurs during tool execution (HTTP 500)."""
 

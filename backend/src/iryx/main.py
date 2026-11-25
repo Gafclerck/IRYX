@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from iryx import __version__
+from iryx.analytics.router import router as analytics_router
 from iryx.auth.router import router as auth_router
 from iryx.cases.router import router as cases_router
 from iryx.core.config import get_settings
@@ -88,6 +89,7 @@ def create_app() -> FastAPI:
     application.include_router(evidence_router)
     application.include_router(gateway_router)
     application.include_router(orchestrator_router)
+    application.include_router(analytics_router)
 
     # Thin Health Check Endpoint (D-03)
     @application.get(
