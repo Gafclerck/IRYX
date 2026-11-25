@@ -443,8 +443,64 @@ def route_gate_h2(state: InvestigationState) -> str:
 
 
 def gate_h3_node(state: InvestigationState) -> dict[str, Any]:
-    """Human Gate H3: final validation before official report export."""
-    return {"current_phase": "gate_h3"}
+    """Human Gate H3: autorisation d'envoi vers un LLM externe (Story 8.2, FR20).
+
+    Suspend l'exécution en attente d'une arbitrage humain (statut: paused,
+    current_phase: waiting_h3). La seule voie vers le nœud reporting (rédaction
+    assistée par LLM externe) requiert h3_approved=True ; une décision
+    h3_rejected route vers le nœud reporting avec le gabarit déterministe
+    local, sans appel LLM. La porte constitue une barrière infranchissable :
+    sans décision enregistrée, le graphe s'arrête à waiting_h3.
+    """
+    context = dict(state.get("context") or {})
+
+    if state.get("h3_approved"):
+        return {
+            "current_phase": "gate_h3",
+            "status": "running",
+            "h3_approved": True,
+        }
+    if state.get("h3_rejected"):
+        updated_context = dict(context)
+        updated_context["local_report_mode"] = True
+        return {
+            "current_phase": "reporting",
+            "status": "running",
+            "h3_rejected": True,
+            "context": _sanitize_context(updated_context),
+        }
+
+    # Automatically suspend execution at Gate H3
+    runtime_ctx = get_runtime_context()
+    db = context.get("db") or runtime_ctx.get("db")
+    case_id = state.get("case_id")
+    run_id = state.get("run_id")
+
+    if db is not None and case_id is not None and run_id is not None:
+        try:
+            from iryx.orchestrator.services import InvestigationService
+
+            case_uuid = uuid.UUID(str(case_id))
+            run_uuid = uuid.UUID(str(run_id))
+            InvestigationService(db).pause_at_gate_h3(case_id=case_uuid, run_id=run_uuid)
+        except Exception as exc:
+            logger.warning("Could not persist gate_h3 paused state in DB: %s", exc)
+    else:
+        logger.debug(
+            "DB session or identifiers omitted from context during gate_h3 pause",
+            extra={
+                "context": {
+                    "has_db": db is not None,
+                    "case_id": str(case_id) if case_id else None,
+                    "run_id": str(run_id) if run_id else None,
+                }
+            },
+        )
+
+    return {
+        "current_phase": "waiting_h3",
+        "status": "paused",
+    }
 
 
 def reporting_node(state: InvestigationState) -> dict[str, Any]:

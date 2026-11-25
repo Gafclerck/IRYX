@@ -31,12 +31,16 @@ from iryx.orchestrator.models import (
     PhaseStatus,
 )
 from iryx.orchestrator.schemas import (
+    AnonymizedPreviewOut,
     H1Decision,
     H1DecisionRequest,
     H1DecisionResponse,
     H2Decision,
     H2DecisionRequest,
     H2DecisionResponse,
+    H3Decision,
+    H3DecisionRequest,
+    H3DecisionResponse,
     InvestigationPlan,
     PhaseOut,
 )
@@ -757,6 +761,224 @@ class InvestigationService:
             phases=[PhaseOut.model_validate(p) for p in run.phases],
         )
 
+    def pause_at_gate_h3(self, case_id: uuid.UUID, run_id: uuid.UUID) -> InvestigationRun:
+        """Pause an investigation run at Human Gate H3 awaiting analyst authorization.
+
+        Sets run.status to paused and current_phase to waiting_h3, closing the previous
+        active phase and ensuring a gate_h3 phase is active.
+        """
+        run = self.get_investigation_run(case_id=case_id, run_id=run_id)
+
+        if run.status in (InvestigationStatus.COMPLETED, InvestigationStatus.FAILED):
+            raise ValidationException(
+                message=f"Impossible de suspendre une session avec le statut '{run.status}'.",
+                code="INVALID_STATUS_TRANSITION",
+            )
+
+        now = datetime.now(UTC)
+        run.status = InvestigationStatus.PAUSED
+        run.current_phase = PhaseName.WAITING_H3
+        run.updated_at = now
+
+        # Close currently active phase if not already gate_h3
+        active_phase = self.db.scalar(
+            select(Phase).where(
+                Phase.investigation_run_id == run.id,
+                Phase.status == PhaseStatus.ACTIVE,
+            )
+        )
+        if active_phase is not None and active_phase.phase_name != PhaseName.GATE_H3:
+            active_phase.status = PhaseStatus.COMPLETED
+            active_phase.completed_at = now
+            gate_phase = Phase(
+                id=uuid.uuid4(),
+                investigation_run_id=run.id,
+                phase_name=PhaseName.GATE_H3,
+                status=PhaseStatus.ACTIVE,
+                started_at=now,
+            )
+            self.db.add(gate_phase)
+        elif active_phase is None:
+            gate_phase = Phase(
+                id=uuid.uuid4(),
+                investigation_run_id=run.id,
+                phase_name=PhaseName.GATE_H3,
+                status=PhaseStatus.ACTIVE,
+                started_at=now,
+            )
+            self.db.add(gate_phase)
+
+        self.db.commit()
+        self.db.refresh(run)
+
+        logger.info(
+            "Investigation run paused at Human Gate H3",
+            extra={
+                "context": {
+                    "case_id": str(case_id),
+                    "run_id": str(run_id),
+                    "current_phase": str(run.current_phase),
+                    "status": str(run.status),
+                }
+            },
+        )
+        return run
+
+    def arbitrate_gate_h3(
+        self,
+        case_id: uuid.UUID,
+        run_id: uuid.UUID,
+        decision_request: H3DecisionRequest,
+        user_id: uuid.UUID | None = None,
+    ) -> H3DecisionResponse:
+        """Arbitrate Human Gate H3: approve the external LLM send or fall back to the local template."""
+        # Pessimistic row-level lock on InvestigationRun
+        run = self.db.scalar(
+            select(InvestigationRun)
+            .options(selectinload(InvestigationRun.phases))
+            .where(
+                InvestigationRun.id == run_id,
+                InvestigationRun.case_id == case_id,
+            )
+            .with_for_update()
+        )
+        if run is None:
+            raise InvestigationNotFoundException(
+                message=(
+                    "La session d'investigation demandée n'existe pas ou "
+                    "n'appartient pas à ce dossier."
+                )
+            )
+
+        # Invariant check: run must be paused at gate H3
+        is_gate_h3 = run.status == InvestigationStatus.PAUSED and str(run.current_phase) in (
+            PhaseName.GATE_H3,
+            PhaseName.WAITING_H3,
+            "gate_h3",
+            "waiting_h3",
+        )
+        if not is_gate_h3:
+            raise InvalidGateStateException(
+                message=(
+                    "La session d'investigation n'est pas en attente d'arbitrage sur la porte H3."
+                ),
+                code="INVALID_GATE_STATE",
+                status_code=400,
+            )
+
+        now = datetime.now(UTC)
+        run.updated_at = now
+
+        # Close current active gate phase
+        active_phase = self.db.scalar(
+            select(Phase).where(
+                Phase.investigation_run_id == run.id,
+                Phase.status == PhaseStatus.ACTIVE,
+            )
+        )
+        if active_phase is not None:
+            active_phase.status = PhaseStatus.COMPLETED
+            active_phase.completed_at = now
+
+        if decision_request.decision == H3Decision.APPROVE:
+            run.status = InvestigationStatus.RUNNING
+            run.current_phase = PhaseName.REPORTING
+
+            next_phase = Phase(
+                id=uuid.uuid4(),
+                investigation_run_id=run.id,
+                phase_name=PhaseName.REPORTING,
+                status=PhaseStatus.ACTIVE,
+                started_at=now,
+            )
+            self.db.add(next_phase)
+            message = (
+                "Autorisation d'envoi vers le LLM externe accordée à la porte H3. "
+                "Transition vers le nœud de rédaction du rapport."
+            )
+        else:
+            # REJECT: fall back to the deterministic local template (Story 8.2, AC 2)
+            run.status = InvestigationStatus.RUNNING
+            run.current_phase = PhaseName.REPORTING
+
+            next_phase = Phase(
+                id=uuid.uuid4(),
+                investigation_run_id=run.id,
+                phase_name=PhaseName.REPORTING,
+                status=PhaseStatus.ACTIVE,
+                started_at=now,
+            )
+            self.db.add(next_phase)
+            message = (
+                "Envoi externe refusé à la porte H3 par l'analyste. "
+                "Le rapport sera compilé par le gabarit déterministe local, sans appel LLM."
+            )
+
+        self.db.commit()
+        self.db.refresh(run)
+
+        logger.info(
+            "Human Gate H3 arbitration recorded",
+            extra={
+                "context": {
+                    "case_id": str(case_id),
+                    "run_id": str(run.id),
+                    "user_id": str(user_id) if user_id else None,
+                    "decision": str(decision_request.decision),
+                    "feedback": decision_request.feedback,
+                    "current_phase": str(run.current_phase),
+                    "status": str(run.status),
+                }
+            },
+        )
+
+        return H3DecisionResponse(
+            run_id=run.id,
+            case_id=run.case_id,
+            status=run.status,
+            current_phase=run.current_phase,
+            decision=decision_request.decision,
+            message=message,
+            phases=[PhaseOut.model_validate(p) for p in run.phases],
+        )
+
+    def get_anonymized_preview(self, case_id: uuid.UUID, run_id: uuid.UUID) -> AnonymizedPreviewOut:
+        """Retourne un aperçu anonymisé de la synthèse détenue par le dossier avant l'envoi (porte H3, FR20)."""
+        from iryx.analytics.models import Finding, FindingStatus
+        from iryx.reporting.pseudonymizer import DeterministicPseudonymizer
+
+        run = self.get_investigation_run(case_id=case_id, run_id=run_id)
+
+        findings = self.db.scalars(
+            select(Finding)
+            .where(
+                Finding.case_id == case_id,
+                Finding.status != FindingStatus.REJECTED,
+            )
+            .order_by(Finding.created_at)
+        ).all()
+
+        sections = [
+            f"[{finding.severity}] {finding.title}\n"
+            f"Type : {finding.finding_type}\nStatut : {finding.status}"
+            for finding in findings
+        ]
+        text = (
+            "\n\n".join(sections)
+            if sections
+            else "Aucune conclusion disponible pour ce dossier."
+        )
+
+        result = DeterministicPseudonymizer().pseudonymize(text, case_id=str(case_id))
+
+        return AnonymizedPreviewOut(
+            run_id=run.id,
+            case_id=run.case_id,
+            anonymized_text=result.pseudonymized_text,
+            entity_count=result.entity_count,
+            has_entities=result.has_entities,
+        )
+
     def complete_executor_phase(
         self,
         case_id: uuid.UUID,
@@ -940,7 +1162,16 @@ class InvestigationService:
                 elif run.current_phase in (PhaseName.GATE_H3, "gate_h3"):
                     state_update["h1_approved"] = True
                     state_update["h2_approved"] = True
+                    state_update["h3_approved"] = True
                     state_update["current_phase"] = "gate_h3"
+                    state_update["status"] = "running"
+                    if run.validated_plan is not None:
+                        state_update["plan"] = run.validated_plan
+                elif run.current_phase in (PhaseName.REPORTING, "reporting"):
+                    state_update["h1_approved"] = True
+                    state_update["h2_approved"] = True
+                    state_update["h3_approved"] = True
+                    state_update["current_phase"] = "reporting"
                     state_update["status"] = "running"
                     if run.validated_plan is not None:
                         state_update["plan"] = run.validated_plan
@@ -964,6 +1195,12 @@ class InvestigationService:
                 elif run.current_phase in (PhaseName.GATE_H3, "gate_h3"):
                     initial_state["h1_approved"] = True
                     initial_state["h2_approved"] = True
+                    initial_state["h3_approved"] = True
+                    initial_state["plan"] = run.validated_plan
+                elif run.current_phase in (PhaseName.REPORTING, "reporting"):
+                    initial_state["h1_approved"] = True
+                    initial_state["h2_approved"] = True
+                    initial_state["h3_approved"] = True
                     initial_state["plan"] = run.validated_plan
 
                 result = graph.invoke(initial_state, config=config)

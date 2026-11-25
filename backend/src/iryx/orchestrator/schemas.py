@@ -190,3 +190,50 @@ class H2DecisionResponse(BaseModel):
     phases: list[PhaseOut] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class H3Decision(StrEnum):
+    """Arbitration decisions for Human Gate H3."""
+
+    APPROVE = "approve"
+    REJECT = "reject"
+
+
+class H3DecisionRequest(BaseModel):
+    """Payload submitted by analyst to arbitrate Human Gate H3."""
+
+    decision: H3Decision = Field(
+        ...,
+        description="Arbitration decision: 'approve' or 'reject' (mode hors-ligne).",
+    )
+    feedback: str | None = Field(
+        default=None,
+        max_length=2000,
+        description="Analyst feedback or observations.",
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class H3DecisionResponse(BaseModel):
+    """Response returned after Human Gate H3 arbitration."""
+
+    run_id: uuid.UUID
+    case_id: uuid.UUID
+    status: InvestigationStatus
+    current_phase: PhaseName | str
+    decision: H3Decision
+    message: str
+    phases: list[PhaseOut] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AnonymizedPreviewOut(BaseModel):
+    """Aperçu anonymisé de la synthèse soumise à l'envoi externe (porte H3, FR20)."""
+
+    run_id: uuid.UUID
+    case_id: uuid.UUID
+    anonymized_text: str = Field(..., description="Texte pseudonymisé proposé à l'envoi.")
+    entity_count: int = Field(default=0, description="Nombre d'entités démasquées puis pseudonymisées.")
+    has_entities: bool = Field(default=False, description="Indique si au moins une entité a été anonymisée.")

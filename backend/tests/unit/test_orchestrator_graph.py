@@ -146,7 +146,20 @@ def test_node_functions_return_expected_updates() -> None:
         "status": "completed",
         "h2_rejected": True,
     }
-    assert gate_h3_node(state_without_evidence) == {"current_phase": "gate_h3"}
+    # Gate H3 suspends when unapproved; approves/rejects advance to reporting (Story 8.2)
+    assert gate_h3_node(state_without_evidence) == {
+        "current_phase": "waiting_h3",
+        "status": "paused",
+    }
+    assert gate_h3_node({"h3_approved": True}) == {
+        "current_phase": "gate_h3",
+        "status": "running",
+        "h3_approved": True,
+    }
+    h3_rejected_res = gate_h3_node({"h3_rejected": True})
+    assert h3_rejected_res["current_phase"] == "reporting"
+    assert h3_rejected_res["status"] == "running"
+    assert h3_rejected_res["context"]["local_report_mode"] is True
     assert reporting_node(state_without_evidence) == {"current_phase": "reporting"}
 
 

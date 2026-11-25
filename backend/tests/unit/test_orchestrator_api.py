@@ -1309,3 +1309,219 @@ def test_pause_at_gate_h2_service_lifecycle(
     with pytest.raises(ValidationException) as exc_info:
         service.pause_at_gate_h2(case.id, paused_run.id)
     assert exc_info.value.code == "INVALID_STATUS_TRANSITION"
+
+
+# =========================================================================
+# Human Gate H3 Arbitration Tests (Story 8.2, FR20)
+# =========================================================================
+
+
+def _setup_paused_h3_run(db_session: Session, case_id: uuid.UUID) -> InvestigationRun:
+    """Helper creating an investigation run paused at Gate H3."""
+    now = datetime.now(UTC)
+
+    run = InvestigationRun(
+        id=uuid.uuid4(),
+        case_id=case_id,
+        status=InvestigationStatus.PAUSED,
+        current_phase=PhaseName.WAITING_H3,
+        iteration_count=0,
+        error_count=0,
+        started_at=now,
+        updated_at=now,
+    )
+    db_session.add(run)
+    db_session.flush()
+
+    phase = Phase(
+        id=uuid.uuid4(),
+        investigation_run_id=run.id,
+        phase_name=PhaseName.GATE_H3,
+        status=PhaseStatus.ACTIVE,
+        started_at=now,
+    )
+    db_session.add(phase)
+    db_session.commit()
+    return run
+
+
+def test_arbitrate_gate_h3_approve_nominal_200(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Arbitrage nominal H3 approve: HTTP 200, status running, phase reporting."""
+    case = test_setup["case"]
+    headers = test_setup["analyst_headers"]
+    run = _setup_paused_h3_run(db_session, case.id)
+
+    resp = client.post(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/gates/h3",
+        headers=headers,
+        json={"decision": "approve"},
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "running"
+    assert data["current_phase"] == "reporting"
+    assert data["decision"] == "approve"
+
+    # DB persistence check
+    refreshed_run = db_session.get(InvestigationRun, run.id)
+    assert refreshed_run.status == InvestigationStatus.RUNNING
+    assert refreshed_run.current_phase == PhaseName.REPORTING
+
+    # Phase history check: gate_h3 completed, reporting active
+    phases = refreshed_run.phases
+    gate_phase = next(p for p in phases if p.phase_name == PhaseName.GATE_H3)
+    reporting_phase = next(p for p in phases if p.phase_name == PhaseName.REPORTING)
+    assert gate_phase.status == PhaseStatus.COMPLETED
+    assert gate_phase.completed_at is not None
+    assert reporting_phase.status == PhaseStatus.ACTIVE
+
+
+def test_arbitrate_gate_h3_reject_nominal_200(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Rejet de session à la Porte H3: HTTP 200, status running, phase reporting."""
+    case = test_setup["case"]
+    headers = test_setup["analyst_headers"]
+    run = _setup_paused_h3_run(db_session, case.id)
+
+    resp = client.post(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/gates/h3",
+        headers=headers,
+        json={"decision": "reject", "feedback": "Gabarit local requis"},
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "running"
+    assert data["current_phase"] == "reporting"
+    assert data["decision"] == "reject"
+
+    refreshed_run = db_session.get(InvestigationRun, run.id)
+    assert refreshed_run.status == InvestigationStatus.RUNNING
+    assert refreshed_run.current_phase == PhaseName.REPORTING
+
+
+def test_arbitrate_gate_h3_viewer_forbidden_403(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Viewer role is forbidden from arbitrating Gate H3 (HTTP 403 Forbidden)."""
+    case = test_setup["case"]
+    headers = test_setup["viewer_headers"]
+    run = _setup_paused_h3_run(db_session, case.id)
+
+    resp = client.post(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/gates/h3",
+        headers=headers,
+        json={"decision": "approve"},
+    )
+
+    assert resp.status_code == 403
+
+
+def test_arbitrate_gate_h3_invalid_gate_state_running_400(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Arbitrage sur session non en pause H3 (status running): HTTP 400 INVALID_GATE_STATE."""
+    case = test_setup["case"]
+    headers = test_setup["analyst_headers"]
+
+    resp_start = client.post(f"/api/v1/cases/{case.id}/investigations", headers=headers)
+    assert resp_start.status_code == 201
+    run_id = resp_start.json()["id"]
+
+    resp = client.post(
+        f"/api/v1/cases/{case.id}/investigations/{run_id}/gates/h3",
+        headers=headers,
+        json={"decision": "approve"},
+    )
+
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "INVALID_GATE_STATE"
+
+
+def test_arbitrate_gate_h3_cross_case_not_found_404(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Arbitration on run belonging to another case returns HTTP 404."""
+    case = test_setup["case"]
+    case_2 = test_setup["case_2"]
+    headers = test_setup["analyst_headers"]
+    run = _setup_paused_h3_run(db_session, case.id)
+
+    resp = client.post(
+        f"/api/v1/cases/{case_2.id}/investigations/{run.id}/gates/h3",
+        headers=headers,
+        json={"decision": "approve"},
+    )
+
+    assert resp.status_code == 404
+
+
+def test_get_anonymized_preview_200(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """GET anonymized-preview retourne le texte pseudonymisé de la synthèse (porte H3)."""
+    case = test_setup["case"]
+    headers = test_setup["analyst_headers"]
+
+    for idx in range(2):
+        finding = Finding(
+            id=uuid.uuid4(),
+            case_id=case.id,
+            title=f"Finding H3 {idx + 1}",
+            status="validated",
+        )
+        db_session.add(finding)
+    db_session.commit()
+
+    resp = client.get(
+        f"/api/v1/cases/{case.id}/investigations/{uuid.uuid4()}/anonymized-preview",
+        headers=headers,
+    )
+    assert resp.status_code == 404  # run must exist for the preview endpoint
+
+    run = InvestigationRun(id=uuid.uuid4(), case_id=case.id)
+    db_session.add(run)
+    db_session.commit()
+
+    resp = client.get(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/anonymized-preview",
+        headers=headers,
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["run_id"] == str(run.id)
+    assert data["anonymized_text"]
+    assert isinstance(data["entity_count"], int)
+    assert isinstance(data["has_entities"], bool)
+
+
+def test_pause_at_gate_h3_service_lifecycle(
+    test_setup: dict[str, object], db_session: Session
+) -> None:
+    """pause_at_gate_h3 pauses running session, closes active phase, and activates gate_h3."""
+    case = test_setup["case"]
+    service = InvestigationService(db_session)
+
+    run = service.start_investigation(case.id)
+    assert run.status == InvestigationStatus.RUNNING
+
+    paused_run = service.pause_at_gate_h3(case.id, run.id)
+    assert paused_run.status == InvestigationStatus.PAUSED
+    assert paused_run.current_phase == PhaseName.WAITING_H3
+
+    # Active phase must now be gate_h3
+    active_phase = [p for p in paused_run.phases if p.status == PhaseStatus.ACTIVE]
+    assert len(active_phase) == 1
+    assert active_phase[0].phase_name == PhaseName.GATE_H3
+
+    # Attempting to pause a completed run raises ValidationException
+    paused_run.status = InvestigationStatus.COMPLETED
+    db_session.commit()
+    with pytest.raises(ValidationException) as exc_info:
+        service.pause_at_gate_h3(case.id, paused_run.id)
+    assert exc_info.value.code == "INVALID_STATUS_TRANSITION"

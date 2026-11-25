@@ -52,6 +52,7 @@ class PhaseName(StrEnum):
     WAITING_H2 = "waiting_h2"
     PSEUDONYMIZATION = "pseudonymization"
     GATE_H3 = "gate_h3"
+    WAITING_H3 = "waiting_h3"
     REPORTING = "reporting"
 
 

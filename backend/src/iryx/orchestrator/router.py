@@ -14,10 +14,13 @@ from iryx.cases.dependencies import require_case_role, verify_case_access
 from iryx.cases.models import Case
 from iryx.orchestrator.checkpointer import get_checkpointer_dependency
 from iryx.orchestrator.schemas import (
+    AnonymizedPreviewOut,
     H1DecisionRequest,
     H1DecisionResponse,
     H2DecisionRequest,
     H2DecisionResponse,
+    H3DecisionRequest,
+    H3DecisionResponse,
     InvestigationPlan,
     InvestigationRunOut,
 )
@@ -189,6 +192,67 @@ def arbitrate_gate_h2(
         decision_request=payload,
         user_id=current_user.id,
     )
+
+
+@router.post(
+    "/api/v1/cases/{case_id}/investigations/{run_id}/gates/h3",
+    response_model=H3DecisionResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Arbitrage de la porte de validation humaine H3",
+    description=(
+        "Permet à un analyste ou enquêteur d'approuver ('approve') ou de refuser ('reject') "
+        "l'envoi de la synthèse pseudonymisée vers un LLM externe à la porte H3. "
+        "L'approbation débloque l'étape de rédaction assistée par LLM externe vers le nœud "
+        "reporting ; le refus active le gabarit déterministe local sans appel LLM. "
+        "Réservé aux rôles ADMIN, INVESTIGATOR et ANALYST (interdit aux VIEWERS)."
+    ),
+)
+def arbitrate_gate_h3(
+    case_id: uuid.UUID,
+    run_id: uuid.UUID,
+    payload: H3DecisionRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    _case: Annotated[
+        Case,
+        Depends(
+            require_case_role(
+                MembershipRole.ADMIN,
+                MembershipRole.INVESTIGATOR,
+                MembershipRole.ANALYST,
+            )
+        ),
+    ],
+    db: Annotated[Session, Depends(get_db)],
+) -> H3DecisionResponse:
+    """Arbitrate the Human Gate H3 for an investigation run."""
+    service = InvestigationService(db)
+    return service.arbitrate_gate_h3(
+        case_id=case_id,
+        run_id=run_id,
+        decision_request=payload,
+        user_id=current_user.id,
+    )
+
+
+@router.get(
+    "/api/v1/cases/{case_id}/investigations/{run_id}/anonymized-preview",
+    response_model=AnonymizedPreviewOut,
+    status_code=status.HTTP_200_OK,
+    summary="Aperçu anonymisé de la synthèse avant envoi (porte H3)",
+    description=(
+        "Retourne la version intégrale pseudonymisée de la synthèse du dossier avant tout "
+        "appel vers un LLM externe, afin de la vérifier à la porte H3."
+    ),
+)
+def get_anonymized_preview(
+    case_id: uuid.UUID,
+    run_id: uuid.UUID,
+    _case: Annotated[Case, Depends(verify_case_access)],
+    db: Annotated[Session, Depends(get_db)],
+) -> AnonymizedPreviewOut:
+    """Retrieve the anonymized preview of the investigation synthesis for the run."""
+    service = InvestigationService(db)
+    return service.get_anonymized_preview(case_id=case_id, run_id=run_id)
 
 
 @router.post(
