@@ -36,9 +36,9 @@ Les trois routes d'authentification ci-dessous sont interceptées et simulées p
 | `POST /api/v1/auth/refresh` | Renouvellement silencieux du jeton d'accès via cookie httpOnly | simulée, contrat cible : auth-contrat-cible.yaml |
 | `POST /api/v1/auth/logout` | Déconnexion explicite et suppression du cookie httpOnly (Max-Age=0) | simulée, contrat cible : auth-contrat-cible.yaml |
 
-### 2.2 Référentiel des routes protégées simulées (Stories F1.3, F1.5, F1.6, F1.7, F2.1 et F2.2)
+### 2.2 Référentiel des routes protégées simulées (Stories F1.3, F1.5, F1.6, F1.7, F2.1, F2.2 et F3.1)
 
-Les routes protégées ci-dessous sont interceptées et simulées par Mock Service Worker (MSW) dans `frontend/src/test/mocks/handlers.ts` pour tester l'injection de l'en-tête `Authorization: Bearer <token>`, la détection d'expiration (HTTP 401), la pagination, la recherche, la création en modale, la consultation et l'édition du contexte, ainsi que l'évolution du statut du dossier :
+Les routes protégées ci-dessous sont interceptées et simulées par Mock Service Worker (MSW) dans `frontend/src/test/mocks/handlers.ts` pour tester l'injection de l'en-tête `Authorization: Bearer <token>`, la détection d'expiration (HTTP 401), la pagination, la recherche, la création en modale, la consultation et l'édition du contexte, l'évolution du statut du dossier, ainsi que le téléversement de preuves numériques avec suivi de progression :
 
 | Méthode et route HTTP | Description opérationnelle | Mention de statut |
 |---|---|---|
@@ -48,6 +48,7 @@ Les routes protégées ci-dessous sont interceptées et simulées par Mock Servi
 | `GET /api/v1/cases/{case_id}` | Consultation unitaire du contexte d'un dossier d'investigation (Story F2.1), requiert l'en-tête Authorization: Bearer | simulée, contrat cible : openapi.json |
 | `PATCH /api/v1/cases/{case_id}` | Mise à jour en ligne du titre et de la description d'un dossier (Story F2.1), validation Zod avant envoi, requiert l'en-tête Authorization: Bearer | simulée, contrat cible : à réaligner |
 | `PATCH /api/v1/cases/{case_id}/status` | Évolution du statut global du dossier selon la matrice de transition stricte (Story F2.2), validation Zod avant envoi, requiert l'en-tête Authorization: Bearer | simulée, contrat cible : openapi.json |
+| `POST /api/v1/cases/{case_id}/evidences` | Dépôt et téléversement de preuves numériques avec progression (Story F3.1), flux multipart, requiert l'en-tête Authorization: Bearer | simulée, contrat cible : openapi.json |
 
 #### Règle documentée pour les requêtes sans jeton (Story F1.3)
 Lorsqu'aucun jeton d'accès n'est présent en mémoire vive volatile (état initial ou purge), la requête vers un endpoint protégé est transmise sans en-tête `Authorization`. Le serveur récepteur ou l'intercepteur de simulation MSW renvoie alors un code HTTP 401, déclenchant le signal interne « jeton expiré ou absent ». Emplacement réservé pour la politique d'inactivité de l'analyste : à décider (C4).
@@ -160,6 +161,33 @@ Conformément à la spécification de la story F2.2 et au contrat cible de l'Ép
    - Accès refusé (HTTP 403 Forbidden) : simulation via `mock-forbidden-token`, `mock-viewer-token` ou `X-Simulation-Status: forbidden` pour tester le mode lecture seule ou le rejet d'habilitation.
    - Erreur serveur (HTTP 500) et panne réseau : simulation via `mock-server-error-token` ou `X-Simulation-Status: server-error`, notification explicite sans perte de saisie.
 
+### 2.9 Simulation du téléversement de preuves avec suivi de progression (Story F3.1)
+
+Conformément à la spécification de la story F3.1 et au contrat cible de l'Épic E3 (`docs/contrat/openapi.json`) :
+
+1. **Route interceptée** : `POST /api/v1/cases/{case_id}/evidences`
+   - Statut : **simulée, contrat cible : openapi.json**.
+   - Requiert l'en-tête `Authorization: Bearer <token>` en mémoire vive volatile (Story F1.3).
+   - Format de requête : `multipart/form-data` avec champ binaire obligatoire `file`.
+2. **Réponse nominale** :
+   - Code HTTP 202 Accepted.
+   - En-tête `Location: /api/v1/cases/{case_id}/evidences/{evidence_id}/ingestion-status`.
+   - Corps JSON conforme au schéma `EvidenceUploadResponse` :
+     ```json
+     {
+       "evidence_id": "00000000-0000-0000-0000-000000000001",
+       "ingestion_run_id": "00000000-0000-0000-0000-000000000002"
+     }
+     ```
+   - Bascule immédiate côté client au statut « en attente d'ingestion » affiché tel quel, sans interrogation Celery dans cette story (réservée à F3.2).
+3. **Scénarios simulés par MSW** :
+   - Code HTTP 401 Unauthorized : en-tête `Authorization` absent ou jeton expiré (déclenche le signal interne).
+   - Code HTTP 403 Forbidden : simulation via jeton `mock-forbidden-token`, dossier `case-forbidden` ou en-tête `X-Simulation-Evidence: forbidden` pour tester l'état d'accès non autorisé.
+   - Code HTTP 404 Not Found : simulation via dossier `case-not-found` ou dossier inexistant.
+   - Code HTTP 413 Payload Too Large : simulation via `case-upload-413` ou en-tête `X-Simulation-Evidence: payload-too-large` pour tester le rejet serveur lié au plafond volumétrique (paramètre C3 « à caler »).
+   - Code HTTP 400 Bad Request : simulation via fichier vide (0 octet) ou en-tête `X-Simulation-Evidence: empty-file`.
+   - Code HTTP 500 Server Error : simulation via `case-upload-500` ou en-tête `X-Simulation-Evidence: server-error` pour tester l'état « ÉCHEC DE TRANSFERT » et le bouton « Réessayer ».
+
 ---
 
 ## 3. Inventaire des stories d'intégration dépendantes du contrat
@@ -224,7 +252,7 @@ Pour chaque lot fonctionnel, le remplacement de la simulation par la connectivit
 |---|---|---|---|
 | F1 : Socle, connexion et dossiers | E1 (Auth), E2 (Cases) | Brouillon openapi.json (routes auth en attente) | Simulation active (auth-contrat-cible.yaml) |
 | F2 : Contexte du dossier | E2 (Cases) | Brouillon openapi.json (PATCH à réaligner) | Simulation active (openapi.json + à réaligner) |
-| F3 : Registre des preuves | E3 (Evidence, Ingestion) | En attente | En attente de contrat / Simulation planifiée |
+| F3 : Registre des preuves | E3 (Evidence, Ingestion) | Brouillon openapi.json | Simulation active (POST openapi.json) |
 | F4 : Plan, agents, résultats, revues | E4, E5, E6, E7 | En attente | En attente de contrat / Simulation planifiée |
 | F5 : Rapports et clôture | E8 (Reports), E9 (Déploiement) | En attente | En attente de contrat / Simulation planifiée |
 

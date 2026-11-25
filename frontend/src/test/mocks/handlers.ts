@@ -1051,4 +1051,116 @@ export const handlers = [
 
     return HttpResponse.json(updatedDetail, { status: 200 })
   }),
+
+  /**
+   * Téléversement d'une preuve numérique (Story F3.1).
+   * Route cible : POST /api/v1/cases/:caseId/evidences
+   * Statut : simulée, contrat cible : openapi.json
+   */
+  http.post('*/api/v1/cases/:caseId/evidences', async ({ params, request }) => {
+    const authHeader = request.headers.get('Authorization')
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    const token = authHeader.replace('Bearer ', '').trim()
+    if (!token || token === 'expired-token') {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    const caseId = String(params.caseId)
+    const simHeader =
+      request.headers.get('X-Simulation-Evidence') || request.headers.get('X-Simulation-Case')
+
+    // Simulation accès refusé 403 Forbidden
+    if (
+      token === 'mock-forbidden-token' ||
+      simHeader === 'forbidden' ||
+      caseId === 'case-forbidden'
+    ) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Vous n'avez pas accès à ce dossier." },
+        { status: 403 },
+      )
+    }
+
+    // Simulation erreur serveur 500
+    if (
+      token === 'mock-server-error-token' ||
+      simHeader === 'server-error' ||
+      simHeader === '500' ||
+      caseId === 'case-upload-500' ||
+      caseId === 'case-500'
+    ) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Erreur interne du serveur lors du téléversement de la preuve.' },
+        { status: 500 },
+      )
+    }
+
+    // Simulation rejet plafond volumétrique 413 Payload Too Large (C3)
+    if (simHeader === 'payload-too-large' || simHeader === '413' || caseId === 'case-upload-413') {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Fichier volumineux : dépassement du plafond configuré par le serveur.' },
+        { status: 413 },
+      )
+    }
+
+    // Simulation fichier vide 400 Bad Request
+    if (simHeader === 'empty-file' || simHeader === '400') {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Le fichier de preuve est vide (0 octet).' },
+        { status: 400 },
+      )
+    }
+
+    // Dossier introuvable 404 Not Found
+    const found = MOCK_CASES.find((c) => c.id === caseId)
+    if (!found && caseId === 'case-not-found') {
+      return HttpResponse.json<ErrorResponse>({ detail: 'Dossier introuvable.' }, { status: 404 })
+    }
+
+    try {
+      const formData = await request.formData()
+      const file = formData.get('file')
+      if (file && typeof file === 'object' && 'name' in file) {
+        const fileSize = (file as File).size
+        if (fileSize === 0) {
+          return HttpResponse.json<ErrorResponse>(
+            { detail: 'Le fichier de preuve est vide (0 octet).' },
+            { status: 400 },
+          )
+        }
+      }
+    } catch {
+      // Ignoré si le parsing multipart échoue en environnement de test
+    }
+
+    const evidenceId = `evi-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+    const ingestionRunId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+
+    if (found) {
+      found.evidence_count = (found.evidence_count || 0) + 1
+    }
+
+    return HttpResponse.json(
+      {
+        evidence_id: evidenceId,
+        ingestion_run_id: ingestionRunId,
+      },
+      {
+        status: 202,
+        headers: {
+          Location: `/api/v1/cases/${caseId}/evidences/${evidenceId}/ingestion-status`,
+        },
+      },
+    )
+  }),
 ]
