@@ -22,16 +22,12 @@ Validates:
 """
 
 import uuid
-from collections.abc import Generator
 from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.orm import Session
 
-from iryx.api.dependencies import get_db
 from iryx.auth.models import MembershipRole, User
 from iryx.auth.schemas import UserCreate
 from iryx.auth.services import UserService
@@ -39,9 +35,7 @@ from iryx.cases.models import Case, CaseStatus
 from iryx.cases.services import CaseService
 from iryx.core.exceptions import ValidationException
 from iryx.core.security import create_access_token
-from iryx.db.base import Base
 from iryx.evidence.models import Evidence
-from iryx.main import app
 from iryx.orchestrator.models import (
     InvestigationRun,
     InvestigationStatus,
@@ -51,38 +45,6 @@ from iryx.orchestrator.models import (
 )
 from iryx.orchestrator.services import InvestigationService
 from iryx.organizations.services import OrganizationService
-
-
-@pytest.fixture
-def db_session() -> Generator[Session, None, None]:
-    """Provide an in-memory SQLite database session isolated for API testing."""
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(bind=engine)
-    TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-    session = TestingSessionLocal()
-
-    def override_get_db() -> Generator[Session, None, None]:
-        yield session
-
-    app.dependency_overrides[get_db] = override_get_db
-
-    try:
-        yield session
-    finally:
-        app.dependency_overrides.pop(get_db, None)
-        session.close()
-        Base.metadata.drop_all(bind=engine)
-
-
-@pytest.fixture
-def client(db_session: Session) -> Generator[TestClient, None, None]:
-    """Provide a TestClient bound to the isolated session."""
-    with TestClient(app) as test_client:
-        yield test_client
 
 
 def auth_header(user: User) -> dict[str, str]:

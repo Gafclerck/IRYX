@@ -106,7 +106,7 @@ class TimeoutTool(BaseTool):
     name = "parse_text_logs"
     version = "1.0.0"
     description = "Tool intentionally exceeding timeout"
-    timeout_seconds = 1  # 1 second timeout
+    timeout_seconds = 0.05  # 50ms fast timeout for testing
     parameters_schema = SimpleInputSchema
 
     async def execute(
@@ -114,8 +114,8 @@ class TimeoutTool(BaseTool):
         params: SimpleInputSchema,
         context: ToolExecutionContext,
     ) -> ToolExecutionResult:
-        # Sleep for 5 seconds to guarantee timeout
-        await asyncio.sleep(5)
+        # Sleep for 500ms to guarantee timeout
+        await asyncio.sleep(0.5)
         return ToolExecutionResult(raw_output={"done": True})
 
 
@@ -318,8 +318,8 @@ async def test_subprocess_timeout() -> None:
 
     with pytest.raises(ToolExecutionTimeoutException):
         await run_command_safely(
-            [python_binary, "-c", "import time; time.sleep(5)"],
-            timeout=0.5,
+            [python_binary, "-c", "import time; time.sleep(2)"],
+            timeout=0.1,
         )
 
 

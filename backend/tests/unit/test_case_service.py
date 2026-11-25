@@ -1,12 +1,9 @@
 """Unit tests for CaseService business logic and status transition matrix."""
 
 import uuid
-from collections.abc import Generator
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.orm import Session
 
 from iryx.auth.models import Membership, MembershipRole, Organization, User
 from iryx.auth.schemas import UserCreate
@@ -20,25 +17,6 @@ from iryx.core.exceptions import (
     OrganizationNotFoundException,
     ValidationException,
 )
-from iryx.db.base import Base
-
-
-@pytest.fixture
-def db_session() -> Generator[Session, None, None]:
-    """Provide an in-memory SQLite database session isolated for unit testing."""
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(bind=engine)
-    TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-    session = TestingSessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-        Base.metadata.drop_all(bind=engine)
 
 
 @pytest.fixture
