@@ -6,6 +6,7 @@ import type {
   ErrorResponse,
 } from '../../api/auth-types'
 import type { EvidenceRead } from '../../features/evidence/types'
+import type { components } from '../../api/schema'
 
 /**
  * Données simulées d'investigation pour le contrat cible E2 (Story F1.6 et F2.1).
@@ -506,6 +507,97 @@ export function getMockEvidenceDetail(caseId: string, evidenceId: string) {
 }
 
 /**
+ * Données simulées de planification pour la Story F4.1.
+ * Types strictement dérivés du contrat cible (openapi.json) : aucun champ d'agent
+ * assigné n'existe dans InvestigationPlanStep, il reste « à réaligner » côté UI.
+ * Statut : simulée, contrat cible : openapi.json (à réaligner pour l'agent assigné).
+ */
+export const MOCK_PLAN_RUN_ID = 'run-plan-001'
+
+let mockPlanAttempts = 0
+
+/** Réinitialise le compteur de scrutation du plan entre deux scénarios de test. */
+export function resetMockPlanPolling() {
+  mockPlanAttempts = 0
+}
+
+const MOCK_PLAN_STEPS: components['schemas']['InvestigationPlanStep'][] = [
+  {
+    step_id: 1,
+    tool_name: 'Analyseur EVTX',
+    target_evidence_id: 'evi-001',
+    rationale: 'Extraire les événements d’authentification et les sessions suspectes.',
+    is_blocking: true,
+    continue_on_error: false,
+  },
+  {
+    step_id: 2,
+    tool_name: 'regipy',
+    target_evidence_id: 'evi-004',
+    rationale: 'Analyser les ruches de registre à la recherche de persistance.',
+    is_blocking: false,
+    continue_on_error: true,
+  },
+  {
+    step_id: 3,
+    tool_name: 'Volatility 3',
+    target_evidence_id: 'evi-002',
+    rationale: 'Rechercher les artefacts d’exécution dans l’image mémoire.',
+    is_blocking: false,
+    continue_on_error: true,
+  },
+]
+
+function buildMockPlan(steps = MOCK_PLAN_STEPS): components['schemas']['InvestigationPlan'] {
+  return {
+    steps,
+    summary: 'Trois étapes forensiques permettent d’établir la chronologie de la compromission.',
+  }
+}
+
+function buildMockInvestigationRun(caseId: string, simulation: string | null) {
+  const isUnknown = caseId === 'case-plan-unknown' || simulation === 'unknown-status'
+  const isValidated = caseId === 'case-plan-validated' || simulation === 'validated'
+
+  return {
+    id: MOCK_PLAN_RUN_ID,
+    case_id: caseId,
+    // Un statut non répertorié est délibérément restitué brut pour éprouver la robustesse.
+    status: isUnknown ? 'unrecognized_state_code' : isValidated ? 'completed' : 'running',
+    current_phase: isUnknown ? 'unrecognized_phase_code' : 'planning',
+    validated_plan: isValidated ? {} : null,
+    iteration_count: 0,
+    error_count: 0,
+    started_at: '2026-11-20T09:00:00Z',
+    updated_at: '2026-11-20T09:05:00Z',
+  }
+}
+
+function isPlanForbidden(request: Request, caseId: string): boolean {
+  const authHeader = request.headers.get('Authorization')
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.replace('Bearer ', '').trim() : ''
+  const simulation = request.headers.get('X-Simulation-Plan')
+  return (
+    token === 'mock-forbidden-token' ||
+    simulation === 'forbidden' ||
+    caseId === 'case-forbidden' ||
+    caseId === 'case-plan-forbidden'
+  )
+}
+
+function isPlanServerError(request: Request, caseId: string): boolean {
+  const authHeader = request.headers.get('Authorization')
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.replace('Bearer ', '').trim() : ''
+  const simulation = request.headers.get('X-Simulation-Plan')
+  return (
+    token === 'mock-server-error-token' ||
+    simulation === 'server-error' ||
+    caseId === 'case-error' ||
+    caseId === 'case-plan-error'
+  )
+}
+
+/**
  * Handlers MSW simulant les routes réseau de l'application IRYX.
  *
  * Routes d'authentification simulées d'après le contrat cible (Stories F1.2 et F1.4) :
@@ -899,6 +991,105 @@ export const handlers = [
     MOCK_CASES.unshift(newCase)
 
     return HttpResponse.json(newCase, { status: 201 })
+  }),
+
+  /**
+   * Liste des sessions d'investigation du dossier (Story F4.1).
+   * Route cible : GET /api/v1/cases/{case_id}/investigations
+   * Statut : simulée, contrat cible : openapi.json
+   */
+  http.get('*/api/v1/cases/:caseId/investigations', ({ params, request }) => {
+    const authHeader = request.headers.get('Authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    const caseId = String(params.caseId)
+    const simulation = request.headers.get('X-Simulation-Plan')
+
+    if (isPlanForbidden(request, caseId)) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Vous n'avez pas accès à ce dossier." },
+        { status: 403 },
+      )
+    }
+
+    if (isPlanServerError(request, caseId)) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Erreur interne lors de la récupération des investigations.' },
+        { status: 500 },
+      )
+    }
+
+    // Aucune session : le Planner n'a pas encore démarré (scrutation selon Retry-After).
+    if (caseId === 'case-plan-pending') {
+      return HttpResponse.json([], { headers: { 'Retry-After': '3' } })
+    }
+
+    return HttpResponse.json([buildMockInvestigationRun(caseId, simulation)], {
+      headers: { 'Retry-After': '3' },
+    })
+  }),
+
+  /**
+   * Plan proposé par le Planner pour une session d'investigation (Story F4.1).
+   * Route cible : GET /api/v1/cases/{case_id}/investigations/{run_id}/plan
+   * Statut : simulée, contrat cible : openapi.json
+   *  - 404 PLAN_NOT_FOUND : élaboration asynchrone en cours, Retry-After: 3 (ADR-0008) ;
+   *  - état vide : steps [] (écart volontaire à minItems:1 du contrat, à réaligner avec E5) ;
+   *  - scénarios pilotés par l'en-tête X-Simulation-Plan ou l'identifiant du dossier.
+   */
+  http.get('*/api/v1/cases/:caseId/investigations/:runId/plan', ({ params, request }) => {
+    const authHeader = request.headers.get('Authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    const caseId = String(params.caseId)
+    const simulation = request.headers.get('X-Simulation-Plan')
+
+    if (isPlanForbidden(request, caseId)) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Vous n'avez pas accès à ce plan." },
+        { status: 403 },
+      )
+    }
+
+    if (isPlanServerError(request, caseId)) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Échec de l’agent Planner lors de l’élaboration du plan.' },
+        { status: 500 },
+      )
+    }
+
+    // Coupure de transport simulée : déclenche le recul exponentiel puis DP-05.
+    if (simulation === 'network-error') {
+      return HttpResponse.error()
+    }
+
+    const isPlanning = caseId === 'case-planning' || simulation === 'planning'
+    if (isPlanning) {
+      mockPlanAttempts += 1
+      if (mockPlanAttempts === 1) {
+        return HttpResponse.json(
+          {
+            detail: 'Le plan est en cours d’élaboration par le Planner.',
+            code: 'PLAN_NOT_FOUND',
+          },
+          { status: 404, headers: { 'Retry-After': '3' } },
+        )
+      }
+    }
+
+    const isEmpty = caseId === 'case-plan-empty' || simulation === 'empty'
+    const plan = buildMockPlan(isEmpty ? [] : MOCK_PLAN_STEPS)
+    return HttpResponse.json(plan, { headers: { 'Retry-After': '3' } })
   }),
 
   /**

@@ -4,6 +4,7 @@ import { NotFoundPage } from '../pages/NotFoundPage'
 import { CasesPage } from '../pages/CasesPage'
 import { CaseContextPage } from '../pages/CaseContextPage'
 import { EvidencePage } from '../pages/EvidencePage'
+import { PlanPage } from '../pages/PlanPage'
 import { AuthGuard } from '../features/auth/components/AuthGuard'
 import { AuthenticatedLayout } from '../components/layout/AuthenticatedLayout'
 
@@ -38,6 +39,10 @@ export const router = createBrowserRouter([
       {
         path: '/cases/:caseId/evidence/:evidenceId',
         element: <EvidencePage />,
+      },
+      {
+        path: '/cases/:caseId/plan',
+        element: <PlanPage />,
       },
     ],
   },
