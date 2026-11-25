@@ -1,5 +1,11 @@
 """IRYX Investigation Orchestration Package."""
 
+from iryx.orchestrator.analyst import (
+    AnalystAgent,
+    AnalystOutput,
+    AnalystResult,
+    ProposedFinding,
+)
 from iryx.orchestrator.checkpointer import (
     get_checkpointer,
     get_checkpointer_dependency,
@@ -26,6 +32,9 @@ from iryx.orchestrator.services import InvestigationService
 from iryx.orchestrator.state import InvestigationState
 
 __all__ = [
+    "AnalystAgent",
+    "AnalystOutput",
+    "AnalystResult",
     "ExecutorAgent",
     "ExecutorResult",
     "InvestigationPlan",
@@ -42,6 +51,7 @@ __all__ = [
     "PhaseStatus",
     "PlannerAgent",
     "PlannerResult",
+    "ProposedFinding",
     "build_investigation_graph",
     "get_checkpointer",
     "get_checkpointer_dependency",

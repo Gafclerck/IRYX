@@ -268,8 +268,67 @@ def route_executor(state: InvestigationState) -> str:
 
 
 def analyst_node(state: InvestigationState) -> dict[str, Any]:
-    """Analyst phase: contextual interpretation of forensic observations."""
-    return {"current_phase": "analyst"}
+    """Analyst phase: contextual interpretation of forensic observations (Story 6.2, FR22)."""
+    from iryx.orchestrator.analyst import AnalystAgent
+
+    runtime_ctx = get_runtime_context()
+    context = dict(state.get("context") or {})
+    llm_client = context.get("llm_client") or runtime_ctx.get("llm_client")
+    db = context.get("db") or runtime_ctx.get("db")
+
+    agent = AnalystAgent(
+        llm_client=llm_client,
+        db=db,
+    )
+
+    case_id = state.get("case_id")
+    run_id = state.get("run_id")
+    observations = state.get("observations") or context.get("observations")
+    tool_executions = state.get("tool_executions") or context.get("tool_executions")
+    incident_desc = context.get("incident_description") or state.get("incident_description") or ""
+
+    result = agent.analyze_sync(
+        observations=observations,
+        tool_executions=tool_executions,
+        case_id=case_id,
+        run_id=run_id,
+        incident_description=incident_desc,
+        db=db,
+    )
+
+    next_phase = "verifier" if result.status == "completed" else "analyst"
+    next_status = "running" if result.status == "completed" else result.status
+
+    update: dict[str, Any] = {
+        "current_phase": next_phase,
+        "status": next_status,
+    }
+
+    if result.findings:
+        findings_dicts = [
+            f.model_dump(mode="json") if hasattr(f, "model_dump") else dict(f)
+            for f in result.findings
+        ]
+        update["findings"] = findings_dicts
+
+    if result.notification:
+        updated_context = dict(context)
+        updated_context["notification"] = result.notification
+        update["context"] = _sanitize_context(updated_context)
+    else:
+        update["context"] = _sanitize_context(context)
+
+    if result.errors:
+        update["errors"] = result.errors
+
+    return update
+
+
+def route_analyst(state: InvestigationState) -> str:
+    """Conditional edge from analyst: route to verifier if running, else END if paused or failed."""
+    if state.get("status") in ("paused", "failed"):
+        return END
+    return "verifier"
 
 
 def verifier_node(state: InvestigationState) -> dict[str, Any]:
@@ -335,7 +394,14 @@ def build_investigation_graph(checkpointer: Any | None = None) -> CompiledStateG
             END: END,
         },
     )
-    workflow.add_edge("analyst", "verifier")
+    workflow.add_conditional_edges(
+        "analyst",
+        route_analyst,
+        {
+            "verifier": "verifier",
+            END: END,
+        },
+    )
     workflow.add_edge("verifier", "gate_h2")
     workflow.add_edge("gate_h2", "gate_h3")
     workflow.add_edge("gate_h3", "reporting")

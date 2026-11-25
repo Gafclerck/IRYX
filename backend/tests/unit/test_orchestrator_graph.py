@@ -20,6 +20,7 @@ from iryx.orchestrator.graph import (
     gate_h3_node,
     planner_node,
     reporting_node,
+    route_analyst,
     route_executor,
     route_gate_h1,
     route_planner,
@@ -118,8 +119,13 @@ def test_node_functions_return_expected_updates() -> None:
     assert executor_res["status"] == "failed"
     assert len(executor_res["errors"]) >= 1
 
+    # Analyst node with no observations transitions to verifier
+    analyst_res = analyst_node(state_without_evidence)
+    assert analyst_res["current_phase"] == "verifier"
+    assert analyst_res["status"] == "running"
+    assert "notification" in analyst_res.get("context", {})
+
     # Other nodes
-    assert analyst_node(state_without_evidence) == {"current_phase": "analyst"}
     assert verifier_node(state_without_evidence) == {"current_phase": "verifier"}
     assert gate_h2_node(state_without_evidence) == {"current_phase": "gate_h2"}
     assert gate_h3_node(state_without_evidence) == {"current_phase": "gate_h3"}
@@ -271,6 +277,100 @@ def test_route_executor_conditional_edge() -> None:
     assert route_executor({"status": "completed"}) == "analyst"
     assert route_executor({"status": "paused"}) == END
     assert route_executor({"status": "failed"}) == END
+
+
+def test_route_analyst_conditional_edge() -> None:
+    """Verify route_analyst routes to verifier when running, and END when paused or failed."""
+    assert route_analyst({"status": "running"}) == "verifier"
+    assert route_analyst({"status": "completed"}) == "verifier"
+    assert route_analyst({"status": "paused"}) == END
+    assert route_analyst({"status": "failed"}) == END
+    assert route_analyst({}) == "verifier"
+
+
+def test_analyst_node_with_observations_and_mock_llm() -> None:
+    """Verify analyst_node parses observations, invokes AnalystAgent, and updates findings."""
+    obs_id = str(uuid.uuid4())
+    tool_id = str(uuid.uuid4())
+    mock_llm = MagicMock(spec=UnifiedLLMClient)
+    mock_llm.complete = AsyncMock(
+        return_value=LLMResponse(
+            content=json.dumps(
+                {
+                    "summary": "Constat généré avec succès.",
+                    "findings": [
+                        {
+                            "title": "Exécution d'outil suspect",
+                            "severity": "high",
+                            "confidence": "high",
+                            "finding_type": "fact",
+                            "observation_refs": [obs_id],
+                            "tool_execution_refs": [tool_id],
+                        }
+                    ],
+                }
+            ),
+            role="assistant",
+            model="mock-model",
+        )
+    )
+
+    state: InvestigationState = {
+        "case_id": str(uuid.uuid4()),
+        "run_id": str(uuid.uuid4()),
+        "observations": [
+            {
+                "id": obs_id,
+                "tool_name": "parse_evtx",
+                "tool_execution_id": tool_id,
+                "normalized_content": {"event_id": 4688},
+            }
+        ],
+        "context": {"llm_client": mock_llm},
+    }
+
+    result = analyst_node(state)
+    assert result["current_phase"] == "verifier"
+    assert result["status"] == "running"
+    assert "findings" in result
+    assert len(result["findings"]) == 1
+    assert result["findings"][0]["title"] == "Exécution d'outil suspect"
+    assert result["findings"][0]["severity"] == "high"
+    assert result["findings"][0]["observation_refs"] == [obs_id]
+
+
+def test_analyst_node_failure_propagates_error() -> None:
+    """Verify analyst_node sets failed status and records errors on persistent failure."""
+    obs_id = str(uuid.uuid4())
+    tool_id = str(uuid.uuid4())
+    mock_llm = MagicMock(spec=UnifiedLLMClient)
+    mock_llm.complete = AsyncMock(
+        side_effect=[
+            LLMResponse(content="bad 1", role="assistant", model="m"),
+            LLMResponse(content="bad 2", role="assistant", model="m"),
+            LLMResponse(content="bad 3", role="assistant", model="m"),
+        ]
+    )
+
+    state: InvestigationState = {
+        "case_id": str(uuid.uuid4()),
+        "run_id": str(uuid.uuid4()),
+        "observations": [
+            {
+                "id": obs_id,
+                "tool_name": "parse_evtx",
+                "tool_execution_id": tool_id,
+                "normalized_content": {},
+            }
+        ],
+        "context": {"llm_client": mock_llm},
+    }
+
+    result = analyst_node(state)
+    assert result["current_phase"] == "analyst"
+    assert result["status"] == "failed"
+    assert len(result["errors"]) >= 1
+    assert "findings" not in result or len(result.get("findings", [])) == 0
 
 
 def test_graph_execution_halts_when_no_sealed_evidence() -> None:
