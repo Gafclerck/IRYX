@@ -8,11 +8,11 @@
 
 project: IRYX-Frontend
 tracking_system: manual
-status: à faire
+status: en cours
 development_status:
-  epic-f1: à faire
-  F1.1: à faire
-  F1.2: à faire
+  epic-f1: en cours
+  F1.1: fait
+  F1.2: fait
   F1.3: à faire
   F1.4: à faire
   F1.5: à faire
