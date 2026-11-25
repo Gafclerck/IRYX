@@ -2,18 +2,46 @@
 title: 'Story 8.1 : Module de pseudonymisation déterministe Microsoft Presidio (FR25, D-19, NFR-SEC-07)'
 type: 'feature'
 created: '2026-11-25'
-status: 'ready-for-dev'
+status: 'done'
 baseline_commit: '1b28f0ac054540689af84bac2cdeeb243e8037e9'
-baseline_revision: '1b28f0ac054540689af84bac2cdeeb243e8037e9'
+baseline_revision: '8bfe83c68dac58b90705d677a68f7d6b9d709a7d'
 route: 'dispatch'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/planning-artifacts/architecture.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-8-context.md'
   - '{project-root}/_bmad-output/planning-artifacts/epics.md'
 warnings: []
-deferred: []
+deferred:
+  - summary: >-
+      Synchroniser le statut de la story dans sprint-status.yaml
+    evidence: |-
+      La spec passe en in-review mais sprint-status.yaml reste en in-progress ; ce fichier est piloté par le workflow de planification de sprint, pas par build-auto.
+    location: >-
+      _bmad-output/implementation-artifacts/sprint-status.yaml:92
+    severity: low
+  - summary: >-
+      Protéger le magasin et le service contre les accès concurrents
+    evidence: |-
+      Aucun appelant concurrent n'est démontré dans cette story ; deux pseudonymisations simultanées sur la même instance établiraient une éventuelle perte de correspondances.
+    location: >-
+      backend/src/iryx/reporting/pseudonymizer.py:410
+    severity: medium (unverified)
+  - summary: >-
+      Prévoir une rotation des clés et un re-chiffrement des jetons
+    evidence: |-
+      Le contrat gèle une clé dérivée de secret_key et case_id ; aucune exigence de rotation n'est formulée et aucun scénario de rotation n'est démontré.
+    location: >-
+      backend/src/iryx/reporting/pseudonymizer.py:180
+    severity: medium
+  - summary: >-
+      Vérifier l'API Presidio avec la version plancher 2.2.35
+    evidence: |-
+      Les versions installées sont 2.2.366 ; exécuter add_anonymizer et anonymize(merge_entities_with_spaces=...) avec presidio-anonymizer==2.2.35 confirmerait ou infirmerait l'écart signalé.
+    location: >-
+      backend/pyproject.toml:35
+    severity: medium (unverified)
 ---
 
 <intent-contract>
@@ -68,9 +96,9 @@ deferred: []
 ## Tasks & Acceptance
 
 **Execution:**
-- `backend/src/iryx/reporting/__init__.py` -- Créer le package et exporter les classes publiques -- Point d'entrée stable pour les stories 8.2 à 8.5.
-- `backend/src/iryx/reporting/pseudonymizer.py` -- Implémenter `PseudonymStoreError`, `CasePseudonymStore` (JSON sérialisé puis chiffré par `Fernet`, clé = SHA-256 de `secret_key`/`case_id`, import/export du jeton, exceptions contrôlées) et `DeterministicPseudonymizer` (quatre `PatternRecognizer` : `IP_ADDRESS`, `HOSTNAME`, `USER_ACCOUNT`, `EMAIL_ADDRESS`; moteur `no_op`; opérateur `pseudonymize` résolvant chaque valeur via le magasin; `pseudonymize()` et `depseudonymize()` prenant un `case_id`) -- Cœur métier FR25 / D-19, sans ORM ni migration.
-- `backend/tests/unit/test_pseudonymizer.py` -- Tester chaque scénario de la matrice I/O, le déterminisme, l'isolation, le round-trip chiffré, la dé-pseudonymisation et le jeton corrompu -- Non-régression et preuve de non-divulgation.
+- [x] `backend/src/iryx/reporting/__init__.py` -- Créer le package et exporter les classes publiques -- Point d'entrée stable pour les stories 8.2 à 8.5.
+- [x] `backend/src/iryx/reporting/pseudonymizer.py` -- Implémenter `PseudonymStoreError`, `CasePseudonymStore` (JSON sérialisé puis chiffré par `Fernet`, clé = SHA-256 de `secret_key`/`case_id`, import/export du jeton, exceptions contrôlées) et `DeterministicPseudonymizer` (quatre `PatternRecognizer` : `IP_ADDRESS`, `HOSTNAME`, `USER_ACCOUNT`, `EMAIL_ADDRESS`; moteur `no_op`; opérateur `pseudonymize` résolvant chaque valeur via le magasin; `pseudonymize()` et `depseudonymize()` prenant un `case_id`) -- Cœur métier FR25 / D-19, sans ORM ni migration.
+- [x] `backend/tests/unit/test_pseudonymizer.py` -- Tester chaque scénario de la matrice I/O, le déterminisme, l'isolation, le round-trip chiffré, la dé-pseudonymisation et le jeton corrompu -- Non-régression et preuve de non-divulgation.
 
 **Acceptance Criteria:**
 - Given une requête `PseudonymizeRequest` valide, when `pseudonymize()` est appelée, then le résultat est un `PseudonymizeResult` typé dont chaque `DetectedEntityInfo` contient le type, la position, le score et le pseudonyme, jamais la valeur sensible d'origine.
@@ -81,6 +109,32 @@ deferred: []
 ## Spec Change Log
 
 ## Review Triage Log
+
+### 2026-11-25 — Review pass
+- verdicts: 22 findings — high 0, medium 9, low 7, false 2, maybe-false 4
+- findings:
+  - `[low]` `[defer]` Divergence de surface workflow : `sprint-status.yaml` reste `in-progress` et la spec porte `in-review` — déjà consigné dans `deferred` ; ce fichier est piloté par sprint-planning, pas par build-auto.
+  - `[false]` `[reject]` Divergence de surface produit : aucune modification H3/LLM/logs — le contrat (Approach) limite explicitement cette story au composant `iryx.reporting.pseudonymizer` ; l'intégration H3 relève des stories suivantes, donc ce n'est pas un défaut de ce changement.
+  - `[medium]` `[patch]` Liste `entities` non prise en charge → Presidio reçoit `[]` et analyse tous les détecteurs — vérifié sur la signature brute et sur `PseudonymizeRequest` : validation ajoutée levant `ValueError` avec les types inconnus, test dédié.
+  - `[medium]` `[patch]` `register_store()` et `store=` acceptent une table chiffrée avec une clé secrète différente — vérifié : comparaison de la clé dérivée `_key` ajoutée et test `test_store_with_foreign_secret_is_rejected`.
+  - `[medium]` `[patch]` `_read_state()` accepte une table sémantiquement invalide (pseudonymes dupliqués, formats incorrects, chaînes vides) — vérifié : validation ajoutée et test avec un jeton chiffré valide contenant un doublon.
+  - `[low]` `[patch]` Aucun test de rejet d'un jeton exporté chargé dans un autre dossier — test `test_cross_case_token_is_rejected` ajouté.
+  - `[low]` `[patch]` Aucun test d'idempotence malgré les lookaheads négatifs des motifs — test `test_pseudonymization_is_idempotent` ajouté.
+  - `[maybe-false]` `[defer]` État `_stores`/`_token` non synchronisé — aucun appelant concurrent n'est démontré ; il faudrait un test de concurrence ou un usage réel avec deux pseudonymisations simultanées sur la même instance pour confirmer la perte de correspondances.
+  - `[medium]` `[defer]` Aucune rotation de clé ni re-chiffrement des jetons — le contrat gèle la dérivation depuis `secret_key` et `case_id` et aucune exigence de rotation n'est formulée ; consigné dans `deferred`.
+  - `[low]` `[reject]` Recalcul des compteurs sur toute la table et rechiffrement complet à chaque insertion (O(N²)) — le correctif exigerait un cache incrémental ou un batch ; improbable aux tailles de dossier courantes, non rentable ici.
+  - `[low]` `[patch]` `export_token()` modifiait l'état canonique sur un magasin neuf — vérifié : `_encrypt_state()` sans effet de bord ajouté et test existant conservé.
+  - `[low]` `[reject]` Contradiction de l'acceptation « aucun pseudonyme d'un dossier n'est réutilisable dans l'autre » — le contrat figé définit l'isolation comme l'absence de partage de table, pas l'unicité des étiquettes ; la règle de triage interdit de modifier la spec pour corriger ce libellé.
+  - `[low]` `[reject]` `get_store()` conserve toutes les tables sans éviction — le correctif ajouterait une API publique de nettoyage ; aucun besoin n'est démontré pour cette story.
+  - `[medium]` `[patch]` Test de restauration trop faible : passe même si `register_store()` est neutralisé — finding pré-vérifié par le layer ; test renforcé avec une seconde IP et l'ordre des pseudonymes (`IP_INTERNAL_1` puis `IP_INTERNAL_2`).
+  - `[medium]` `[patch]` Filtre `entities` de la signature texte brut non testé — finding pré-vérifié par le layer ; test `test_raw_text_entity_filter_is_normalized` ajouté.
+  - `[medium]` `[patch]` Garde inter-dossiers de `depseudonymize(store=...)` non testée — finding pré-vérifié par le layer ; test `test_depseudonymize_rejects_foreign_store` ajouté.
+  - `[medium]` `[patch]` Résolution de `Settings.secret_key` par les constructeurs sans argument non testée — finding pré-vérifié par le layer ; test `test_default_key_comes_from_settings` ajouté.
+  - `[medium]` `[patch]` Filtre `entities` sans type pris en charge (même root cause que la troisième entrée) — patch groupé avec elle, même validation ajoutée.
+  - `[maybe-false]` `[defer]` Deux appels concurrents peuvent écraser une correspondance (même root cause que la huitième entrée) — reporté avec elle, aucun appelant concurrent démontré.
+  - `[maybe-false]` `[defer]` `AnonymizerEngine.add_anonymizer()` absent à la version plancher `2.2.35` — version installée : `2.2.366`, où la méthode existe ; il faudrait installer `2.2.35` et appeler la méthode pour trancher.
+  - `[maybe-false]` `[defer]` `anonymize(merge_entities_with_spaces=...)` absent à `2.2.35` → `TypeError` (même cause que la entrée précédente) — même vérification requise sur la version plancher.
+  - `[false]` `[reject]` Variable `SECRET_KEY` absente → `KeyError` à l'import du module de test — `backend/tests/conftest.py:16` fixe la variable avant la collecte ; les 25 tests du module passent.
 
 ## Design Notes
 
@@ -117,3 +171,21 @@ Blocking condition: dirty working tree
 Nouvelle tentative « continue la story 8.1 » : le contrôle de cohérence version-control échoue. Après `git add --refresh -- .`, l'arbre de travail reste non propre sur `main` (sprint-status.yaml, pyproject.toml et uv.lock modifiés ; epic-8-context.md, la spec 8.1 et backend/src/iryx/reporting/ non suivis). Aucune planification ni implémentation n'a été reprise.
 
 Blocage levé : l'utilisateur a demandé le commit (`a0730b5`), l'arbre est de nouveau propre et la spec repasse en `draft` pour reprise de la planification.
+
+### Exécution terminée (2026-11-25)
+
+**Résumé** : module de pseudonymisation déterministe implémenté avec Microsoft Presidio (moteur `no_op`, quatre `PatternRecognizer`) et table de correspondances chiffrée par dossier (Fernet, clé dérivée de `secret_key` + `case_id`). Les valeurs sont remplacées par des pseudonymes stables (`IP_INTERNAL_n`, `HOST_SERVER_nn`, `USER_ACCOUNT_X`, `EMAIL_ADDRESS_n`) sans exposer la valeur d'origine dans les métadonnées ni le jeton exporté.
+
+**Fichiers modifiés** :
+- `backend/src/iryx/reporting/__init__.py` — package et exports publics du service.
+- `backend/src/iryx/reporting/pseudonymizer.py` — `PseudonymStoreError`, `CasePseudonymStore`, `DeterministicPseudonymizer`, opérateur Presidio personnalisé, jeton Fernet et dé-pseudonymisation locale.
+- `backend/tests/unit/test_pseudonymizer.py` — 25 tests couvrant la matrice I/O, le déterminisme, l'isolation, la validation du jeton, l'idempotence et les garde-fous de sécurité.
+- Spec 8.1 — statut, baseline, tâches, triage de revue et éléments reportés mis à jour.
+
+**Revue** : 22 findings — 0 high, 9 medium, 7 low, 2 false, 4 maybe-false. Correctifs appliqués : 8 entrées `medium` et 3 entrées `low` (11 entrées au total, dont les validations d'entités, de clé et de jeton, l'absence d'effet de bord de `export_token()` et quatre tests de verification-gap). Éléments reportés dans `deferred` : synchronisation de `sprint-status.yaml`, accès concurrents, rotation des clés, vérification de l'API Presidio à la version plancher 2.2.35. Findings rejetés : complexité O(N²) sans besoin démontré, libellé d'AC à ne pas modifier dans la spec, absence d'éviction des tables sans API publiques justifiée, divergence H3 hors périmètre de cette story, et `KeyError` sur `SECRET_KEY` infirmé par `conftest.py:16`.
+
+**Recommandation de revue de suivi** : `true` — première passe avec plus de deux entrées `medium` corrigées (8 medium, 3 low). Risque précis non vérifié : les motifs de détection restent heuristiques ; un format d'hôte ou de compte hors conventions `SRV-xxxx` / `admin_xx` pourrait échapper à la pseudonymisation, scénario non couvert par la matrice I/O.
+
+**Vérification** : `uv run pytest tests/unit/test_pseudonymizer.py -q` → 25 passed ; `uv run ruff check src/iryx/reporting tests/unit/test_pseudonymizer.py` → All checks passed ; `uv run pytest -q` (backend complet) → 860 passed. Le diff unifié depuis `8bfe83c` a été relu avant et après correctifs.
+
+**Risques résiduels** : détection heuristique limitée aux formats convenus, étiquettes de pseudonymes normalisées partagées entre dossiers (l'isolation porte sur les tables, pas sur les libellés), confidentialité du jeton liée à `SECRET_KEY` et à son non-transit hors serveur, et accès concurrents/rotation de clé non traités (voir `deferred`).
