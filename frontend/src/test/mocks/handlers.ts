@@ -10,9 +10,9 @@ import type {
  * Handlers MSW simulant les routes réseau de l'application IRYX.
  *
  * Routes d'authentification simulées d'après le contrat cible :
- * - POST /api/auth/login (simulée, contrat cible : auth-contrat-cible.yaml)
- * - POST /api/auth/refresh (simulée, contrat cible : auth-contrat-cible.yaml)
- * - POST /api/auth/logout (simulée, contrat cible : auth-contrat-cible.yaml)
+ * - POST /api/v1/auth/login (simulée, contrat cible : auth-contrat-cible.yaml)
+ * - POST /api/v1/auth/refresh (simulée, contrat cible : auth-contrat-cible.yaml)
+ * - POST /api/v1/auth/logout (simulée, contrat cible : auth-contrat-cible.yaml)
  */
 export const handlers = [
   http.get('*/api/test-simulation', () => {
@@ -23,8 +23,8 @@ export const handlers = [
     return HttpResponse.json({ status: 'healthy' })
   }),
 
-  // POST /api/auth/login (simulée, contrat cible : auth-contrat-cible.yaml)
-  http.post('*/api/auth/login', async ({ request }) => {
+  // POST /api/v1/auth/login (simulée, contrat cible : auth-contrat-cible.yaml)
+  http.post('*/api/v1/auth/login', async ({ request }) => {
     try {
       const body = (await request.json()) as Partial<LoginRequest>
       const { email, password } = body
@@ -75,7 +75,7 @@ export const handlers = [
         status: 200,
         headers: {
           'Set-Cookie':
-            'refresh_token=mock-refresh-token-jwt-7d; Path=/api/auth/refresh; Max-Age=604800; HttpOnly; Secure; SameSite=Strict',
+            'refresh_token=mock-refresh-token-jwt-7d; Path=/api/v1/auth/refresh; Max-Age=604800; HttpOnly; Secure; SameSite=Strict',
         },
       })
     } catch {
@@ -83,8 +83,8 @@ export const handlers = [
     }
   }),
 
-  // POST /api/auth/refresh (simulée, contrat cible : auth-contrat-cible.yaml)
-  http.post('*/api/auth/refresh', async ({ request }) => {
+  // POST /api/v1/auth/refresh (simulée, contrat cible : auth-contrat-cible.yaml)
+  http.post('*/api/v1/auth/refresh', async ({ request }) => {
     const origin = request.headers.get('Origin')
     // Simulation rejet anti-CSRF
     if (origin === 'http://malicious-site.local') {
@@ -108,8 +108,8 @@ export const handlers = [
     return HttpResponse.json(tokenResponse, { status: 200 })
   }),
 
-  // POST /api/auth/logout (simulée, contrat cible : auth-contrat-cible.yaml)
-  http.post('*/api/auth/logout', async () => {
+  // POST /api/v1/auth/logout (simulée, contrat cible : auth-contrat-cible.yaml)
+  http.post('*/api/v1/auth/logout', async () => {
     const logoutResponse: LogoutResponse = {
       message: 'Déconnexion réussie.',
     }
@@ -118,7 +118,7 @@ export const handlers = [
       status: 200,
       headers: {
         'Set-Cookie':
-          'refresh_token=; Path=/api/auth/refresh; Max-Age=0; HttpOnly; Secure; SameSite=Strict; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+          'refresh_token=; Path=/api/v1/auth/refresh; Max-Age=0; HttpOnly; Secure; SameSite=Strict; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
       },
     })
   }),

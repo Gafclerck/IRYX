@@ -7,7 +7,7 @@ describe("Simulation des routes d'authentification (contrat cible : auth-contrat
     clearAccessToken()
   })
 
-  describe('POST /api/auth/login', () => {
+  describe('POST /api/v1/auth/login', () => {
     it('renvoie un access_token de 15 minutes et place le jeton en mémoire en cas de succès', async () => {
       const response = await loginApi({
         email: 'analyste@iryx.local',
@@ -65,7 +65,7 @@ describe("Simulation des routes d'authentification (contrat cible : auth-contrat
     })
   })
 
-  describe('POST /api/auth/refresh', () => {
+  describe('POST /api/v1/auth/refresh', () => {
     it('délivre un nouvel access token de 15 minutes lors du renouvellement', async () => {
       const response = await refreshApi()
 
@@ -76,7 +76,7 @@ describe("Simulation des routes d'authentification (contrat cible : auth-contrat
     })
   })
 
-  describe('POST /api/auth/logout', () => {
+  describe('POST /api/v1/auth/logout', () => {
     it("purge le jeton d'accès en mémoire vive volatile lors de la déconnexion", async () => {
       // Prépositionnement d'un jeton en mémoire
       await loginApi({

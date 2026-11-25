@@ -32,9 +32,9 @@ Les trois routes d'authentification ci-dessous sont interceptées et simulées p
 
 | Méthode et route HTTP | Description opérationnelle | Mention de statut |
 |---|---|---|
-| `POST /api/auth/login` | Authentification analyste, délivrance jeton Bearer (15 min) et cookie refresh (7 j) | simulée, contrat cible : auth-contrat-cible.yaml |
-| `POST /api/auth/refresh` | Renouvellement silencieux du jeton d'accès via cookie httpOnly | simulée, contrat cible : auth-contrat-cible.yaml |
-| `POST /api/auth/logout` | Déconnexion explicite et suppression du cookie httpOnly (Max-Age=0) | simulée, contrat cible : auth-contrat-cible.yaml |
+| `POST /api/v1/auth/login` | Authentification analyste, délivrance jeton Bearer (15 min) et cookie refresh (7 j) | simulée, contrat cible : auth-contrat-cible.yaml |
+| `POST /api/v1/auth/refresh` | Renouvellement silencieux du jeton d'accès via cookie httpOnly | simulée, contrat cible : auth-contrat-cible.yaml |
+| `POST /api/v1/auth/logout` | Déconnexion explicite et suppression du cookie httpOnly (Max-Age=0) | simulée, contrat cible : auth-contrat-cible.yaml |
 
 ---
 
@@ -110,17 +110,17 @@ Pour chaque lot fonctionnel, le remplacement de la simulation par la connectivit
 
 Conformément à l'ADR de transport d'authentification (ADR-0011), le cycle de session entre le front-end et l'API est découpé en six phases étanches :
 
-1. **Connexion (`/api/auth/login`)** :
+1. **Connexion (`/api/v1/auth/login`)** :
    L'analyste soumet ses identifiants. En cas de succès, l'API renvoie le jeton d'accès dans le corps de réponse JSON (durée de 15 minutes) et dépose un cookie httpOnly restreint au renouvellement (durée de 7 jours). Le front-end conserve l'access token exclusivement en mémoire vive (sans aucun stockage dans localStorage ni sessionStorage, et sans cookie pour les requêtes de données).
 2. **Requêtes protégées** :
    Toute requête vers les endpoints protégés transmet le jeton d'accès via l'en-tête HTTP `Authorization: Bearer <jeton>`, sans cookie de données et sans nécessiter de protection anti-CSRF sur ces routes.
 3. **Expiration du jeton d'accès** :
    Lorsque l'access token expire (durée de validité de 15 minutes), l'API renvoie un code HTTP 401. Le client d'interception réseau capture ce code sans interrompre l'expérience utilisateur ni afficher d'erreur prématurée.
-4. **Renouvellement automatique (`/api/auth/refresh`)** :
-   Le client déclenche immédiatement un appel asynchrone sur la route `/api/auth/refresh`. Le navigateur transmet le cookie httpOnly dédié (sans manipulation JavaScript possible et sans risque CSRF grâce à la vérification d'origine). Le serveur vérifie la validité cryptographique du refresh token (modèle stateless simple, sans rotation) et renvoie un nouvel access token de 15 minutes, chargé immédiatement en mémoire vive (sans persistance dans localStorage ni sessionStorage). La requête initialement suspendue est automatiquement rejouée.
+4. **Renouvellement automatique (`/api/v1/auth/refresh`)** :
+   Le client déclenche immédiatement un appel asynchrone sur la route `/api/v1/auth/refresh`. Le navigateur transmet le cookie httpOnly dédié (sans manipulation JavaScript possible et sans risque CSRF grâce à la vérification d'origine). Le serveur vérifie la validité cryptographique du refresh token (modèle stateless simple, sans rotation) et renvoie un nouvel access token de 15 minutes, chargé immédiatement en mémoire vive (sans persistance dans localStorage ni sessionStorage). La requête initialement suspendue est automatiquement rejouée.
 5. **Échec du renouvellement vers `/login`** :
-   Si le refresh token de 7 jours est expiré ou cryptographiquement invalide (réponse HTTP 401 sur `/api/auth/refresh`), le client vide instantanément la mémoire vive (sans laisser de jeton résiduel dans localStorage ni sessionStorage) et redirige l'analyste vers `/login` avec notification d'expiration de session.
-6. **Déconnexion (`/api/auth/logout`)** :
+   Si le refresh token de 7 jours est expiré ou cryptographiquement invalide (réponse HTTP 401 sur `/api/v1/auth/refresh`), le client vide instantanément la mémoire vive (sans laisser de jeton résiduel dans localStorage ni sessionStorage) et redirige l'analyste vers `/login` avec notification d'expiration de session.
+6. **Déconnexion (`/api/v1/auth/logout`)** :
    L'action de déconnexion ordonne la suppression du cookie httpOnly côté navigateur par l'API (sans révocation côté serveur, conformément aux risques acceptés du modèle stateless D6), purge l'ensemble des caches en mémoire vive (sans aucun reste dans localStorage ni sessionStorage) et renvoie l'utilisateur vers `/login`.
 
 ---

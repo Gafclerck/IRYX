@@ -16,12 +16,12 @@ export class AuthError extends Error {
 
 /**
  * Endpoint de connexion utilisateur.
- * Route cible : POST /api/auth/login
+ * Route cible : POST /api/v1/auth/login
  * Contrat cible : docs/contrat/auth-contrat-cible.yaml (simulée)
  */
 export async function loginApi(credentials: LoginRequest): Promise<TokenResponse> {
   try {
-    const response = await fetch('/api/auth/login', {
+    const response = await fetch('/api/v1/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -76,12 +76,12 @@ export async function loginApi(credentials: LoginRequest): Promise<TokenResponse
 
 /**
  * Endpoint de renouvellement silencieux de la session.
- * Route cible : POST /api/auth/refresh
+ * Route cible : POST /api/v1/auth/refresh
  * Contrat cible : docs/contrat/auth-contrat-cible.yaml (simulée)
  */
 export async function refreshApi(): Promise<TokenResponse> {
   try {
-    const response = await fetch('/api/auth/refresh', {
+    const response = await fetch('/api/v1/auth/refresh', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -107,12 +107,12 @@ export async function refreshApi(): Promise<TokenResponse> {
 
 /**
  * Endpoint de déconnexion explicite.
- * Route cible : POST /api/auth/logout
+ * Route cible : POST /api/v1/auth/logout
  * Contrat cible : docs/contrat/auth-contrat-cible.yaml (simulée)
  */
 export async function logoutApi(): Promise<LogoutResponse> {
   try {
-    const response = await fetch('/api/auth/logout', {
+    const response = await fetch('/api/v1/auth/logout', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
