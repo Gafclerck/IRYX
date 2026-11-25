@@ -57,7 +57,7 @@ describe('Story F4.1 - Consultation du plan proposé par le Planner', () => {
     vi.useRealTimers()
   })
 
-  it('affiche la liste ordonnée des étapes en lecture seule sans action d’arbitrage', async () => {
+  it('affiche la liste ordonnée des étapes avec les libellés de consultation et les actions F4.2', async () => {
     renderPlanPage()
 
     expect(await screen.findByTestId('plan-page-content')).toBeInTheDocument()
@@ -70,12 +70,13 @@ describe('Story F4.1 - Consultation du plan proposé par le Planner', () => {
     expect(screen.getByTestId('plan-step-tool-1')).toHaveTextContent('Analyseur EVTX')
     expect(screen.getByTestId('plan-step-evidence-1')).toHaveTextContent('evi-001')
     expect(screen.getByTestId('plan-step-number-3')).toHaveTextContent('3')
-    expect(screen.getByText('Lecture seule')).toBeInTheDocument()
+    expect(screen.getByText('Pour consultation')).toBeInTheDocument()
 
-    expect(screen.queryByRole('button', { name: /valider/i })).not.toBeInTheDocument()
-    expect(
-      screen.queryByRole('button', { name: /rejeter|refuser|retirer/i }),
-    ).not.toBeInTheDocument()
+    // Les actions d'arbitrage appartiennent désormais à F4.2 : leurs boutons ouvrent
+    // un dialogue de confirmation et ne transmettent jamais directement la décision.
+    expect(screen.queryByTestId('plan-decision-dialog')).not.toBeInTheDocument()
+    expect(screen.getByTestId('plan-validate-button')).toHaveTextContent('Valider et lancer')
+    expect(screen.getByTestId('plan-refuse-button')).toHaveTextContent('Refuser le plan')
     expect(screen.queryByRole('button', { name: /ajouter une étape/i })).not.toBeInTheDocument()
   })
 

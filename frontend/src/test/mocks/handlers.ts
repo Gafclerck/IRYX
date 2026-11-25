@@ -521,6 +521,36 @@ export function resetMockPlanPolling() {
   mockPlanAttempts = 0
 }
 
+type MockH1Decision = components['schemas']['H1Decision']
+type MockH1DecisionRequest = components['schemas']['H1DecisionRequest']
+type MockH1DecisionResponse = components['schemas']['H1DecisionResponse']
+type MockInvestigationPlanStep = components['schemas']['InvestigationPlanStep']
+type MockInvestigationStatus = components['schemas']['InvestigationStatus']
+
+interface MockH1State {
+  readonly decision: MockH1Decision
+  readonly steps: readonly MockInvestigationPlanStep[]
+  readonly status: MockInvestigationStatus
+  readonly current_phase: string
+  readonly validated_plan: Record<string, unknown> | null
+  readonly message: string
+}
+
+const mockH1States = new Map<string, MockH1State>()
+
+function mockH1Key(caseId: string, runId: string): string {
+  return `${caseId}::${runId}`
+}
+
+function readMockH1State(caseId: string, runId: string): MockH1State | null {
+  return mockH1States.get(mockH1Key(caseId, runId)) ?? null
+}
+
+/** Réinitialise les décisions H1 simulées entre deux scénarios de test. */
+export function resetMockH1Decisions() {
+  mockH1States.clear()
+}
+
 const MOCK_PLAN_STEPS: components['schemas']['InvestigationPlanStep'][] = [
   {
     step_id: 1,
@@ -556,6 +586,7 @@ function buildMockPlan(steps = MOCK_PLAN_STEPS): components['schemas']['Investig
 }
 
 function buildMockInvestigationRun(caseId: string, simulation: string | null) {
+  const decisionState = readMockH1State(caseId, MOCK_PLAN_RUN_ID)
   const isUnknown = caseId === 'case-plan-unknown' || simulation === 'unknown-status'
   const isValidated = caseId === 'case-plan-validated' || simulation === 'validated'
 
@@ -563,9 +594,19 @@ function buildMockInvestigationRun(caseId: string, simulation: string | null) {
     id: MOCK_PLAN_RUN_ID,
     case_id: caseId,
     // Un statut non répertorié est délibérément restitué brut pour éprouver la robustesse.
-    status: isUnknown ? 'unrecognized_state_code' : isValidated ? 'completed' : 'running',
-    current_phase: isUnknown ? 'unrecognized_phase_code' : 'planning',
-    validated_plan: isValidated ? {} : null,
+    status: decisionState
+      ? decisionState.status
+      : isUnknown
+        ? 'unrecognized_state_code'
+        : isValidated
+          ? 'completed'
+          : 'running',
+    current_phase: decisionState
+      ? decisionState.current_phase
+      : isUnknown
+        ? 'unrecognized_phase_code'
+        : 'planning',
+    validated_plan: decisionState ? decisionState.validated_plan : isValidated ? {} : null,
     iteration_count: 0,
     error_count: 0,
     started_at: '2026-11-20T09:00:00Z',
@@ -1052,7 +1093,9 @@ export const handlers = [
     }
 
     const caseId = String(params.caseId)
+    const runId = String(params.runId)
     const simulation = request.headers.get('X-Simulation-Plan')
+    const decisionState = readMockH1State(caseId, runId)
 
     if (isPlanForbidden(request, caseId)) {
       return HttpResponse.json<ErrorResponse>(
@@ -1087,10 +1130,169 @@ export const handlers = [
       }
     }
 
+    // Refus H1 : aucun plan disponible tant que le Planner n'a pas produit une nouvelle proposition.
+    if (decisionState?.decision === 'reject') {
+      return HttpResponse.json(
+        {
+          detail: 'Le plan est en cours d’élaboration par le Planner.',
+          code: 'PLAN_NOT_FOUND',
+        },
+        { status: 404, headers: { 'Retry-After': '3' } },
+      )
+    }
+
     const isEmpty = caseId === 'case-plan-empty' || simulation === 'empty'
-    const plan = buildMockPlan(isEmpty ? [] : MOCK_PLAN_STEPS)
+    const steps =
+      decisionState?.decision === 'modify' ? decisionState.steps : isEmpty ? [] : MOCK_PLAN_STEPS
+    const plan = buildMockPlan([...steps])
     return HttpResponse.json(plan, { headers: { 'Retry-After': '3' } })
   }),
+
+  /**
+   * Arbitrage formel de la porte H1 (Story F4.2).
+   * Route cible : POST /api/v1/cases/{case_id}/investigations/{run_id}/gates/h1
+   * Statut : simulée, contrat cible : openapi.json (H1DecisionRequest / H1DecisionResponse).
+   * Le conflit 409 renvoie l'état réel du serveur et n'est pas documenté par le contrat
+   * actuel : scénario marqué « à réaligner » avec l'épic E5.
+   */
+  http.post(
+    '*/api/v1/cases/:caseId/investigations/:runId/gates/h1',
+    async ({ params, request }) => {
+      const authHeader = request.headers.get('Authorization')
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return HttpResponse.json<ErrorResponse>(
+          { detail: "Jeton d'accès expiré ou absent." },
+          { status: 401 },
+        )
+      }
+
+      const token = authHeader.replace('Bearer ', '').trim()
+      const caseId = String(params.caseId)
+      const runId = String(params.runId)
+      const simulation = request.headers.get('X-Simulation-H1')
+
+      if (
+        token === 'mock-forbidden-token' ||
+        simulation === 'forbidden' ||
+        isPlanForbidden(request, caseId)
+      ) {
+        return HttpResponse.json<ErrorResponse>(
+          {
+            detail:
+              "Accès refusé. Vous n'avez pas les autorisations nécessaires pour arbitrer la porte H1.",
+          },
+          { status: 403 },
+        )
+      }
+
+      if (simulation === 'network-error' || caseId === 'case-h1-network-error') {
+        return HttpResponse.error()
+      }
+
+      if (
+        token === 'mock-server-error-token' ||
+        simulation === 'server-error' ||
+        caseId === 'case-h1-500' ||
+        isPlanServerError(request, caseId)
+      ) {
+        return HttpResponse.json<ErrorResponse>(
+          { detail: 'Erreur interne lors de la transmission de la décision H1.' },
+          { status: 500 },
+        )
+      }
+
+      let body: MockH1DecisionRequest
+      try {
+        body = (await request.json()) as MockH1DecisionRequest
+      } catch {
+        return HttpResponse.json<ErrorResponse>(
+          { detail: 'Format de corps de requête invalide.' },
+          { status: 400 },
+        )
+      }
+
+      if (!['approve', 'modify', 'reject'].includes(body.decision)) {
+        return HttpResponse.json<ErrorResponse>(
+          { detail: 'Décision H1 inconnue.' },
+          { status: 422 },
+        )
+      }
+      if (body.decision === 'reject' && !body.feedback?.trim()) {
+        return HttpResponse.json<ErrorResponse>(
+          { detail: 'Le motif du refus est obligatoire.' },
+          { status: 422 },
+        )
+      }
+      if (
+        body.decision === 'modify' &&
+        (!body.modified_plan || !Array.isArray((body.modified_plan as { steps?: unknown }).steps))
+      ) {
+        return HttpResponse.json<ErrorResponse>(
+          { detail: 'Le plan modifié est obligatoire pour une modification.' },
+          { status: 422 },
+        )
+      }
+
+      // Conflit : l'état réel du serveur est renvoyé et enregistré pour le prochain GET.
+      if (simulation === 'conflict' || caseId === 'case-h1-conflict') {
+        const conflictState: MockH1State = {
+          decision: 'approve',
+          steps: MOCK_PLAN_STEPS,
+          status: 'completed',
+          current_phase: 'executor',
+          validated_plan: {},
+          message: 'Le plan a déjà été validé et la session a changé de phase.',
+        }
+        mockH1States.set(mockH1Key(caseId, runId), conflictState)
+        return HttpResponse.json<MockH1DecisionResponse>(
+          {
+            run_id: runId,
+            case_id: caseId,
+            status: conflictState.status,
+            current_phase: conflictState.current_phase,
+            decision: conflictState.decision,
+            validated_plan: conflictState.validated_plan,
+            message: conflictState.message,
+            phases: [],
+          },
+          { status: 409 },
+        )
+      }
+
+      const retainedSteps: readonly MockInvestigationPlanStep[] =
+        body.decision === 'modify'
+          ? ((body.modified_plan as { steps: MockInvestigationPlanStep[] }).steps ?? [])
+          : MOCK_PLAN_STEPS
+      const isRefused = body.decision === 'reject'
+      const decisionState: MockH1State = {
+        decision: body.decision,
+        steps: [...retainedSteps],
+        status: isRefused ? 'pending' : 'running',
+        current_phase: isRefused ? 'planner' : 'executor',
+        validated_plan: isRefused ? null : {},
+        message: isRefused
+          ? 'Plan refusé. Replanification engagée.'
+          : body.decision === 'modify'
+            ? 'Plan modifié validé. Session d’exécution lancée.'
+            : 'Plan validé. Session d’exécution lancée.',
+      }
+      mockH1States.set(mockH1Key(caseId, runId), decisionState)
+
+      return HttpResponse.json<MockH1DecisionResponse>(
+        {
+          run_id: runId,
+          case_id: caseId,
+          status: decisionState.status,
+          current_phase: decisionState.current_phase,
+          decision: decisionState.decision,
+          validated_plan: decisionState.validated_plan,
+          message: decisionState.message,
+          phases: [],
+        },
+        { status: 200 },
+      )
+    },
+  ),
 
   /**
    * Consultation unitaire d'un dossier d'investigation (Story F2.1).

@@ -7,6 +7,9 @@ import type { components } from '../../api/schema'
 export type InvestigationPlan = components['schemas']['InvestigationPlan']
 export type InvestigationPlanStep = components['schemas']['InvestigationPlanStep']
 export type InvestigationRunOut = components['schemas']['InvestigationRunOut']
+export type H1Decision = components['schemas']['H1Decision']
+export type H1DecisionRequest = components['schemas']['H1DecisionRequest']
+export type H1DecisionResponse = components['schemas']['H1DecisionResponse']
 
 /**
  * États d'affichage de l'écran de consultation du plan (Story F4.1).

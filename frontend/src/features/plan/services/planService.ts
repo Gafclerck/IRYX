@@ -1,9 +1,25 @@
 import { apiClient } from '../../../api/client'
 import { ADR0008_POLLING_DEFAULT_INTERVAL_SECONDS, PLAN_NOT_FOUND_CODE } from '../constants'
-import type { InvestigationPlan, InvestigationRunOut } from '../types'
+import type {
+  H1DecisionRequest,
+  H1DecisionResponse,
+  InvestigationPlan,
+  InvestigationRunOut,
+} from '../types'
 
 /**
- * Erreur spécifique à la consultation du plan d'investigation (Story F4.1).
+ * Détails renvoyés par le serveur lors d'un conflit sur la porte H1 (HTTP 409).
+ * Ils sont affichés tels quels : le front ne Valide jamais un plan sur un conflit.
+ */
+export interface H1ErrorDetails {
+  readonly returnedStatus?: string | null
+  readonly returnedPhase?: string | null
+  readonly serverMessage?: string | null
+}
+
+/**
+ * Erreur spécifique à la consultation du plan d'investigation (Story F4.1)
+ * et à l'arbitrage de la porte H1 (Story F4.2).
  * Le code HTTP et le code métier éventuel sont conservés pour piloter l'état
  * « planification en cours » sans inventer de statut côté client.
  */
@@ -11,24 +27,35 @@ export class PlanApiError extends Error {
   readonly status: number
   readonly code: string | null
   readonly retryAfterSeconds: number | null
+  readonly returnedStatus: string | null
+  readonly returnedPhase: string | null
+  readonly serverMessage: string | null
 
   constructor(
     message: string,
     status: number = 0,
     code: string | null = null,
     retryAfterSeconds: number | null = null,
+    details: H1ErrorDetails = {},
   ) {
     super(message)
     this.name = 'PlanApiError'
     this.status = status
     this.code = code
     this.retryAfterSeconds = retryAfterSeconds
+    this.returnedStatus = details.returnedStatus ?? null
+    this.returnedPhase = details.returnedPhase ?? null
+    this.serverMessage = details.serverMessage ?? null
   }
 }
 
 interface ApiErrorPayload {
   readonly detail?: unknown
   readonly code?: unknown
+  readonly status?: unknown
+  readonly current_phase?: unknown
+  readonly message?: unknown
+  readonly [key: string]: unknown
 }
 
 function readErrorPayload(error: unknown): ApiErrorPayload {
@@ -38,14 +65,17 @@ function readErrorPayload(error: unknown): ApiErrorPayload {
   return {}
 }
 
+function readTextField(error: unknown, field: string): string | null {
+  const value = readErrorPayload(error)[field]
+  return typeof value === 'string' && value.trim() ? value : null
+}
+
 function readDetail(error: unknown, fallback: string): string {
-  const detail = readErrorPayload(error).detail
-  return typeof detail === 'string' && detail.trim() ? detail : fallback
+  return readTextField(error, 'detail') ?? fallback
 }
 
 function readCode(error: unknown): string | null {
-  const code = readErrorPayload(error).code
-  return typeof code === 'string' && code.trim() ? code : null
+  return readTextField(error, 'code')
 }
 
 /**
@@ -147,6 +177,67 @@ export async function getInvestigationPlan(
     }
 
     return { data: data as InvestigationPlan, retryAfterSeconds: resolveRetryAfter(response) }
+  } catch (err) {
+    if (err instanceof PlanApiError) throw err
+    throw new PlanApiError('Serveur injoignable. Veuillez vérifier votre connexion.', 0)
+  }
+}
+
+/**
+ * Arbitrage formel de la porte H1 (Story F4.2, FR-PLAN-02).
+ * Route cible : POST /api/v1/cases/{case_id}/investigations/{run_id}/gates/h1
+ * (contrat openapi.json, schémas H1DecisionRequest et H1DecisionResponse).
+ *
+ * Un 409 est conservé avec l'état réel renvoyé par le serveur : aucun succès
+ * n'est déduit côté client et le plan est rafraîchi pour refléter cet état.
+ */
+export async function submitH1Decision(
+  caseId: string,
+  runId: string,
+  payload: H1DecisionRequest,
+): Promise<H1DecisionResponse> {
+  try {
+    const { data, response, error } = await apiClient.POST(
+      '/api/v1/cases/{case_id}/investigations/{run_id}/gates/h1',
+      {
+        params: { path: { case_id: caseId, run_id: runId } },
+        body: payload,
+      },
+    )
+
+    if (response.status === 409) {
+      throw new PlanApiError(
+        readDetail(error, 'Conflit : le plan a changé depuis sa consultation.'),
+        409,
+        null,
+        null,
+        {
+          returnedStatus: readTextField(error, 'status'),
+          returnedPhase: readTextField(error, 'current_phase'),
+          serverMessage: readTextField(error, 'message'),
+        },
+      )
+    }
+    if (response.status === 403) {
+      throw new PlanApiError(
+        "Accès refusé. Vous n'avez pas les autorisations nécessaires pour arbitrer la porte H1.",
+        403,
+      )
+    }
+    if (response.status === 401) {
+      throw new PlanApiError('Session expirée lors de la validation de la porte H1.', 401)
+    }
+    if (!response.ok || error) {
+      throw new PlanApiError(
+        readDetail(error, 'Échec de la transmission de la décision H1.'),
+        response.status,
+      )
+    }
+    if (!data) {
+      throw new PlanApiError('Réponse H1 indisponible.', 500)
+    }
+
+    return data
   } catch (err) {
     if (err instanceof PlanApiError) throw err
     throw new PlanApiError('Serveur injoignable. Veuillez vérifier votre connexion.', 0)

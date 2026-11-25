@@ -1,21 +1,31 @@
+import { Trash2 } from 'lucide-react'
 import type { InvestigationPlanStep } from '../types'
 
 export interface PlanStepListProps {
   readonly steps: readonly InvestigationPlanStep[]
   readonly readOnly?: boolean
+  readonly onRemove?: (stepId: number) => void
+  readonly removeDisabled?: boolean
 }
 
 /**
- * Liste numérotée des étapes forensiques proposées par le Planner (Story F4.1, FR-PLAN-01).
+ * Liste numérotée des étapes forensiques proposées par le Planner (Stories F4.1 et F4.2).
  *
  * Chaque étape expose : numéro d'ordre (step_id), objectif (rationale), agent responsable,
  * outil forensique (tool_name) et preuves visées (target_evidence_id).
  *
  * Le contrat InvestigationPlanStep de openapi.json ne porte aucun champ d'agent assigné :
  * la valeur est affichée « à réaligner » plutôt que d'être inventée (docs/frontend/14).
- * Aucune action de validation, de retrait ou de refus n'est présente (F4.2).
+ *
+ * Le bouton « Retirer » n'est rendu que lorsque l'arbitrage est autorisé (F4.2).
+ * Aucun ajout d'étape n'est proposé (exclu du MVP).
  */
-export function PlanStepList({ steps, readOnly = false }: PlanStepListProps) {
+export function PlanStepList({
+  steps,
+  readOnly = false,
+  onRemove,
+  removeDisabled = false,
+}: PlanStepListProps) {
   return (
     <section aria-labelledby="plan-steps-heading" className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -89,6 +99,20 @@ export function PlanStepList({ steps, readOnly = false }: PlanStepListProps) {
                   </dd>
                 </div>
               </dl>
+
+              {onRemove && (
+                <button
+                  type="button"
+                  onClick={() => onRemove(step.step_id)}
+                  disabled={removeDisabled}
+                  aria-label={`Retirer l’étape ${step.step_id}`}
+                  className="inline-flex flex-shrink-0 items-center gap-1.5 rounded border border-teal bg-deep px-2.5 py-1.5 text-xs font-semibold text-cyan hover:bg-deep/80 focus:outline-none focus:ring-2 focus:ring-cyan disabled:cursor-not-allowed disabled:opacity-50"
+                  data-testid={`plan-remove-step-${step.step_id}`}
+                >
+                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  Retirer
+                </button>
+              )}
             </div>
           </li>
         ))}

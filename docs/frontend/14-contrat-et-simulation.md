@@ -36,9 +36,9 @@ Les trois routes d'authentification ci-dessous sont interceptées et simulées p
 | `POST /api/v1/auth/refresh` | Renouvellement silencieux du jeton d'accès via cookie httpOnly | simulée, contrat cible : auth-contrat-cible.yaml |
 | `POST /api/v1/auth/logout` | Déconnexion explicite et suppression du cookie httpOnly (Max-Age=0) | simulée, contrat cible : auth-contrat-cible.yaml |
 
-### 2.2 Référentiel des routes protégées simulées (Stories F1.3, F1.5, F1.6, F1.7, F2.1, F2.2, F3.1, F3.2, F3.3 et F4.1)
+### 2.2 Référentiel des routes protégées simulées (Stories F1.3, F1.5, F1.6, F1.7, F2.1, F2.2, F3.1, F3.2, F3.3, F4.1 et F4.2)
 
-Les routes protégées ci-dessous sont interceptées et simulées par Mock Service Worker (MSW) dans `frontend/src/test/mocks/handlers.ts` pour tester l'injection de l'en-tête `Authorization: Bearer <token>`, la détection d'expiration (HTTP 401), la pagination, la recherche, la création en modale, la consultation et l'édition du contexte, l'évolution du statut du dossier, ainsi que le téléversement et l'inventaire de preuves numériques avec suivi de progression et de l'état d'ingestion :
+Les routes protégées ci-dessous sont interceptées et simulées par Mock Service Worker (MSW) dans `frontend/src/test/mocks/handlers.ts` pour tester l'injection de l'en-tête `Authorization: Bearer <token>`, la détection d'expiration (HTTP 401), la pagination, la recherche, la création en modale, la consultation et l'édition du contexte, l'évolution du statut du dossier, ainsi que le téléversement et l'inventaire de preuves numériques avec suivi de progression et de l'état d'ingestion. La story F4.2 ajoute l'arbitrage formel de la porte H1 :
 
 | Méthode et route HTTP | Description opérationnelle | Mention de statut |
 |---|---|---|
@@ -54,6 +54,7 @@ Les routes protégées ci-dessous sont interceptées et simulées par Mock Servi
 | `GET /api/v1/cases/{case_id}/evidences/{evidence_id}` | Consultation des métadonnées détaillées d'une preuve pour le panneau latéral d'inspection (Story F3.3), empreinte SHA-256 intégrale, historique d'ingestion, observations et troncature DP-04, requiert l'en-tête Authorization: Bearer | simulée, contrat cible : openapi.json (champs d'enrichissement à réaligner) |
 | `GET /api/v1/cases/{case_id}/investigations` | Résolution de la session d'investigation courante d'un dossier pour la consultation du plan (Story F4.1), requiert l'en-tête Authorization: Bearer | simulée, contrat cible : openapi.json |
 | `GET /api/v1/cases/{case_id}/investigations/{run_id}/plan` | Consultation en lecture seule de la séquence proposée par le Planner (Story F4.1), scrutation avec Retry-After: 3 (ADR-0008), requiert l'en-tête Authorization: Bearer | simulée, contrat cible : openapi.json (agent assigné et état vide à réaligner) |
+| `POST /api/v1/cases/{case_id}/investigations/{run_id}/gates/h1` | Arbitrage formel de la porte H1 (Story F4.2) : validation, retrait d'étapes ou refus motivé après confirmation explicite, requiert l'en-tête Authorization: Bearer | **simulée, contrat cible : openapi.json** |
 
 #### Règle documentée pour les requêtes sans jeton (Story F1.3)
 Lorsqu'aucun jeton d'accès n'est présent en mémoire vive volatile (état initial ou purge), la requête vers un endpoint protégé est transmise sans en-tête `Authorization`. Le serveur récepteur ou l'intercepteur de simulation MSW renvoie alors un code HTTP 401, déclenchant le signal interne « jeton expiré ou absent ». Emplacement réservé pour la politique d'inactivité de l'analyste : à décider (C4).
@@ -268,6 +269,27 @@ Conformément à la story F4.1, à l'ADR-0008, à la décision DP-05, aux conven
    - Statut inconnu robuste : dossier `case-plan-unknown` ou en-tête `X-Simulation-Plan: unknown-status` (restitution de `unrecognized_state_code`).
    - Aucune session : dossier `case-plan-pending` (attente du démarrage du Planner).
 
+### 2.13 Simulation de l'arbitrage et de la validation formelle de la porte H1 (Story F4.2)
+
+Conformément à la story F4.2, au parcours nominal étape 5 (`docs/frontend/12`), à l'écran Plan (`docs/frontend/11`) et au contrat cible de l'épic E5 (`docs/contrat/openapi.json`) :
+
+1. **Route interceptée** : `POST /api/v1/cases/{case_id}/investigations/{run_id}/gates/h1`
+   - Statut : **simulée, contrat cible : openapi.json** (schémas `H1DecisionRequest` et `H1DecisionResponse`).
+   - Requiert l'en-tête `Authorization: Bearer <token>` conservé en mémoire vive volatile (Story F1.3).
+2. **Fidélité au contrat et absence d'invention** : la charge utile est strictement dérivée de `H1DecisionRequest` (`decision`, `modified_plan`, `feedback`, `return_to_planner`). La décision `modify` transmet uniquement les étapes retenues après retrait unitaire ; aucun ajout d'étape n'est proposé (hors MVP). Le motif de refus est validé côté client par un schéma Zod dont le message est en français ; la longueur maximale (2000 caractères) est celle du champ contractuel `feedback`.
+3. **Confirmation obligatoire** : aucun bouton de l'écran principal n'envoie de requête. « Valider et lancer », le retrait d'une étape puis la confirmation, et « Refuser le plan » ouvrent une fenêtre de dialogue qui résume le nombre d'étapes retenues et exige une confirmation explicite. Pendant l'envoi, tous les boutons d'action sont désactivés et une seule soumission peut être en vol ; toute nouvelle tentative repasse par le dialogue via « Réessayer ».
+4. **États simulés et affichés** : chargement, plan prêt avec actions actives, validation en cours, validé en lecture seule avec mention « Validé » et lien « Voir le suivi » (`/cases/:caseId/run`, F4.3), refusé avec état de replanification sans bouton de validation tant que le back n'a pas produit un nouveau plan, erreur serveur/réseau avec message et « Réessayer », accès refusé 403, nominal, et statut non répertorié restitué sous la forme « État inconnu (code_brut) ».
+5. **Règles de non-validation** : sur erreur 5xx ou réseau, le plan reste « prêt » et aucune validation n'est considérée comme acquise ; la décision confirmée reste conservée en mémoire vive (NFR-ERR-02). Sur 409, l'état réel renvoyé (`status`, `current_phase`, `message`) est affiché sans validation locale, puis le plan est rafraîchi. Le scénario 409 n'étant pas déclaré dans le contrat actuel, il est marqué **à réaligner** avec l'épic E5.
+6. **Scénarios simulés par MSW** :
+   - Succès `approve` / `modify` (HTTP 200) : retour d'un `H1DecisionResponse`, plan scellé en lecture seule et état de session mis à jour pour les GET suivants (plan validé avec les étapes retenues).
+   - Refus `reject` (HTTP 200) : `return_to_planner: true`, `feedback` obligatoire ; les GET suivants renvoient `PLAN_NOT_FOUND` avec `Retry-After: 3` jusqu'à un nouveau plan.
+   - Accès refusé (HTTP 403) : jeton `mock-forbidden-token`, en-tête `X-Simulation-H1: forbidden` ou dossier `case-plan-forbidden` ; les profils `VIEWER` voient les actions masquées sans appel réseau.
+   - Erreur serveur (HTTP 500) : jeton `mock-server-error-token`, en-tête `X-Simulation-H1: server-error` ou dossier `case-h1-500`.
+   - Coupure de transport : en-tête `X-Simulation-H1: network-error` ou dossier `case-h1-network-error`.
+   - Conflit (HTTP 409) : en-tête `X-Simulation-H1: conflict` ou dossier `case-h1-conflict`.
+   - Motif vide ou décision inconnue (HTTP 422) : rejet sans mutation d'état.
+7. **Périmètre exclu** : aucun suivi des agents (F4.3), aucun ajout d'étape, aucun écran d'audit (DP-02). Aucune écriture dans `localStorage` ni `sessionStorage` ; palette stricte (`ink`, `deep`, `teal`, `cyan`, `mist`) sans couleur en dur, le bouton de validation étant cyan avec texte ink.
+
 ---
 
 ## 3. Inventaire des stories d'intégration dépendantes du contrat
@@ -333,7 +355,7 @@ Pour chaque lot fonctionnel, le remplacement de la simulation par la connectivit
 | F1 : Socle, connexion et dossiers | E1 (Auth), E2 (Cases) | Brouillon openapi.json (routes auth en attente) | Simulation active (auth-contrat-cible.yaml) |
 | F2 : Contexte du dossier | E2 (Cases) | Brouillon openapi.json (PATCH à réaligner) | Simulation active (openapi.json + à réaligner) |
 | F3 : Registre des preuves | E3 (Evidence, Ingestion) | Brouillon openapi.json | Simulation active (POST, GET et GET détail openapi.json) |
-| F4 : Plan, agents, résultats, revues | E4, E5, E6, E7 | Brouillon openapi.json (plan simulé, agent et état vide à réaligner) | Simulation active pour F4.1 (GET investigations et GET plan) ; reste en attente pour F4.2 à F4.8 |
+| F4 : Plan, agents, résultats, revues | E4, E5, E6, E7 | Brouillon openapi.json (plan et arbitrage H1 simulés, agent et état vide à réaligner ; 409 H1 à réaligner) | Simulation active pour F4.1 (GET investigations et GET plan) et F4.2 (POST gates/h1) ; reste en attente pour F4.3 à F4.8 |
 | F5 : Rapports et clôture | E8 (Reports), E9 (Déploiement) | En attente | En attente de contrat / Simulation planifiée |
 
 ---
