@@ -127,6 +127,50 @@ export interface UpdateCasePayload {
 }
 
 /**
+ * Matrice stricte des transitions de cycle de vie d'un dossier d'investigation (Story F2.2).
+ * Conforme à openapi.json et docs/frontend/12-parcours-et-etats.md.
+ * Toute transition absente est « à décider » et ne doit pas être proposée dans l'interface.
+ */
+export const VALID_CASE_STATUS_TRANSITIONS: Record<CaseStatus, readonly CaseStatus[]> = {
+  open: ['in_progress', 'closed'],
+  in_progress: ['review', 'open', 'closed'],
+  review: ['closed', 'in_progress'],
+  closed: [],
+}
+
+/**
+ * Libellés en majuscules pour le badge d'en-tête (Story F2.2).
+ */
+export const CASE_STATUS_UPPERCASE_LABELS: Record<CaseStatus, string> = {
+  open: 'OUVERT',
+  in_progress: 'EN COURS',
+  review: 'EN REVUE',
+  closed: 'CLÔTURÉ',
+}
+
+/**
+ * Libellés en français pour l'affichage standard et les options du sélecteur (Story F2.2).
+ */
+export const CASE_STATUS_LABELS: Record<CaseStatus, string> = {
+  open: 'Ouvert',
+  in_progress: 'En cours',
+  review: 'En revue',
+  closed: 'Clôturé',
+}
+
+/**
+ * Libellé pour l'état vide ou indéfini (Story F2.2).
+ */
+export const CASE_STATUS_UNDEFINED_LABEL = 'NON DÉFINI'
+
+/**
+ * Corps de requête pour la mise à jour de statut opérationnel d'un dossier (Story F2.2).
+ */
+export interface UpdateCaseStatusPayload {
+  readonly status: CaseStatus
+}
+
+/**
  * Mention affichée pour les champs requis par le métier mais absents du contrat OpenAPI cible.
  */
 export const CONTRACT_ALIGNMENT_REQUIRED_LABEL = 'à réaligner'

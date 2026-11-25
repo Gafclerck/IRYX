@@ -1,17 +1,21 @@
 import { Edit3, Calendar, Server, Clock } from 'lucide-react'
-import type { CaseDetail } from '../../../api/cases-types'
-import { CONTRACT_ALIGNMENT_REQUIRED_LABEL } from '../../../api/cases-types'
+import type { CaseDetail, CaseStatus } from '../../../api/cases-types'
+import { CONTRACT_ALIGNMENT_REQUIRED_LABEL, CASE_STATUS_LABELS } from '../../../api/cases-types'
 import { formatUtcDateTime } from '../../../lib/date'
 import { CasesStatusBadge } from './CasesStatusBadge'
+import { CaseStatusSelector } from './CaseStatusSelector'
 import { CaseMembersList } from './CaseMembersList'
 
 export interface CaseContextViewProps {
   readonly caseData: CaseDetail
   readonly onEdit: () => void
+  readonly onStatusChange?: (newStatus: CaseStatus) => void | Promise<void>
+  readonly isUpdatingStatus?: boolean
+  readonly isReadOnly?: boolean
 }
 
 /**
- * Vue en lecture seule de la fiche de contexte du dossier (Story F2.1).
+ * Vue en lecture seule de la fiche de contexte du dossier (Stories F2.1 et F2.2).
  *
  * RÈGLES DE CONCEPTION :
  * 1. Restitue l'ensemble des métadonnées du dossier : titre, description, statut,
@@ -21,10 +25,17 @@ export interface CaseContextViewProps {
  * 3. Systèmes concernés non spécifiés : mention « Aucun système spécifié » en couleur teal.
  * 4. Champs non présents au contrat (date de l'incident, systèmes concernés) :
  *    marqués par le badge textuel « à réaligner ».
- * 5. Bouton « Modifier » pour basculer en mode d'édition.
- * 6. Statut en lecture seule (le changement de statut relève de la Story F2.2).
+ * 5. Bouton « Modifier » pour basculer en mode d'édition du contexte (titre, description).
+ * 6. Évolution du statut global via le sélecteur contrôlé CaseStatusSelector (Story F2.2).
+ * 7. Badge de l'en-tête actualisé en majuscules avec icône lucide-react associée (F2.2).
  */
-export function CaseContextView({ caseData, onEdit }: CaseContextViewProps) {
+export function CaseContextView({
+  caseData,
+  onEdit,
+  onStatusChange,
+  isUpdatingStatus = false,
+  isReadOnly = false,
+}: CaseContextViewProps) {
   const hasDescription = Boolean(caseData.description && caseData.description.trim().length > 0)
   const hasSystems = Boolean(
     caseData.affected_systems && caseData.affected_systems.trim().length > 0,
@@ -35,7 +46,7 @@ export function CaseContextView({ caseData, onEdit }: CaseContextViewProps) {
       {/* Barre d'actions et titre de la vue */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-deep pb-4">
         <div className="space-y-1">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <h1
               className="text-xl font-bold tracking-tight text-mist"
               data-testid="case-view-title"
@@ -43,7 +54,15 @@ export function CaseContextView({ caseData, onEdit }: CaseContextViewProps) {
               {caseData.title}
             </h1>
             <div data-testid="case-view-status">
-              <CasesStatusBadge status={caseData.status} />
+              <CasesStatusBadge status={caseData.status} uppercase />
+            </div>
+            <div data-testid="case-view-status-selector">
+              <CaseStatusSelector
+                currentStatus={caseData.status}
+                onStatusChange={onStatusChange || (() => {})}
+                isUpdating={isUpdatingStatus}
+                isReadOnly={isReadOnly || !onStatusChange}
+              />
             </div>
           </div>
           <p className="text-xs text-teal">
@@ -89,8 +108,10 @@ export function CaseContextView({ caseData, onEdit }: CaseContextViewProps) {
 
           <div className="pt-2 border-t border-deep/40 text-xs text-teal">
             <span className="font-semibold text-mist">Statut du dossier :</span>{' '}
-            <span className="italic">
-              Modification de cycle de vie en Étape 1 (consultation seule au MVP F2.1)
+            <span className="capitalize">
+              {caseData.status && caseData.status in CASE_STATUS_LABELS
+                ? CASE_STATUS_LABELS[caseData.status as CaseStatus]
+                : 'Non défini'}
             </span>
           </div>
         </section>

@@ -809,6 +809,137 @@ export const handlers = [
   }),
 
   /**
+   * Évolution du statut global d'un dossier d'investigation (Story F2.2).
+   * Route cible : PATCH /api/v1/cases/:caseId/status
+   * Statut : simulée, contrat cible : openapi.json
+   */
+  http.patch('*/api/v1/cases/:caseId/status', async ({ params, request }) => {
+    const authHeader = request.headers.get('Authorization')
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    const token = authHeader.replace('Bearer ', '').trim()
+
+    if (token === 'mock-expired-token' || token.includes('expired')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    const caseId = String(params.caseId)
+    const simHeader =
+      request.headers.get('X-Simulation-Status') ||
+      request.headers.get('X-Simulation-Update-Status') ||
+      request.headers.get('X-Simulation-Case')
+
+    // Simulation accès refusé 403 Forbidden
+    if (
+      token === 'mock-forbidden-token' ||
+      token === 'mock-viewer-token' ||
+      simHeader === 'forbidden' ||
+      caseId === 'case-status-forbidden'
+    ) {
+      return HttpResponse.json<ErrorResponse>(
+        {
+          detail:
+            "Accès refusé. Vous n'avez pas les autorisations nécessaires pour modifier le statut de ce dossier.",
+        },
+        { status: 403 },
+      )
+    }
+
+    // Simulation erreur serveur 500
+    if (
+      token === 'mock-server-error-token' ||
+      simHeader === 'server-error' ||
+      simHeader === '500' ||
+      caseId === 'case-status-500'
+    ) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Erreur interne du serveur lors de la mise à jour du statut du dossier.' },
+        { status: 500 },
+      )
+    }
+
+    // Simulation conflit 409 Conflict
+    if (simHeader === 'conflict' || simHeader === '409' || caseId === 'case-status-conflict') {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Conflit de version ou transition concurrente détectée sur le dossier.' },
+        { status: 409 },
+      )
+    }
+
+    let body: Record<string, unknown> = {}
+    try {
+      body = (await request.json()) as Record<string, unknown>
+    } catch {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Format de corps de requête invalide.' },
+        { status: 400 },
+      )
+    }
+
+    const newStatus = typeof body.status === 'string' ? body.status : ''
+
+    if (!newStatus || !['open', 'in_progress', 'review', 'closed'].includes(newStatus)) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: `Statut cible invalide: '${newStatus}'.` },
+        { status: 422 },
+      )
+    }
+
+    const found = MOCK_CASES.find((c) => c.id === caseId)
+    if (!found) {
+      return HttpResponse.json<ErrorResponse>({ detail: 'Dossier introuvable.' }, { status: 404 })
+    }
+
+    // Matrice stricte des transitions autorisées (openapi.json / E2)
+    const validTransitions: Record<string, string[]> = {
+      open: ['in_progress', 'closed'],
+      in_progress: ['review', 'open', 'closed'],
+      review: ['closed', 'in_progress'],
+      closed: [],
+    }
+
+    // Simulation rejet de transition 400
+    if (simHeader === 'invalid-transition' || simHeader === '400') {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: `Transition non autorisée du statut '${found.status}' vers '${newStatus}'.` },
+        { status: 400 },
+      )
+    }
+
+    const allowed = validTransitions[found.status] || []
+    if (!allowed.includes(newStatus)) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: `Transition non autorisée du statut '${found.status}' vers '${newStatus}'.` },
+        { status: 400 },
+      )
+    }
+
+    found.status = newStatus
+    found.updated_at = new Date().toISOString()
+
+    const updatedDetail = {
+      ...found,
+      incident_date: (found as Record<string, unknown>).incident_date ?? '2026-11-20T08:00:00Z',
+      incident_type: (found as Record<string, unknown>).incident_type ?? 'a_decider',
+      affected_systems:
+        (found as Record<string, unknown>).affected_systems ??
+        'Contrôleur de domaine AD, Serveur Exchange',
+      members: (found as Record<string, unknown>).members ?? MOCK_CASE_MEMBERS,
+    }
+
+    return HttpResponse.json(updatedDetail, { status: 200 })
+  }),
+
+  /**
    * Mise à jour en ligne d'un dossier d'investigation (Story F2.1).
    * Route cible : PATCH /api/v1/cases/:caseId
    * Statut : simulée, contrat cible : à réaligner

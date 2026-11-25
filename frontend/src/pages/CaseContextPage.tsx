@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, CheckCircle2, X, AlertTriangle, ShieldAlert, FolderX } from 'lucide-react'
-import type { UpdateCasePayload } from '../api/cases-types'
+import type { UpdateCasePayload, CaseStatus } from '../api/cases-types'
+import { CASE_STATUS_UPPERCASE_LABELS } from '../api/cases-types'
 import { useCaseDetail } from '../features/cases/hooks/useCaseDetail'
 import { useUpdateCase } from '../features/cases/hooks/useUpdateCase'
+import { useUpdateCaseStatus } from '../features/cases/hooks/useUpdateCaseStatus'
+import { useSessionUser } from '../features/auth/hooks/useSessionUser'
 import {
   CaseSidebar,
   CaseContextLoadingSkeleton,
@@ -12,13 +15,13 @@ import {
 } from '../features/cases/components'
 
 /**
- * Page de consultation et édition du contexte administratif et technique du dossier (Story F2.1).
+ * Page de consultation et édition du contexte administratif et technique du dossier (Stories F2.1 et F2.2).
  * Route : /cases/:caseId (Étape 1 Contexte dans AuthenticatedLayout).
  *
  * RÈGLES DE CONCEPTION :
  * 1. Les 5 états obligatoires :
  *    - Chargement : squelette animé (CaseContextLoadingSkeleton).
- *    - Nominal : fiche complète avec bouton « Modifier ».
+ *    - Nominal : fiche complète avec bouton « Modifier » et sélecteur de statut.
  *    - Vide : mentions textuelles par défaut en couleur teal.
  *    - Erreur 5xx / réseau : notification d'échec avec bouton « Réessayer ».
  *    - Accès refusé (403) : bloque l'affichage sensible, affiche la notification
@@ -29,14 +32,21 @@ import {
  *    - Envoi en PATCH /api/v1/cases/:caseId.
  *    - Conservation des saisies en cas d'erreur de sauvegarde (NFR-ERR-02).
  *    - Champs non prévus au contrat affichés « à réaligner » et non éditables.
- * 3. Aucune écriture dans localStorage ni sessionStorage.
+ * 3. Évolution du statut global (Story F2.2) :
+ *    - Mutation PATCH /api/v1/cases/:caseId/status validée en Zod.
+ *    - Matrice stricte : toute transition absente est « à décider », non proposée.
+ *    - Rejet serveur (400 ou 409) : message clair, statut précédent restauré, saisies non perdues.
+ *    - Mode lecture seule pour utilisateur sans droits opérationnels (viewer).
+ * 4. Aucune écriture dans localStorage ni sessionStorage.
  */
 export function CaseContextPage() {
   const { caseId } = useParams<{ caseId: string }>()
   const navigate = useNavigate()
+  const sessionUser = useSessionUser()
 
   const [isEditing, setIsEditing] = useState(false)
   const [successNotification, setSuccessNotification] = useState<string | null>(null)
+  const [statusErrorNotification, setStatusErrorNotification] = useState<string | null>(null)
   const [lastSavedPayload, setLastSavedPayload] = useState<UpdateCasePayload | null>(null)
 
   const { data: caseData, isLoading, isError, error, refetch } = useCaseDetail(caseId)
@@ -48,8 +58,24 @@ export function CaseContextPage() {
     reset: resetUpdateError,
   } = useUpdateCase()
 
+  const { mutateAsync: updateCaseStatusMutation, isPending: isUpdatingStatus } =
+    useUpdateCaseStatus()
+
   const isForbidden = error?.status === 403
   const isNotFound = error?.status === 404
+
+  // Rôle lecture seule (ex. profil viewer)
+  const isReadOnly =
+    sessionUser?.role === 'viewer' ||
+    Boolean(
+      caseData?.members &&
+      sessionUser?.userName &&
+      caseData.members.some(
+        (m) =>
+          (m.email === sessionUser.userName || m.name === sessionUser.userName) &&
+          m.role === 'viewer',
+      ),
+    )
 
   // Redirection automatique vers /cases en cas de 403 Forbidden
   useEffect(() => {
@@ -73,6 +99,20 @@ export function CaseContextPage() {
       setSuccessNotification("Dossier d'investigation mis à jour avec succès.")
     } catch {
       // L'erreur est gérée via updateError et affichée dans le formulaire
+    }
+  }
+
+  const handleStatusChange = async (newStatus: CaseStatus) => {
+    if (!caseId) return
+    setStatusErrorNotification(null)
+    try {
+      const updated = await updateCaseStatusMutation({ caseId, payload: { status: newStatus } })
+      const statusLabel = CASE_STATUS_UPPERCASE_LABELS[updated.status] || updated.status
+      setSuccessNotification(`Statut du dossier mis à jour avec succès : ${statusLabel}.`)
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Échec de la mise à jour du statut du dossier.'
+      setStatusErrorNotification(message)
     }
   }
 
@@ -238,6 +278,29 @@ export function CaseContextPage() {
           </div>
         )}
 
+        {/* Notification d'erreur lors du changement de statut (400, 409, réseau) */}
+        {statusErrorNotification && (
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="flex items-center justify-between p-3 rounded bg-deep/20 border border-deep text-mist text-xs"
+            data-testid="case-status-error-notification"
+          >
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-cyan flex-shrink-0" aria-hidden="true" />
+              <span>{statusErrorNotification}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setStatusErrorNotification(null)}
+              className="p-1 rounded text-mist hover:text-cyan focus:outline-none"
+              aria-label="Fermer la notification d'erreur"
+            >
+              <X className="w-3.5 h-3.5" aria-hidden="true" />
+            </button>
+          </div>
+        )}
+
         {/* Bascule entre vue nominale et mode d'édition en ligne */}
         {isEditing ? (
           <CaseContextEditForm
@@ -249,7 +312,13 @@ export function CaseContextPage() {
             onRetrySave={handleRetrySave}
           />
         ) : (
-          <CaseContextView caseData={caseData} onEdit={() => setIsEditing(true)} />
+          <CaseContextView
+            caseData={caseData}
+            onEdit={() => setIsEditing(true)}
+            onStatusChange={handleStatusChange}
+            isUpdatingStatus={isUpdatingStatus}
+            isReadOnly={isReadOnly}
+          />
         )}
       </div>
     </div>

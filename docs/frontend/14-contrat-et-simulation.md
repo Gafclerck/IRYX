@@ -36,9 +36,9 @@ Les trois routes d'authentification ci-dessous sont interceptées et simulées p
 | `POST /api/v1/auth/refresh` | Renouvellement silencieux du jeton d'accès via cookie httpOnly | simulée, contrat cible : auth-contrat-cible.yaml |
 | `POST /api/v1/auth/logout` | Déconnexion explicite et suppression du cookie httpOnly (Max-Age=0) | simulée, contrat cible : auth-contrat-cible.yaml |
 
-### 2.2 Référentiel des routes protégées simulées (Stories F1.3, F1.5, F1.6, F1.7 et F2.1)
+### 2.2 Référentiel des routes protégées simulées (Stories F1.3, F1.5, F1.6, F1.7, F2.1 et F2.2)
 
-Les routes protégées ci-dessous sont interceptées et simulées par Mock Service Worker (MSW) dans `frontend/src/test/mocks/handlers.ts` pour tester l'injection de l'en-tête `Authorization: Bearer <token>`, la détection d'expiration (HTTP 401), la pagination, la recherche, la création en modale, ainsi que la consultation et l'édition du contexte :
+Les routes protégées ci-dessous sont interceptées et simulées par Mock Service Worker (MSW) dans `frontend/src/test/mocks/handlers.ts` pour tester l'injection de l'en-tête `Authorization: Bearer <token>`, la détection d'expiration (HTTP 401), la pagination, la recherche, la création en modale, la consultation et l'édition du contexte, ainsi que l'évolution du statut du dossier :
 
 | Méthode et route HTTP | Description opérationnelle | Mention de statut |
 |---|---|---|
@@ -47,6 +47,7 @@ Les routes protégées ci-dessous sont interceptées et simulées par Mock Servi
 | `POST /api/v1/cases` | Création d'un nouveau dossier d'investigation en modale (Story F1.7), validation Zod avant envoi, champs titre, date de l'incident, type d'incident, systèmes concernés et description, requiert l'en-tête Authorization: Bearer | simulée, contrat cible : openapi.json |
 | `GET /api/v1/cases/{case_id}` | Consultation unitaire du contexte d'un dossier d'investigation (Story F2.1), requiert l'en-tête Authorization: Bearer | simulée, contrat cible : openapi.json |
 | `PATCH /api/v1/cases/{case_id}` | Mise à jour en ligne du titre et de la description d'un dossier (Story F2.1), validation Zod avant envoi, requiert l'en-tête Authorization: Bearer | simulée, contrat cible : à réaligner |
+| `PATCH /api/v1/cases/{case_id}/status` | Évolution du statut global du dossier selon la matrice de transition stricte (Story F2.2), validation Zod avant envoi, requiert l'en-tête Authorization: Bearer | simulée, contrat cible : openapi.json |
 
 #### Règle documentée pour les requêtes sans jeton (Story F1.3)
 Lorsqu'aucun jeton d'accès n'est présent en mémoire vive volatile (état initial ou purge), la requête vers un endpoint protégé est transmise sans en-tête `Authorization`. Le serveur récepteur ou l'intercepteur de simulation MSW renvoie alors un code HTTP 401, déclenchant le signal interne « jeton expiré ou absent ». Emplacement réservé pour la politique d'inactivité de l'analyste : à décider (C4).
@@ -138,6 +139,26 @@ Conformément à la spécification de la story F2.1 et au contrat cible de l'Ép
    - Dossier introuvable (HTTP 404) : simulation via case-not-found ou en-tête X-Simulation-Case: not-found, affichage d'un message neutre sans fuite de données et lien de retour vers /cases.
    - Accès refusé (HTTP 403 Forbidden) : simulation via mock-forbidden-token, case-forbidden ou en-tête X-Simulation-Case: forbidden, blocage de l'affichage des informations sensibles, affichage de la notification « Vous n'avez pas accès à ce dossier » et redirection vers /cases.
    - Erreur serveur (HTTP 500) et panne réseau : simulation via mock-server-error-token, case-500 ou en-tête X-Simulation-Case: server-error, notification explicite avec bouton « Réessayer », saisies en cours conservées en mode édition (NFR-ERR-02).
+
+---
+
+### 2.8 Simulation de l'évolution du statut global du dossier (Story F2.2)
+
+Conformément à la spécification de la story F2.2 et au contrat cible de l'Épic E2 (`docs/contrat/openapi.json`) :
+1. **Route interceptée** : `PATCH /api/v1/cases/{case_id}/status`
+   - Statut : **simulée, contrat cible : openapi.json**.
+   - Requiert l'en-tête `Authorization: Bearer <token>` en mémoire vive volatile.
+2. **Matrice stricte des transitions de cycle de vie** :
+   - `open` -> `in_progress`, `closed`
+   - `in_progress` -> `review`, `open`, `closed`
+   - `review` -> `closed`, `in_progress`
+   - `closed` -> aucune transition autorisée (état terminal)
+   - Toute transition absente est « à décider » et ne doit pas être proposée dans l'interface.
+3. **Scénarios simulés par MSW** :
+   - Succès nominal (HTTP 200) : retourne le dossier mis à jour (`CaseOut`), actualise le badge d'état en majuscules dans l'en-tête, invalide les clés TanStack Query associées et affiche une notification de succès.
+   - Transition refusée par le serveur (HTTP 400 ou 409) : simulation via `X-Simulation-Status: invalid-transition` (400) ou `X-Simulation-Status: conflict` (409), affichage d'un message clair sous forme d'alerte, statut précédent restauré dans le sélecteur, saisie non perdue.
+   - Accès refusé (HTTP 403 Forbidden) : simulation via `mock-forbidden-token`, `mock-viewer-token` ou `X-Simulation-Status: forbidden` pour tester le mode lecture seule ou le rejet d'habilitation.
+   - Erreur serveur (HTTP 500) et panne réseau : simulation via `mock-server-error-token` ou `X-Simulation-Status: server-error`, notification explicite sans perte de saisie.
 
 ---
 

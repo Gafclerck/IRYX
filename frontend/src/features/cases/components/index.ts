@@ -1,4 +1,5 @@
 export * from './CasesStatusBadge'
+export * from './CaseStatusSelector'
 export * from './CasesSearchBar'
 export * from './CasesLoadingSkeleton'
 export * from './CasesEmptyState'

@@ -7,8 +7,10 @@ import type {
   CreateCaseResponse,
   CaseDetail,
   UpdateCasePayload,
+  UpdateCaseStatusPayload,
 } from './cases-types'
 import { DEFAULT_PAGE_SIZE } from './cases-types'
+import { updateCaseStatusSchema } from '../features/cases/schemas/updateCaseStatusSchema'
 
 /**
  * Erreur spécifique liée à la consultation des dossiers.
@@ -256,7 +258,7 @@ export async function getCase(caseId: string): Promise<CaseDetail> {
       organization_id: raw.organization_id || '',
       title: raw.title || '',
       description: raw.description ?? null,
-      status: (raw.status || 'open') as CaseItem['status'],
+      status: (raw.status ?? undefined) as unknown as CaseItem['status'],
       created_by: raw.created_by ?? null,
       created_at: raw.created_at || new Date().toISOString(),
       updated_at: raw.updated_at || new Date().toISOString(),
@@ -338,7 +340,7 @@ export async function updateCase(caseId: string, payload: UpdateCasePayload): Pr
       organization_id: raw.organization_id || '',
       title: raw.title || payload.title,
       description: raw.description ?? payload.description ?? null,
-      status: (raw.status || 'open') as CaseItem['status'],
+      status: (raw.status ?? undefined) as unknown as CaseItem['status'],
       created_by: raw.created_by ?? null,
       created_at: raw.created_at || new Date().toISOString(),
       updated_at: raw.updated_at || new Date().toISOString(),
@@ -359,6 +361,110 @@ export async function updateCase(caseId: string, payload: UpdateCasePayload): Pr
         : err instanceof Error
           ? err.message
           : 'Une erreur imprévue est survenue lors de la mise à jour du dossier.'
+    throw new CasesError(message, 0)
+  }
+}
+
+/**
+ * Évolution du statut global d'un dossier d'investigation (Story F2.2).
+ * Route cible : PATCH /api/v1/cases/{case_id}/status
+ * Contrat cible : openapi.json (simulée E2)
+ *
+ * RÈGLES DE CONCEPTION :
+ * 1. Validation préalable par Zod du statut cible.
+ * 2. Envoi via PATCH /api/v1/cases/{case_id}/status avec l'en-tête Authorization.
+ * 3. En cas de refus de transition par le serveur (400 ou 409) : message clair et précis.
+ * 4. En cas d'erreur 403 Forbidden : message d'accès refusé / droits insuffisants.
+ * 5. En cas d'erreur 5xx ou réseau : notification d'échec sans perte d'état.
+ */
+export async function updateCaseStatus(
+  caseId: string,
+  payload: UpdateCaseStatusPayload,
+): Promise<CaseDetail> {
+  const validated = updateCaseStatusSchema.parse(payload)
+
+  try {
+    const patchFn = apiClient.PATCH as unknown as (
+      url: string,
+      options: { body: unknown },
+    ) => Promise<{ data?: unknown; response: Response; error?: unknown }>
+
+    const { data, response, error } = await patchFn(`/api/v1/cases/${caseId}/status`, {
+      body: validated,
+    })
+
+    if (response.status === 403) {
+      throw new CasesError(
+        "Vous n'avez pas les autorisations nécessaires pour modifier le statut de ce dossier.",
+        403,
+      )
+    }
+
+    if (response.status === 404) {
+      throw new CasesError('Dossier introuvable.', 404)
+    }
+
+    if (response.status === 400 || response.status === 409) {
+      const err = error as unknown as {
+        detail?: string | Array<{ loc?: string[]; msg?: string }>
+        message?: string
+      } | null
+      const message =
+        typeof err?.detail === 'string'
+          ? err.detail
+          : typeof err?.message === 'string'
+            ? err.message
+            : 'Transition de statut refusée par le serveur.'
+      throw new CasesError(message, response.status)
+    }
+
+    if (response.status === 422) {
+      const err = error as unknown as { detail?: string } | null
+      const message =
+        typeof err?.detail === 'string'
+          ? err.detail
+          : 'Erreur de validation lors de la mise à jour du statut.'
+      throw new CasesError(message, 422)
+    }
+
+    if (!response.ok || error) {
+      const detail =
+        (error as unknown as { detail?: string })?.detail ||
+        'Erreur serveur lors de la mise à jour du statut du dossier. Veuillez réessayer.'
+      throw new CasesError(detail, response.status)
+    }
+
+    if (!data) {
+      throw new CasesError('Réponse de mise à jour de statut indisponible.', response.status)
+    }
+
+    const raw = data as unknown as Partial<CaseDetail>
+    return {
+      id: raw.id || caseId,
+      organization_id: raw.organization_id || '',
+      title: raw.title || '',
+      description: raw.description ?? null,
+      status: (raw.status || validated.status) as CaseItem['status'],
+      created_by: raw.created_by ?? null,
+      created_at: raw.created_at || new Date().toISOString(),
+      updated_at: raw.updated_at || new Date().toISOString(),
+      evidence_count: typeof raw.evidence_count === 'number' ? raw.evidence_count : 0,
+      incident_date: raw.incident_date ?? null,
+      incident_type: raw.incident_type ?? null,
+      affected_systems: raw.affected_systems ?? null,
+      members: raw.members || [],
+    }
+  } catch (err) {
+    if (err instanceof CasesError) {
+      throw err
+    }
+    const message =
+      err instanceof Error &&
+      (err.name === 'TypeError' || err.message.toLowerCase().includes('fetch'))
+        ? 'Erreur réseau : impossible de joindre le serveur. Vérifiez votre connexion et réessayez.'
+        : err instanceof Error
+          ? err.message
+          : 'Une erreur imprévue est survenue lors de la mise à jour du statut.'
     throw new CasesError(message, 0)
   }
 }
