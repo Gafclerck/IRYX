@@ -1,0 +1,4050 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "IRYX API",
+    "description": "Plateforme d'investigation numérique (DFIR) et d'analyse de fraudes supervisée par IA",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Authentification utilisateur et émission de jeton JWT",
+        "description": "Authentifie un utilisateur via email et mot de passe, et délivre un jeton JWT Bearer valide 3600 secondes.",
+        "operationId": "login_api_v1_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Profil de l'utilisateur connecté",
+        "description": "Retourne les informations du compte utilisateur pour le jeton Bearer fourni.",
+        "operationId": "get_me_api_v1_auth_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/organizations": {
+      "post": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Création d'une organisation",
+        "description": "Crée une nouvelle organisation et attribue automatiquement le rôle admin au créateur.",
+        "operationId": "create_organization_api_v1_organizations_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizationCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Liste des organisations de l'utilisateur",
+        "description": "Retourne la liste paginée des organisations dont l'utilisateur est membre.",
+        "operationId": "list_organizations_api_v1_organizations_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Nombre maximum d'éléments par page.",
+              "default": 20,
+              "title": "Limit"
+            },
+            "description": "Nombre maximum d'éléments par page."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Index de départ de pagination.",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Index de départ de pagination."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{org_id}": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Consultation d'une organisation",
+        "description": "Retourne les détails d'une organisation si membre (Zero Leak).",
+        "operationId": "get_organization_api_v1_organizations__org_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{org_id}/members": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Liste paginée des membres d'une organisation",
+        "description": "Retourne la liste des membres pour un utilisateur membre de l'organisation.",
+        "operationId": "list_members_api_v1_organizations__org_id__members_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Org Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Nombre maximum d'éléments par page.",
+              "default": 20,
+              "title": "Limit"
+            },
+            "description": "Nombre maximum d'éléments par page."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Index de départ de pagination.",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Index de départ de pagination."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Ajout d'un membre à l'organisation",
+        "description": "Ajoute un utilisateur existant à l'organisation avec un rôle spécifique. Réservé aux administrateurs.",
+        "operationId": "add_member_api_v1_organizations__org_id__members_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberAddRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{org_id}/members/{user_id}": {
+      "patch": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Modification du rôle d'un membre",
+        "description": "Modifie le rôle d'un membre existant. Réservé aux administrateurs.",
+        "operationId": "update_member_role_api_v1_organizations__org_id__members__user_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Org Id"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Révocation d'un membre de l'organisation",
+        "description": "Supprime un membre de l'organisation. Réservé aux administrateurs.",
+        "operationId": "remove_member_api_v1_organizations__org_id__members__user_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Org Id"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{org_id}/cases": {
+      "post": {
+        "tags": [
+          "Cases"
+        ],
+        "summary": "Création d'un dossier d'investigation",
+        "description": "Crée un nouveau dossier au statut 'open' pour l'organisation spécifiée. Réservé aux membres ayant un rôle opérationnel ('admin', 'investigator', 'analyst').",
+        "operationId": "create_case_api_v1_organizations__org_id__cases_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaseCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Cases"
+        ],
+        "summary": "Liste paginée des dossiers d'une organisation",
+        "description": "Retourne la liste paginée des dossiers appartenant à l'organisation détentrice. Accessible à tout membre actif (y compris 'viewer').",
+        "operationId": "list_cases_api_v1_organizations__org_id__cases_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Org Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Nombre maximum de dossiers par page.",
+              "default": 20,
+              "title": "Limit"
+            },
+            "description": "Nombre maximum de dossiers par page."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Index de départ de pagination.",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Index de départ de pagination."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases": {
+      "get": {
+        "tags": [
+          "Cases"
+        ],
+        "summary": "Liste globale des dossiers accessibles",
+        "description": "Retourne la liste paginée des dossiers de toutes les organisations dont l'utilisateur est membre actif. Isolation stricte multi-tenants garantie par jointure sur les adhésions.",
+        "operationId": "list_user_cases_api_v1_cases_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Nombre maximum de dossiers par page.",
+              "default": 20,
+              "title": "Limit"
+            },
+            "description": "Nombre maximum de dossiers par page."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Index de départ de pagination.",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Index de départ de pagination."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases/{case_id}": {
+      "get": {
+        "tags": [
+          "Cases"
+        ],
+        "summary": "Consultation unitaire d'un dossier",
+        "description": "Retourne le détail d'un dossier si l'utilisateur est membre de l'organisation détentrice.",
+        "operationId": "get_case_api_v1_cases__case_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases/{case_id}/status": {
+      "patch": {
+        "tags": [
+          "Cases"
+        ],
+        "summary": "Mise à jour du statut opérationnel d'un dossier",
+        "description": "Fait progresser le dossier dans son cycle de vie selon la matrice de transition stricte. Réservé aux membres habilités (hors rôle 'viewer').",
+        "operationId": "update_case_status_api_v1_cases__case_id__status_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaseStatusUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases/{case_id}/evidences": {
+      "post": {
+        "tags": [
+          "Evidences"
+        ],
+        "summary": "Téléversement d'une preuve numérique",
+        "description": "Téléverse un fichier de preuve en multipart, le diffuse par morceaux de 64 Ko vers le répertoire de staging sous un UUID unique, crée les entités Evidence et IngestionRun, et déclenche la tâche d'ingestion asynchrone.",
+        "operationId": "upload_evidence_api_v1_cases__case_id__evidences_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_evidence_api_v1_cases__case_id__evidences_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceUploadResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Evidences"
+        ],
+        "summary": "Liste paginée des preuves d'un dossier",
+        "description": "Retourne la liste paginée des preuves numériques rattachées à un dossier. Tri déterministe (created_at DESC, id DESC), limit par défaut à 50 (max 100).",
+        "operationId": "list_evidences_api_v1_cases__case_id__evidences_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Nombre maximum de preuves par page.",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "Nombre maximum de preuves par page."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Index de départ de pagination.",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Index de départ de pagination."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases/{case_id}/evidences/{evidence_id}/ingestion-status": {
+      "get": {
+        "tags": [
+          "Evidences"
+        ],
+        "summary": "Consultation de l'état d'ingestion d'une preuve",
+        "description": "Interroge l'état du dernier cycle d'ingestion et renvoie les métadonnées scellées. En cas de traitement en cours, renvoie l'en-tête Retry-After: 3.",
+        "operationId": "get_ingestion_status_api_v1_cases__case_id__evidences__evidence_id__ingestion_status_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "evidence_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evidence Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceIngestionStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases/{case_id}/evidences/{evidence_id}": {
+      "get": {
+        "tags": [
+          "Evidences"
+        ],
+        "summary": "Consultation des métadonnées d'une preuve",
+        "description": "Retourne les métadonnées complètes d'une preuve numérique rattachée à un dossier.",
+        "operationId": "get_evidence_api_v1_cases__case_id__evidences__evidence_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "evidence_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evidence Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases/{case_id}/tool-executions": {
+      "get": {
+        "tags": [
+          "Forensic Gateway"
+        ],
+        "summary": "Consultation paginée des exécutions d'outils d'un dossier",
+        "description": "Retourne les traces d'audit immuables des exécutions d'outils associées à un dossier.",
+        "operationId": "list_tool_executions_api_v1_cases__case_id__tool_executions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Nombre maximum d'éléments par page (défaut 50, min 1, max 100).",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "Nombre maximum d'éléments par page (défaut 50, min 1, max 100)."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Décalage pour pagination (défaut 0).",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Décalage pour pagination (défaut 0)."
+          },
+          {
+            "name": "tool_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtrer par nom de l'outil forensique.",
+              "title": "Tool Name"
+            },
+            "description": "Filtrer par nom de l'outil forensique."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ToolExecutionStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtrer par statut ('success', 'error', 'timeout').",
+              "title": "Status"
+            },
+            "description": "Filtrer par statut ('success', 'error', 'timeout')."
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtre temporel de début (format ISO-8601 UTC).",
+              "title": "Start Date"
+            },
+            "description": "Filtre temporel de début (format ISO-8601 UTC)."
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtre temporel de fin (format ISO-8601 UTC).",
+              "title": "End Date"
+            },
+            "description": "Filtre temporel de fin (format ISO-8601 UTC)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolExecutionListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases/{case_id}/tool-executions/{execution_id}": {
+      "get": {
+        "tags": [
+          "Forensic Gateway"
+        ],
+        "summary": "Consultation détaillée d'une exécution d'outil",
+        "description": "Retourne les détails et l'empreinte SHA-256 d'une exécution d'outil d'un dossier.",
+        "operationId": "get_tool_execution_api_v1_cases__case_id__tool_executions__execution_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "execution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Execution Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolExecutionRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases/{case_id}/observations": {
+      "get": {
+        "tags": [
+          "Forensic Gateway"
+        ],
+        "summary": "Consultation paginée des observations normalisées d'un dossier",
+        "description": "Permet de naviguer dans l'intégralité des faits techniques extraits des preuves.",
+        "operationId": "list_observations_api_v1_cases__case_id__observations_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Nombre maximum d'éléments par page (défaut 50, min 1, max 100).",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "Nombre maximum d'éléments par page (défaut 50, min 1, max 100)."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Décalage pour pagination (défaut 0).",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Décalage pour pagination (défaut 0)."
+          },
+          {
+            "name": "tool_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtrer par nom de l'outil extracteur.",
+              "title": "Tool Name"
+            },
+            "description": "Filtrer par nom de l'outil extracteur."
+          },
+          {
+            "name": "source_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtrer par identifiant de la preuve source.",
+              "title": "Source Id"
+            },
+            "description": "Filtrer par identifiant de la preuve source."
+          },
+          {
+            "name": "tool_execution_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtrer par exécution d'outil source.",
+              "title": "Tool Execution Id"
+            },
+            "description": "Filtrer par exécution d'outil source."
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtre temporel de début (format ISO-8601 UTC).",
+              "title": "Start Date"
+            },
+            "description": "Filtre temporel de début (format ISO-8601 UTC)."
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtre temporel de fin (format ISO-8601 UTC).",
+              "title": "End Date"
+            },
+            "description": "Filtre temporel de fin (format ISO-8601 UTC)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases/{case_id}/observations/{observation_id}": {
+      "get": {
+        "tags": [
+          "Forensic Gateway"
+        ],
+        "summary": "Consultation détaillée d'une observation",
+        "description": "Retourne les détails et le contenu normalisé d'une observation spécifique.",
+        "operationId": "get_observation_api_v1_cases__case_id__observations__observation_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "observation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Observation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/gateway/tools": {
+      "get": {
+        "tags": [
+          "Forensic Gateway"
+        ],
+        "summary": "Liste des outils forensiques enregistrés",
+        "description": "Retourne les métadonnées et schémas des outils disponibles dans la Gateway.",
+        "operationId": "list_registered_tools_api_v1_gateway_tools_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ToolMetadataResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Registered Tools Api V1 Gateway Tools Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/investigations": {
+      "post": {
+        "tags": [
+          "Orchestrator"
+        ],
+        "summary": "Démarrage d'une session d'investigation",
+        "description": "Démarre une nouvelle session d'investigation sur le dossier spécifié. Interdit si une session est déjà active ('pending', 'running', 'paused'). Réservé aux rôles ADMIN, INVESTIGATOR et ANALYST (interdit aux VIEWERS).",
+        "operationId": "create_investigation_api_v1_cases__case_id__investigations_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvestigationRunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Orchestrator"
+        ],
+        "summary": "Liste des sessions d'investigation d'un dossier",
+        "description": "Récupère la liste de toutes les sessions d'investigation associées au dossier.",
+        "operationId": "list_investigations_api_v1_cases__case_id__investigations_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InvestigationRunOut"
+                  },
+                  "title": "Response List Investigations Api V1 Cases  Case Id  Investigations Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases/{case_id}/investigations/{run_id}": {
+      "get": {
+        "tags": [
+          "Orchestrator"
+        ],
+        "summary": "Consultation d'une session d'investigation",
+        "description": "Récupère les détails, la phase active et les métadonnées d'une session d'investigation.",
+        "operationId": "get_investigation_api_v1_cases__case_id__investigations__run_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvestigationRunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases/{case_id}/investigations/{run_id}/plan": {
+      "get": {
+        "tags": [
+          "Orchestrator"
+        ],
+        "summary": "Consultation du plan d'investigation",
+        "description": "Récupère le plan d'actions forensiques proposé pour cette session d'investigation. Renvoie HTTP 404 PLAN_NOT_FOUND si aucun plan n'est encore associé.",
+        "operationId": "get_investigation_plan_api_v1_cases__case_id__investigations__run_id__plan_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvestigationPlan"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases/{case_id}/investigations/{run_id}/gates/h1": {
+      "post": {
+        "tags": [
+          "Orchestrator"
+        ],
+        "summary": "Arbitrage de la porte de validation humaine H1",
+        "description": "Permet à un analyste ou enquêteur d'approuver, de modifier ou de rejeter le plan d'investigation proposé par le Planner à la porte H1. Réservé aux rôles ADMIN, INVESTIGATOR et ANALYST (interdit aux VIEWERS).",
+        "operationId": "arbitrate_gate_h1_api_v1_cases__case_id__investigations__run_id__gates_h1_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/H1DecisionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/H1DecisionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases/{case_id}/investigations/{run_id}/resume": {
+      "post": {
+        "tags": [
+          "Orchestrator"
+        ],
+        "summary": "Reprise d'une session d'investigation",
+        "description": "Reprend une session d'investigation interrompue ou en pause. Recharge l'état exact depuis le checkpointer PostgreSQL et poursuit l'exécution. Rejette toute tentative de reprise sur une session terminée ou échouée (HTTP 400). Réservé aux rôles ADMIN, INVESTIGATOR et ANALYST (interdit aux VIEWERS).",
+        "operationId": "resume_investigation_api_v1_cases__case_id__investigations__run_id__resume_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvestigationRunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases/{case_id}/findings": {
+      "post": {
+        "tags": [
+          "Findings"
+        ],
+        "summary": "Création d'un constat d'investigation (Finding)",
+        "description": "Crée un nouveau constat technique au statut initial 'proposed'. Exige un rôle opérationnel ('admin', 'investigator', 'analyst').",
+        "operationId": "create_finding_api_v1_cases__case_id__findings_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FindingCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Findings"
+        ],
+        "summary": "Consultation paginée des constats d'un dossier",
+        "description": "Retourne la liste paginée des findings associés au dossier avec filtres.",
+        "operationId": "list_findings_api_v1_cases__case_id__findings_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Nombre maximum d'éléments",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "Nombre maximum d'éléments"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Décalage pour pagination",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Décalage pour pagination"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/FindingStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtrer par statut ('proposed', 'validated', 'rejected')",
+              "title": "Status"
+            },
+            "description": "Filtrer par statut ('proposed', 'validated', 'rejected')"
+          },
+          {
+            "name": "severity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/FindingSeverity"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtrer par sévérité ('low', 'medium', 'high', 'critical')",
+              "title": "Severity"
+            },
+            "description": "Filtrer par sévérité ('low', 'medium', 'high', 'critical')"
+          },
+          {
+            "name": "confidence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/FindingConfidence"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtrer par niveau de confiance ('low', 'medium', 'high')",
+              "title": "Confidence"
+            },
+            "description": "Filtrer par niveau de confiance ('low', 'medium', 'high')"
+          },
+          {
+            "name": "finding_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/FindingType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtrer par type de constat ('fact', 'inference', 'hypothesis')",
+              "title": "Finding Type"
+            },
+            "description": "Filtrer par type de constat ('fact', 'inference', 'hypothesis')"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases/{case_id}/findings/{finding_id}": {
+      "get": {
+        "tags": [
+          "Findings"
+        ],
+        "summary": "Détail d'un constat d'investigation",
+        "description": "Récupère un constat par son identifiant unique et vérifie l'accès au dossier.",
+        "operationId": "get_finding_api_v1_cases__case_id__findings__finding_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "finding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Finding Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Findings"
+        ],
+        "summary": "Mise à jour d'un constat d'investigation",
+        "description": "Met à jour les attributs d'un constat existant. Exige un rôle opérationnel ('admin', 'investigator', 'analyst').",
+        "operationId": "update_finding_api_v1_cases__case_id__findings__finding_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "finding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Finding Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FindingUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Findings"
+        ],
+        "summary": "Suppression d'un constat d'investigation",
+        "description": "Supprime définitivement un constat. Exige un rôle opérationnel ('admin', 'investigator', 'analyst').",
+        "operationId": "delete_finding_api_v1_cases__case_id__findings__finding_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "finding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Finding Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Vérification de santé de l'API",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Body_upload_evidence_api_v1_cases__case_id__evidences_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "Fichier binaire de la preuve numérique"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_evidence_api_v1_cases__case_id__evidences_post"
+      },
+      "CaseCreate": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Title",
+            "description": "Intitulé concis du dossier d'investigation."
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 5000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "Contexte opérationnel ou description de l'incident."
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "CaseCreate",
+        "description": "Schema for creating a new investigation case."
+      },
+      "CaseListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CaseOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "total_items": {
+            "type": "integer",
+            "title": "Total Items",
+            "default": 0
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset",
+          "has_more"
+        ],
+        "title": "CaseListResponse",
+        "description": "Paginated collection of investigation cases."
+      },
+      "CaseOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Organization Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CaseStatus"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "organization_id",
+          "title",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CaseOut",
+        "description": "Public representation of an investigation case."
+      },
+      "CaseStatus": {
+        "type": "string",
+        "enum": [
+          "open",
+          "in_progress",
+          "review",
+          "closed"
+        ],
+        "title": "CaseStatus",
+        "description": "Operational lifecycle statuses for investigation cases."
+      },
+      "CaseStatusUpdate": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/CaseStatus",
+            "description": "Nouveau statut du cycle de vie ('open', 'in_progress', 'review', 'closed')."
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "CaseStatusUpdate",
+        "description": "Schema for updating the operational lifecycle status of a case."
+      },
+      "EvidenceIngestionStatusResponse": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/IngestionStatus"
+          },
+          "progress": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Progress"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "detected_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detected Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "progress"
+        ],
+        "title": "EvidenceIngestionStatusResponse",
+        "description": "Status payload for polling evidence ingestion progress and sealed metadata."
+      },
+      "EvidenceListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceRead"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total"
+          },
+          "total_items": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Items",
+            "default": 0
+          },
+          "limit": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Offset"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset",
+          "has_more"
+        ],
+        "title": "EvidenceListResponse",
+        "description": "Paginated collection of evidence files for an investigation case."
+      },
+      "EvidenceRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "case_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Case Id"
+          },
+          "original_name": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Original Name"
+          },
+          "file_size": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "File Size"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "detected_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detected Type"
+          },
+          "imported_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Imported By"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "case_id",
+          "original_name",
+          "file_size",
+          "created_at"
+        ],
+        "title": "EvidenceRead",
+        "description": "Public representation of an evidence entity."
+      },
+      "EvidenceUploadResponse": {
+        "properties": {
+          "evidence_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Evidence Id"
+          },
+          "ingestion_run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Ingestion Run Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evidence_id",
+          "ingestion_run_id"
+        ],
+        "title": "EvidenceUploadResponse",
+        "description": "Response payload returned when evidence is successfully accepted for ingestion."
+      },
+      "FindingConfidence": {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "title": "FindingConfidence",
+        "description": "Confidence levels for technical findings."
+      },
+      "FindingCreate": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Title",
+            "description": "Intitulé concis du constat d'investigation."
+          },
+          "severity": {
+            "$ref": "#/components/schemas/FindingSeverity",
+            "description": "Niveau de sévérité ('low', 'medium', 'high', 'critical')."
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/FindingConfidence",
+            "description": "Niveau de confiance ('low', 'medium', 'high').",
+            "default": "medium"
+          },
+          "finding_type": {
+            "$ref": "#/components/schemas/FindingType",
+            "description": "Classification ('fact', 'inference', 'hypothesis').",
+            "default": "fact"
+          },
+          "observation_refs": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Observation Refs",
+            "description": "Identifiants d'observations justificatives réelles."
+          },
+          "tool_execution_refs": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Tool Execution Refs",
+            "description": "Identifiants d'exécutions d'outils associées."
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "severity"
+        ],
+        "title": "FindingCreate",
+        "description": "Schema for proposing or registering a new finding."
+      },
+      "FindingListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FindingOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total"
+          },
+          "total_items": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Items",
+            "default": 0
+          },
+          "limit": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Offset"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset",
+          "has_more"
+        ],
+        "title": "FindingListResponse",
+        "description": "Paginated collection of investigation findings."
+      },
+      "FindingOut": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Title",
+            "description": "Intitulé concis du constat d'investigation."
+          },
+          "severity": {
+            "$ref": "#/components/schemas/FindingSeverity",
+            "description": "Niveau de sévérité ('low', 'medium', 'high', 'critical')."
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/FindingConfidence",
+            "description": "Niveau de confiance ('low', 'medium', 'high').",
+            "default": "medium"
+          },
+          "finding_type": {
+            "$ref": "#/components/schemas/FindingType",
+            "description": "Classification ('fact', 'inference', 'hypothesis').",
+            "default": "fact"
+          },
+          "observation_refs": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Observation Refs",
+            "description": "Identifiants d'observations justificatives réelles."
+          },
+          "tool_execution_refs": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Tool Execution Refs",
+            "description": "Identifiants d'exécutions d'outils associées."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "case_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Case Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/FindingStatus"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "severity",
+          "id",
+          "case_id",
+          "status",
+          "created_at"
+        ],
+        "title": "FindingOut",
+        "description": "Public representation of an investigation finding."
+      },
+      "FindingSeverity": {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium",
+          "high",
+          "critical"
+        ],
+        "title": "FindingSeverity",
+        "description": "Severity levels for technical findings."
+      },
+      "FindingStatus": {
+        "type": "string",
+        "enum": [
+          "proposed",
+          "validated",
+          "rejected"
+        ],
+        "title": "FindingStatus",
+        "description": "Lifecycle statuses for technical findings."
+      },
+      "FindingType": {
+        "type": "string",
+        "enum": [
+          "fact",
+          "inference",
+          "hypothesis"
+        ],
+        "title": "FindingType",
+        "description": "Epistemological classifications for investigation findings."
+      },
+      "FindingUpdate": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "description": "Nouvel intitulé concis du constat."
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FindingSeverity"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nouveau niveau de sévérité."
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FindingConfidence"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nouveau niveau de confiance."
+          },
+          "finding_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FindingType"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nouveau type de constat."
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FindingStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nouveau statut opérationnel ('proposed', 'validated', 'rejected')."
+          },
+          "observation_refs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observation Refs",
+            "description": "Nouvelle liste d'identifiants d'observations."
+          },
+          "tool_execution_refs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Execution Refs",
+            "description": "Nouvelle liste d'identifiants d'exécutions d'outils."
+          }
+        },
+        "type": "object",
+        "title": "FindingUpdate",
+        "description": "Schema for updating an existing technical finding."
+      },
+      "H1Decision": {
+        "type": "string",
+        "enum": [
+          "approve",
+          "modify",
+          "reject"
+        ],
+        "title": "H1Decision",
+        "description": "Arbitration decisions for Human Gate H1."
+      },
+      "H1DecisionRequest": {
+        "properties": {
+          "decision": {
+            "$ref": "#/components/schemas/H1Decision",
+            "description": "Arbitration decision: 'approve', 'modify', or 'reject'."
+          },
+          "modified_plan": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "$ref": "#/components/schemas/InvestigationPlan"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modified Plan",
+            "description": "Modified investigation plan (mandatory if decision is 'modify')."
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback",
+            "description": "Analyst feedback or observations."
+          },
+          "return_to_planner": {
+            "type": "boolean",
+            "title": "Return To Planner",
+            "description": "If True on rejection, loops back to PlannerAgent instead of halting.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision"
+        ],
+        "title": "H1DecisionRequest",
+        "description": "Payload submitted by analyst to arbitrate Human Gate H1."
+      },
+      "H1DecisionResponse": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Run Id"
+          },
+          "case_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Case Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/InvestigationStatus"
+          },
+          "current_phase": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PhaseName"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Current Phase"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/H1Decision"
+          },
+          "validated_plan": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validated Plan"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "phases": {
+            "items": {
+              "$ref": "#/components/schemas/PhaseOut"
+            },
+            "type": "array",
+            "title": "Phases"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "case_id",
+          "status",
+          "current_phase",
+          "decision",
+          "message"
+        ],
+        "title": "H1DecisionResponse",
+        "description": "Response returned after Human Gate H1 arbitration."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "ok"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "HealthResponse",
+        "description": "Schema for health check endpoint response."
+      },
+      "IngestionStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "processing",
+          "completed",
+          "failed"
+        ],
+        "title": "IngestionStatus",
+        "description": "Operational lifecycle statuses for evidence ingestion runs."
+      },
+      "InvestigationPlan": {
+        "properties": {
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/InvestigationPlanStep"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Steps",
+            "description": "Ordered list of investigation steps (maximum 10 steps)."
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "description": "Overview or rationale of the overall investigation plan.",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "steps"
+        ],
+        "title": "InvestigationPlan",
+        "description": "Bounded forensic investigation plan proposed by PlannerAgent (FR17, NFR-PERF-05)."
+      },
+      "InvestigationPlanStep": {
+        "properties": {
+          "step_id": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Step Id",
+            "description": "Order of execution index for the step."
+          },
+          "tool_name": {
+            "type": "string",
+            "title": "Tool Name",
+            "description": "Name of the forensic tool to execute."
+          },
+          "target_evidence_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Target Evidence Id",
+            "description": "Identifier of the target evidence artifact."
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Parameters",
+            "description": "Parameters passed to the forensic tool execution."
+          },
+          "rationale": {
+            "type": "string",
+            "title": "Rationale",
+            "description": "Forensic justification explaining why this step is necessary."
+          },
+          "is_blocking": {
+            "type": "boolean",
+            "title": "Is Blocking",
+            "description": "Indique si l'échec technique de cette étape doit suspendre immédiatement l'exécution.",
+            "default": false
+          },
+          "continue_on_error": {
+            "type": "boolean",
+            "title": "Continue On Error",
+            "description": "Indique si l'Executor doit poursuivre les étapes suivantes en cas d'erreur.",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "step_id",
+          "tool_name",
+          "target_evidence_id",
+          "rationale"
+        ],
+        "title": "InvestigationPlanStep",
+        "description": "Single forensic step in an investigation plan."
+      },
+      "InvestigationRunOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "case_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Case Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/InvestigationStatus"
+          },
+          "current_phase": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PhaseName"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Current Phase"
+          },
+          "validated_plan": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validated Plan"
+          },
+          "iteration_count": {
+            "type": "integer",
+            "title": "Iteration Count",
+            "default": 0
+          },
+          "error_count": {
+            "type": "integer",
+            "title": "Error Count",
+            "default": 0
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "phases": {
+            "items": {
+              "$ref": "#/components/schemas/PhaseOut"
+            },
+            "type": "array",
+            "title": "Phases"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "case_id",
+          "status",
+          "current_phase",
+          "started_at",
+          "updated_at"
+        ],
+        "title": "InvestigationRunOut",
+        "description": "Output schema for an investigation run entity."
+      },
+      "InvestigationStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "running",
+          "paused",
+          "completed",
+          "failed"
+        ],
+        "title": "InvestigationStatus",
+        "description": "Lifecycle statuses for an investigation session."
+      },
+      "LoginRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 255,
+            "format": "email",
+            "title": "Email",
+            "description": "Adresse email de l'utilisateur."
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Password",
+            "description": "Mot de passe de l'utilisateur."
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginRequest",
+        "description": "Schema for user authentication and session opening request."
+      },
+      "MemberAddRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id",
+            "description": "Identifiant UUID de l'utilisateur à associer."
+          },
+          "role": {
+            "$ref": "#/components/schemas/MembershipRole",
+            "description": "Rôle attribué ('admin', 'analyst', 'investigator', 'viewer')."
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "role"
+        ],
+        "title": "MemberAddRequest",
+        "description": "Schema for adding a member to an organization."
+      },
+      "MemberListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MemberOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "total_items": {
+            "type": "integer",
+            "title": "Total Items"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "total_items",
+          "limit",
+          "offset",
+          "has_more"
+        ],
+        "title": "MemberListResponse",
+        "description": "Paginated collection of organization members."
+      },
+      "MemberOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Organization Id"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "organization_id",
+          "user_id",
+          "role",
+          "created_at"
+        ],
+        "title": "MemberOut",
+        "description": "Public representation of an organization membership with member details."
+      },
+      "MemberUpdateRequest": {
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/MembershipRole",
+            "description": "Nouveau rôle attribué ('admin', 'analyst', 'investigator', 'viewer')."
+          }
+        },
+        "type": "object",
+        "required": [
+          "role"
+        ],
+        "title": "MemberUpdateRequest",
+        "description": "Schema for updating an existing member's role."
+      },
+      "MembershipRole": {
+        "type": "string",
+        "enum": [
+          "admin",
+          "analyst",
+          "investigator",
+          "viewer"
+        ],
+        "title": "MembershipRole",
+        "description": "Authorized RBAC roles for organization memberships."
+      },
+      "ObservationListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ObservationRead"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total"
+          },
+          "total_items": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Items",
+            "default": 0
+          },
+          "limit": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Offset"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset",
+          "has_more"
+        ],
+        "title": "ObservationListResponse",
+        "description": "Paginated collection of normalized forensic observations."
+      },
+      "ObservationRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "case_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Case Id"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "tool_name": {
+            "type": "string",
+            "title": "Tool Name"
+          },
+          "tool_execution_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Execution Id"
+          },
+          "normalized_content": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Normalized Content"
+          },
+          "timestamp_utc": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp Utc"
+          },
+          "source_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Location"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "case_id",
+          "tool_name",
+          "normalized_content",
+          "created_at"
+        ],
+        "title": "ObservationRead",
+        "description": "Schema for serialized Observation entities."
+      },
+      "OrganizationCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "description": "Nom de l'organisation cliente ou équipe de sécurité."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "OrganizationCreate",
+        "description": "Schema for organization registration and tenant creation."
+      },
+      "OrganizationListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OrganizationResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "total_items": {
+            "type": "integer",
+            "title": "Total Items"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "total_items",
+          "limit",
+          "offset",
+          "has_more"
+        ],
+        "title": "OrganizationListResponse",
+        "description": "Paginated collection of organizations."
+      },
+      "OrganizationResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "OrganizationResponse",
+        "description": "Public organization representation."
+      },
+      "PhaseName": {
+        "type": "string",
+        "enum": [
+          "triage",
+          "planner",
+          "planning",
+          "gate_h1",
+          "waiting_h1",
+          "executor",
+          "execution",
+          "analyst",
+          "analysis",
+          "verifier",
+          "verification",
+          "gate_h2",
+          "pseudonymization",
+          "gate_h3",
+          "reporting"
+        ],
+        "title": "PhaseName",
+        "description": "Names of the investigation phases and nodes."
+      },
+      "PhaseOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "investigation_run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Investigation Run Id"
+          },
+          "phase_name": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PhaseName"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Phase Name"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PhaseStatus"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "investigation_run_id",
+          "phase_name",
+          "status",
+          "started_at"
+        ],
+        "title": "PhaseOut",
+        "description": "Output schema for an investigation phase entity."
+      },
+      "PhaseStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "active",
+          "completed",
+          "failed"
+        ],
+        "title": "PhaseStatus",
+        "description": "Lifecycle statuses for a phase execution."
+      },
+      "TokenResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token",
+            "description": "Jeton d'accès JWT signé (HS256)."
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "description": "Type de jeton (bearer).",
+            "default": "bearer"
+          },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In",
+            "description": "Durée de validité du jeton en secondes (3600s)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "expires_in"
+        ],
+        "title": "TokenResponse",
+        "description": "Schema for successful authentication response containing JWT bearer token."
+      },
+      "ToolExecutionListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ToolExecutionRead"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total"
+          },
+          "total_items": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Items",
+            "default": 0
+          },
+          "limit": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Offset"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset",
+          "has_more"
+        ],
+        "title": "ToolExecutionListResponse",
+        "description": "Paginated collection of tool execution records."
+      },
+      "ToolExecutionRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "case_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Case Id"
+          },
+          "tool_name": {
+            "type": "string",
+            "title": "Tool Name"
+          },
+          "tool_version": {
+            "type": "string",
+            "title": "Tool Version"
+          },
+          "agent_role": {
+            "type": "string",
+            "title": "Agent Role"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Parameters"
+          },
+          "result_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Sha256"
+          },
+          "duration_ms": {
+            "type": "integer",
+            "title": "Duration Ms"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ToolExecutionStatus"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "case_id",
+          "tool_name",
+          "tool_version",
+          "agent_role",
+          "parameters",
+          "duration_ms",
+          "status",
+          "created_at"
+        ],
+        "title": "ToolExecutionRead",
+        "description": "Schema for serialized ToolExecution audit records."
+      },
+      "ToolExecutionStatus": {
+        "type": "string",
+        "enum": [
+          "success",
+          "error",
+          "timeout"
+        ],
+        "title": "ToolExecutionStatus",
+        "description": "Execution status lifecycle states for forensic tools."
+      },
+      "ToolMetadataResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "title": "Timeout Seconds"
+          },
+          "parameters_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Parameters Schema"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "version",
+          "description",
+          "timeout_seconds"
+        ],
+        "title": "ToolMetadataResponse",
+        "description": "Metadata response describing a registered forensic tool."
+      },
+      "UserResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "is_active",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "UserResponse",
+        "description": "Public user representation excluding sensitive authentication credentials."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}
