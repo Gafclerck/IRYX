@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from iryx.auth.models import Organization, User
     from iryx.evidence.models import Evidence
     from iryx.gateway.models import ToolExecution
+    from iryx.orchestrator.models import InvestigationRun
 
 
 class CaseStatus(StrEnum):
@@ -106,6 +107,12 @@ class Case(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    investigation_runs: Mapped[list["InvestigationRun"]] = relationship(
+        "InvestigationRun",
+        back_populates="case",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     def __init__(self, **kw) -> None:
         if kw.get("id") is None:
@@ -122,3 +129,4 @@ class Case(Base):
 import iryx.analytics.models  # noqa: F401, E402
 import iryx.evidence.models  # noqa: F401, E402
 import iryx.gateway.models  # noqa: F401, E402
+import iryx.orchestrator.models  # noqa: F401, E402

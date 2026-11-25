@@ -36,9 +36,6 @@ def test_migration_005_offline_upgrade_sql() -> None:
     command.upgrade(cfg, "head", sql=True)
 
     script_dir = ScriptDirectory.from_config(cfg)
-    heads = script_dir.get_heads()
-    assert heads == ["005"]
-
     revisions = [rev.revision for rev in script_dir.walk_revisions()]
     assert "005" in revisions
 

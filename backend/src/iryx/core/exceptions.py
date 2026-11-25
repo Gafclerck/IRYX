@@ -458,6 +458,38 @@ class LLMServiceUnavailableException(IryxException):
         )
 
 
+class InvestigationAlreadyRunningException(ConflictException):
+    """Raised when an investigation run is already active on a case (HTTP 409)."""
+
+    def __init__(
+        self,
+        message: str = "Une session d'investigation est déjà active sur ce dossier.",
+        code: str = "INVESTIGATION_ALREADY_RUNNING",
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+        )
+
+
+class InvestigationNotFoundException(NotFoundException):
+    """Raised when an investigation run is not found in a case (HTTP 404)."""
+
+    def __init__(
+        self,
+        message: str = (
+            "La session d'investigation demandée n'existe pas ou n'appartient pas à ce dossier."
+        ),
+        code: str = "INVESTIGATION_NOT_FOUND",
+        status_code: int = status.HTTP_404_NOT_FOUND,
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+        )
+        self.status_code = status_code
+
+
 def _format_error_response(code: str, message: str) -> dict[str, Any]:
     """Return the standardized error response envelope."""
     return {
