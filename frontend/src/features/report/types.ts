@@ -32,6 +32,12 @@ export interface ReportDocument {
   readonly status: ReportDocumentStatus
   readonly format: ReportFormat
   readonly content: string
+  /**
+   * Empreinte éventuellement transmise par le back-end (F5.2).
+   * Champ optionnel : le front ne calcule jamais de hash (DP-03).
+   * Le nom exact du champ reste à réaligner avec le contrat E8.
+   */
+  readonly sha256?: string
 }
 
 /** Enveloppe d'erreur générique déjà utilisée par les routes contractuelles. */

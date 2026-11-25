@@ -34,3 +34,23 @@ export const REPORT_UNKNOWN_LABEL_PREFIX = 'État inconnu'
 export const REPORT_UNKNOWN_DISABLED_NOTE =
   'État non répertorié : les actions dépendantes du rapport sont désactivées par mesure de sécurité.'
 export const REPORT_TO_REALIGN = 'à réaligner'
+
+/** Téléchargement direct du rapport (Story F5.2, DP-03). */
+export const REPORT_DOWNLOAD_LABEL = 'Télécharger le rapport'
+export const REPORT_DOWNLOAD_IN_PROGRESS_LABEL = 'Téléchargement en cours...'
+export const REPORT_DOWNLOAD_DISABLED_NOTE =
+  'Le téléchargement est disponible uniquement lorsque le rapport est prêt.'
+export const REPORT_DOWNLOAD_READY_NOTE =
+  'Fichier fourni par le back-end, téléchargé tel quel (DP-03).'
+export const REPORT_DOWNLOAD_ERROR_MESSAGE =
+  'Le téléchargement du rapport a échoué. Veuillez réessayer.'
+export const REPORT_DOWNLOAD_RETRY_LABEL = 'Réessayer'
+
+/** Empreinte transmise par le back-end, jamais calculée côté front (F5.2). */
+export const REPORT_FINGERPRINT_LABEL = 'Empreinte SHA-256'
+export const REPORT_FINGERPRINT_READ_ONLY_NOTE =
+  'Empreinte transmise par le back-end, affichée en lecture seule.'
+export const REPORT_FINGERPRINT_ABSENT_NOTE = 'Aucune empreinte transmise par le back-end.'
+export const REPORT_FINGERPRINT_COPY_LABEL = 'Copier'
+export const REPORT_FINGERPRINT_COPIED_LABEL = 'Copié'
+export const REPORT_FINGERPRINT_COPY_ERROR = 'Copie indisponible sur ce navigateur.'

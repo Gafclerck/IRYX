@@ -4,6 +4,7 @@ import { CaseSidebar } from '../features/cases/components/CaseSidebar'
 import { useCaseDetail } from '../features/cases/hooks/useCaseDetail'
 import { REPORT_GENERATE_LABEL, REPORT_H2_H3_GAP_NOTE } from '../features/report/constants'
 import {
+  ReportDownloadPanel,
   ReportEmptyState,
   ReportErrorState,
   ReportForbiddenState,
@@ -53,6 +54,7 @@ export function ReportPage({ pollIntervalMs }: ReportPageProps) {
     report.state === 'generationFailed' ||
     (report.state === 'generating' && report.document?.status === 'draft')
   const showPreview = !isForbidden && Boolean(report.document?.content)
+  const canDownload = !isForbidden && report.state === 'ready' && Boolean(report.document?.content)
 
   return (
     <div className="flex min-h-[calc(100vh-56px)] flex-col bg-ink text-mist md:flex-row">
@@ -124,6 +126,14 @@ export function ReportPage({ pollIntervalMs }: ReportPageProps) {
           >
             {REPORT_H2_H3_GAP_NOTE}
           </div>
+
+          {!isForbidden && (
+            <ReportDownloadPanel
+              caseId={safeCaseId}
+              document={report.document}
+              isReady={canDownload}
+            />
+          )}
 
           {report.state === 'loading' && <ReportLoadingState />}
 

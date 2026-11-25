@@ -348,22 +348,24 @@ Conformément à la story F4.7, à FR-RES-03, à DP-04, à C2, aux écrans `docs
 
 ---
 
-### 2.17 Simulation de la compilation et de la prévisualisation du rapport (Story F5.1)
+### 2.17 Simulation de la compilation, de la prévisualisation et du téléchargement du rapport (Stories F5.1 et F5.2)
 
-Conformément à la story F5.1 (FR-REP-01), à DP-03, à DP-05, à ADR-0004, à ADR-0008, aux écrans `docs/frontend/11` et `12` et à la RÈGLE CONTRAT (aucune route de rapport dans `docs/contrat/openapi.json`) :
+Conformément aux stories F5.1 (FR-REP-01) et F5.2 (FR-REP-02), à DP-03, à DP-05, à ADR-0004, à ADR-0008, aux écrans `docs/frontend/11` et `12` et à la RÈGLE CONTRAT (aucune route de rapport dans `docs/contrat/openapi.json`) :
 
 1. **Routes interceptées** :
    - `POST /api/v1/cases/{case_id}/report/generate` : **simulée, contrat cible : ADR-0004 / ADR-0008, à réaligner avec E8**. Réponse 202 avec la tâche uniforme et l'en-tête `Retry-After: 3`. Le front ne compile rien (DP-03).
-   - `GET /api/v1/cases/{case_id}/report` : **simulée, contrat cible : ADR-0004, à réaligner avec E8**. Un 404 signifie « aucun rapport finalisé » ; un 200 renvoie le document tel que reçu.
+   - `GET /api/v1/cases/{case_id}/report` : **simulée, contrat cible : ADR-0004** (à réaligner avec E8). Un 404 signifie « aucun rapport finalisé » ; un 200 renvoie le document tel que reçu.
+   - Téléchargement du rapport (F5.2) : réutilise la réponse de `GET /api/v1/cases/{case_id}/report`, **simulée, contrat cible : ADR-0004**. Aucune route de téléchargement supplémentaire n'est introduite.
    - `GET /api/v1/cases/{case_id}/tasks/{task_id}` : **simulée, contrat cible : ADR-0008, à réaligner avec E8**. Suivi de la tâche asynchrone jusqu'à `completed` ou `failed`.
    - Toutes requièrent l'en-tête `Authorization: Bearer <token>` conservé en mémoire vive volatile (Story F1.3).
-2. **Fidélité aux formats et absence d'invention** : le document simulé porte uniquement `status` (cycle de vie décrit en `12-parcours-et-etats.md`), `format` (`markdown` ou `json`, ADR-0004) et `content` (document brut). La tâche reprend strictement `task_id`, `status`, `progress` et `poll_url` (ADR-0008). Le PDF est exclu du MVP (ADR-0004). Le motif d'un échec de compilation est transmis par l'enveloppe d'erreur générique (`detail` / `error_message`) et reste **à réaligner** avec E8 : aucun champ de rapport supplémentaire n'est inventé.
+2. **Fidélité aux formats et absence d'invention** : le document simulé porte uniquement `status` (cycle de vie décrit en `12-parcours-et-etats.md`), `format` (`markdown` ou `json`, ADR-0004), `content` (document brut) et, seulement si le back le fournit, `sha256` (empreinte affichée en lecture seule, tronquée et copiable, sans calcul côté front). La tâche reprend strictement `task_id`, `status`, `progress` et `poll_url` (ADR-0008). Le PDF est exclu du MVP (ADR-0004). Le motif d'un échec de compilation est transmis par l'enveloppe d'erreur générique (`detail` / `error_message`) et reste **à réaligner** avec E8 : aucun champ de rapport supplémentaire n'est inventé. Le nom exact du champ d'empreinte reste **à réaligner** avec E8.
 3. **Cadence de scrutation (ADR-0008)** : `Retry-After: 3` est émis par la simulation ; le client applique 3 secondes par défaut, un recul exponentiel plafonné sur erreur de transport, et arrête immédiatement la scrutation aux états terminaux (`completed`, `failed`) ainsi qu'au départ de la page.
 4. **Décision DP-05** : après une coupure prolongée, la scrutation s'arrête et le bouton « Réessayer la connexion » est proposé. Le seuil reste « à décider » dans `docs/frontend/15-decisions-ouvertes.md`.
 5. **États simulés et affichés** : chargement, aucun rapport (bouton « Générer le rapport » actif), génération en cours (« Compilation et scellement du rapport en cours... »), rapport prêt (aperçu en huit chapitres sur fond mist avec texte ink, affiché sans modification), échec de génération avec le motif renvoyé et « Réessayer la compilation », accès refusé 403, erreur serveur/réseau avec « Réessayer », coupure DP-05, et statut non répertorié restitué sous la forme « État inconnu (code_brut) » avec actions désactivées. Un rapport sans finding validé indique « Aucun finding validé en porte H2. » sans masquer l'aperçu.
 6. **Écart H2/H3** : F4.8 et F4.9 ne sont pas implémentées. Le bouton « Générer le rapport » reste actif sans contrôle H2/H3 ; l'écart est signalé dans l'interface et dans le suivi comme **à réaligner** avec la revue.
 7. **Scénarios pilotés par l'en-tête `X-Simulation-Report`** : `ready`, `no-findings`, `generation-failed`, `unknown-status`, `forbidden`, `server-error`, `network-error`. Par défaut, aucun rapport n'est disponible (404). L'identifiant `case-report-forbidden` est également applicable.
-8. **Périmètre exclu** : export scellé et historique des versions (F5.2), écran d'audit (DP-02), confirmation H2/H3 (F4.8/F4.9). Aucune écriture dans `localStorage` ni `sessionStorage` ; palette stricte (`ink`, `deep`, `teal`, `cyan`, `mist`) sans couleur en dur.
+8. **Téléchargement direct (F5.2, DP-03)** : le bouton est actif uniquement pour un rapport prêt ; il génère un lien Blob à partir du `content` reçu, avec le type MIME et l'extension dérivés du seul `format` renvoyé (`markdown` ou `json`, ADR-0004). Le contenu est téléchargé octet pour octet, sans transformation, recalcul ni re-signature. L'empreinte fournie par le back est affichée en lecture seule, tronquée avec copie intégrale ; aucune empreinte n'est calculée côté front. États prévus : rapport non prêt (bouton désactivé avec explication), téléchargement en cours (bouton désactivé), échec (message et « Réessayer »), accès refusé 403 et statut inconnu (« État inconnu » avec le code brut).
+9. **Périmètre exclu** : historique des versions scellées (F5.2) : dette consignée dans `_bmad-output/implementation-artifacts/frontend-sprint-status.yaml`, à réaligner avec E8 ; export PDF direct (ADR-0004) ; écran d'audit (DP-02) ; confirmation H2/H3 (F4.8/F4.9). Aucune écriture dans `localStorage` ni `sessionStorage` ; palette stricte (`ink`, `deep`, `teal`, `cyan`, `mist`) sans couleur en dur.
 
 ---
 
@@ -431,7 +433,7 @@ Pour chaque lot fonctionnel, le remplacement de la simulation par la connectivit
 | F2 : Contexte du dossier | E2 (Cases) | Brouillon openapi.json (PATCH à réaligner) | Simulation active (openapi.json + à réaligner) |
 | F3 : Registre des preuves | E3 (Evidence, Ingestion) | Brouillon openapi.json | Simulation active (POST, GET et GET détail openapi.json) |
 | F4 : Plan, agents, résultats, revues | E4, E5, E6, E7 | Brouillon openapi.json (plan, arbitrage H1, supervision et chronologie simulés ; agent, progression, messages, journal, pause/annulation/relance, 409 H1 et panneau source à réaligner) | Simulation active pour F4.1 (GET investigations et GET plan), F4.2 (POST gates/h1), F4.3 (GET détail session et POST resume) et F4.6 (GET observations et GET détail observation) ; reste en attente pour F4.4, F4.5 (sautée) et F4.7 à F4.9 |
-| F5 : Rapports et clôture | E8 (Reports), E9 (Déploiement) | Aucune route de rapport dans openapi.json (ADR-0004 / ADR-0008) | Simulation active pour F5.1 (génération et aperçu) ; F5.2 et F5.3 en attente de contrat. H2/H3 (F4.8/F4.9) à réaligner |
+| F5 : Rapports et clôture | E8 (Reports), E9 (Déploiement) | Aucune route de rapport dans openapi.json (ADR-0004 / ADR-0008) | Simulation active pour F5.1 (génération et aperçu) et F5.2 (téléchargement depuis la réponse reçue) ; F5.3 en attente de contrat. H2/H3 (F4.8/F4.9) à réaligner |
 
 ---
 
