@@ -12,6 +12,13 @@ export {
   TimelineUnknownState,
 } from './components'
 export { getTimelineBlock, TimelineApiError, toUtcQuery } from './services/timelineService'
+export {
+  buildSourceDownloadUrl,
+  getObservationSource,
+  SourcePanelApiError,
+} from './services/sourcePanelService'
+export { useSourceDetail } from './hooks/useSourceDetail'
+export { buildSourceExcerpt, readSourceProof, readSourceStatus } from './utils/sourcePanel'
 export { EMPTY_TIMELINE_FILTERS } from './types'
 export type {
   InvestigationRunOut,

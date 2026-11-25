@@ -1,4 +1,4 @@
-import { http, HttpResponse } from 'msw'
+import { http, HttpResponse, delay } from 'msw'
 import type {
   LoginRequest,
   TokenResponse,
@@ -835,6 +835,8 @@ function buildMockObservations(caseId: string): components['schemas']['Observati
     const line = index + 1
     const sourceId = `evi-00${(index % 4) + 1}`
     const timestamp = new Date(Date.UTC(2026, 10, 20, 9, 0, 0) + index * TIMELINE_MOCK_STEP_MS)
+    // Valeurs de simulation : champs libres de `normalized_content` autorisés par le contrat.
+    const proofFingerprint = String(line).padStart(2, '0').repeat(32)
 
     return {
       id: `${caseId}-obs-${String(line).padStart(3, '0')}`,
@@ -847,6 +849,9 @@ function buildMockObservations(caseId: string): components['schemas']['Observati
         file_name: file,
         event_id: `evt-${String(line).padStart(3, '0')}`,
         line,
+        status: 'available',
+        sha256: proofFingerprint,
+        raw_text: `${timestamp.toISOString()} ${toolName} [${file}:${line}] ${sourceId} fait technique ${line}`,
       },
       timestamp_utc: timestamp.toISOString(),
       source_location: `${file}:${line}`,
@@ -1381,13 +1386,19 @@ export const handlers = [
   }),
 
   /**
-   * Détail d'une observation normalisée (route réservée au panneau Source, F4.7).
+   * Détail d'une observation normalisée : panneau « Source » actif (Story F4.7).
    * Route cible : GET /api/v1/cases/{case_id}/observations/{observation_id}
    * Statut : simulée, contrat cible : openapi.json.
-   * La chronologie F4.6 ne l'appelle pas : l'emplacement du panneau est seulement
-   * prévu et l'action reste désactivée avec la mention « à réaligner (F4.7) ».
+   * Scénarios pilotés par l'en-tête X-Simulation-Source :
+   *  - loading : réponse différée pour éprouver le squelette du tiroir ;
+   *  - empty : aucun texte brut complémentaire ;
+   *  - truncated : extrait de 501 lignes (DP-04) ;
+   *  - unknown-status : statut libre non répertorié ;
+   *  - forbidden / error / not-found : 403 / 500 / 404.
+   * Le paramètre `download=full` simule le téléchargement direct DP-04,
+   * demandé uniquement après action explicite (route définitive à réaligner).
    */
-  http.get('*/api/v1/cases/:caseId/observations/:observationId', ({ params, request }) => {
+  http.get('*/api/v1/cases/:caseId/observations/:observationId', async ({ params, request }) => {
     const authHeader = request.headers.get('Authorization')
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return HttpResponse.json<ErrorResponse>(
@@ -1398,16 +1409,26 @@ export const handlers = [
 
     const caseId = String(params.caseId)
     const observationId = String(params.observationId)
-    if (isTimelineForbidden(request, caseId)) {
+    const simulation = request.headers.get('X-Simulation-Source')
+
+    if (simulation === 'loading') await delay(200)
+
+    if (simulation === 'forbidden' || isTimelineForbidden(request, caseId)) {
       return HttpResponse.json<ErrorResponse>(
         { detail: "Vous n'avez pas accès à cette observation." },
         { status: 403 },
       )
     }
-    if (isTimelineServerError(request, caseId)) {
+    if (simulation === 'error' || isTimelineServerError(request, caseId)) {
       return HttpResponse.json<ErrorResponse>(
         { detail: 'Erreur interne lors de la récupération de l’observation.' },
         { status: 500 },
+      )
+    }
+    if (simulation === 'not-found') {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Observation introuvable pour ce dossier.' },
+        { status: 404 },
       )
     }
 
@@ -1419,7 +1440,42 @@ export const handlers = [
       )
     }
 
-    return HttpResponse.json(observation)
+    let content: components['schemas']['ObservationRead'] = observation
+    if (simulation === 'empty') {
+      content = {
+        ...observation,
+        normalized_content: { ...observation.normalized_content, raw_text: '' },
+      }
+    } else if (simulation === 'truncated') {
+      content = {
+        ...observation,
+        normalized_content: {
+          ...observation.normalized_content,
+          raw_text: Array.from({ length: 501 }, (_, index) => `ligne ${index + 1}`).join('\n'),
+        },
+      }
+    } else if (simulation === 'unknown-status') {
+      content = {
+        ...observation,
+        normalized_content: {
+          ...observation.normalized_content,
+          status: 'etat_non_reconnu',
+          raw_text: Array.from({ length: 501 }, (_, index) => `ligne ${index + 1}`).join('\n'),
+        },
+      }
+    }
+
+    if (new URL(request.url).searchParams.get('download') === 'full') {
+      const rawText = String(content.normalized_content.raw_text ?? '')
+      return new HttpResponse(rawText, {
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+          'Content-Disposition': `attachment; filename="${observationId}.txt"`,
+        },
+      })
+    }
+
+    return HttpResponse.json(content)
   }),
 
   /**

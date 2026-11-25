@@ -1,9 +1,11 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, LoaderCircle } from 'lucide-react'
 import { CaseSidebar } from '../features/cases/components/CaseSidebar'
 import { useCaseDetail } from '../features/cases/hooks/useCaseDetail'
 import { useResultsStatus, useTimeline } from '../features/results'
 import {
+  SourceDetailDrawer,
   TimelineEmptyState,
   TimelineErrorState,
   TimelineFiltersBar,
@@ -13,6 +15,7 @@ import {
   TimelinePartialBanner,
   TimelineUnknownState,
 } from '../features/results/components'
+import type { TimelineEntry } from '../features/results/types'
 
 /**
  * Exploration des résultats — onglet Chronologie (Story F4.6, FR-RES-02).
@@ -23,18 +26,37 @@ import {
  *    hypothèses ne sont pas implémentés.
  * 2. DP-01 : pagination serveur stricte par blocs de 100 événements, un seul
  *    bloc conservé à la fois, filtres transmis au serveur et maintenus.
- * 3. Le panneau « Source » est réservé à F4.7 : les actions sont désactivées
- *    avec la mention « à réaligner (F4.7) ».
+ * 3. Le panneau « Source » (F4.7) s'ouvre depuis la ligne ou la puce source,
+ *    sans navigation ; la chronologie reste visible et le focus revient à
+ *    l'élément d'origine à la fermeture.
  * 4. Résultats partiels et statuts inconnus sont dérivés du contrat sans
  *    invention ; aucune écriture dans localStorage ni sessionStorage.
  */
 export function ResultsPage() {
   const { caseId } = useParams<{ caseId: string }>()
   const safeCaseId = caseId ?? ''
+  const [selectedSource, setSelectedSource] = useState<TimelineEntry | null>(null)
+  const sourceOriginRef = useRef<HTMLElement | null>(null)
 
   const { data: caseData, isLoading: isCaseLoading, error: caseError } = useCaseDetail(safeCaseId)
   const timeline = useTimeline({ caseId: safeCaseId, enabled: Boolean(safeCaseId) })
   const status = useResultsStatus({ caseId: safeCaseId, enabled: Boolean(safeCaseId) })
+
+  const openSource = useCallback((entry: TimelineEntry, origin: HTMLElement) => {
+    sourceOriginRef.current = origin
+    setSelectedSource(entry)
+  }, [])
+
+  const closeSource = useCallback(() => {
+    setSelectedSource(null)
+  }, [])
+
+  useEffect(() => {
+    if (!selectedSource) {
+      sourceOriginRef.current?.focus()
+      sourceOriginRef.current = null
+    }
+  }, [selectedSource])
 
   const isForbidden = caseError?.status === 403 || timeline.state === 'forbidden'
   const isInitialLoading = isCaseLoading || (timeline.state === 'loading' && !timeline.block)
@@ -133,12 +155,20 @@ export function ResultsPage() {
                   isFetching={timeline.isFetching}
                   onNext={timeline.goToNextBlock}
                   onPrevious={timeline.goToPreviousBlock}
+                  onOpenSource={openSource}
                 />
               )}
             </>
           )}
         </div>
       </div>
+
+      <SourceDetailDrawer
+        isOpen={Boolean(selectedSource)}
+        caseId={safeCaseId}
+        entry={selectedSource}
+        onClose={closeSource}
+      />
     </div>
   )
 }

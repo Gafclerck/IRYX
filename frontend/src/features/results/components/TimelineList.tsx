@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, MousePointerClick } from 'lucide-react'
-import { SKIPPED_TABS_NOTE, SOURCE_PANEL_REALIGNMENT_NOTE, TIMELINE_PAGE_SIZE } from '../constants'
+import { SKIPPED_TABS_NOTE, SOURCE_PANEL_OPEN_NOTE, TIMELINE_PAGE_SIZE } from '../constants'
 import type { TimelineEntry } from '../types'
 
 export interface TimelineListProps {
@@ -9,6 +9,7 @@ export interface TimelineListProps {
   readonly isFetching: boolean
   readonly onNext: () => void
   readonly onPrevious: () => void
+  readonly onOpenSource: (entry: TimelineEntry, origin: HTMLElement) => void
 }
 
 /**
@@ -17,8 +18,8 @@ export interface TimelineListProps {
  * RÈGLES :
  * 1. Un seul bloc de 100 événements est rendu à la fois (DP-01).
  * 2. Chaque ligne affiche date UTC en police mono, résumé court et source en puce.
- * 3. L'ouverture de l'événement ou de la source est désactivée : le panneau
- *    « Source » est réservé à F4.7 et signalé « à réaligner (F4.7) ».
+ * 3. L'ouverture de l'événement ou de la source active le tiroir latéral F4.7
+ *    sans quitter la page ; l'élément d'origine est transmis pour le focus.
  */
 export function TimelineList({
   entries,
@@ -27,6 +28,7 @@ export function TimelineList({
   isFetching,
   onNext,
   onPrevious,
+  onOpenSource,
 }: TimelineListProps) {
   return (
     <section className="space-y-4" aria-labelledby="timeline-heading" data-testid="timeline-list">
@@ -63,20 +65,19 @@ export function TimelineList({
             <div className="space-y-2">
               <button
                 type="button"
-                disabled
-                title={SOURCE_PANEL_REALIGNMENT_NOTE}
-                className="block w-full rounded text-left text-sm font-semibold text-mist hover:text-cyan focus:outline-none focus:ring-2 focus:ring-cyan disabled:cursor-not-allowed disabled:opacity-80"
+                onClick={(event) => onOpenSource(entry, event.currentTarget)}
+                title="Ouvrir le panneau d’inspection de la source"
+                className="block w-full rounded text-left text-sm font-semibold text-mist hover:text-cyan focus:outline-none focus:ring-2 focus:ring-cyan"
                 data-testid="timeline-event-open"
               >
                 <span data-testid="timeline-event-summary">{entry.summaryLabel}</span>
-                <span className="ml-2 text-xs text-teal">{SOURCE_PANEL_REALIGNMENT_NOTE}</span>
               </button>
 
               <button
                 type="button"
-                disabled
-                title={SOURCE_PANEL_REALIGNMENT_NOTE}
-                className="inline-flex max-w-full items-center gap-2 rounded-full border border-teal bg-deep px-3 py-1 text-xs text-mist focus:outline-none focus:ring-2 focus:ring-cyan disabled:cursor-not-allowed disabled:opacity-80"
+                onClick={(event) => onOpenSource(entry, event.currentTarget)}
+                title="Ouvrir le panneau d’inspection de la source"
+                className="inline-flex max-w-full items-center gap-2 rounded-full border border-teal bg-deep px-3 py-1 text-xs text-mist hover:text-cyan focus:outline-none focus:ring-2 focus:ring-cyan"
                 data-testid="timeline-source-chip"
               >
                 <span className="truncate" data-testid="timeline-source-label">
@@ -94,7 +95,7 @@ export function TimelineList({
         data-testid="source-panel-placeholder"
       >
         <MousePointerClick className="h-4 w-4 flex-shrink-0 text-cyan" aria-hidden="true" />
-        Emplacement prévu pour le panneau « Source » — {SOURCE_PANEL_REALIGNMENT_NOTE}
+        {SOURCE_PANEL_OPEN_NOTE}
       </div>
 
       <nav

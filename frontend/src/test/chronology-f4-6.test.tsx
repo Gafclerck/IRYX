@@ -83,9 +83,12 @@ describe('Story F4.6 - Chronologie unifiée des faits techniques', () => {
 
     const firstSource = screen.getAllByTestId('timeline-source-label')[0]!
     expect(firstSource).toHaveTextContent(/Security\.evtx · evt-001 · ligne 1/)
-    expect(screen.getAllByTestId('timeline-source-chip')[0]).toBeDisabled()
-    expect(screen.getAllByTestId('timeline-event-open')[0]).toBeDisabled()
-    expect(screen.getByTestId('source-panel-placeholder')).toHaveTextContent('à réaligner (F4.7)')
+    expect(screen.getAllByTestId('timeline-source-chip')[0]).toBeEnabled()
+    expect(screen.getAllByTestId('timeline-event-open')[0]).toBeEnabled()
+    expect(screen.getByTestId('source-panel-placeholder')).toHaveTextContent(
+      'Panneau « Source » actif',
+    )
+    expect(screen.queryByTestId('source-detail-drawer')).not.toBeInTheDocument()
 
     expect(observationRequests).toHaveLength(1)
     expect(observationRequests[0]!.searchParams.get('limit')).toBe('100')
