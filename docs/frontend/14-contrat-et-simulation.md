@@ -26,7 +26,7 @@ Afin de permettre un développement front-end rigoureux et parfaitement synchron
 - **Contrat cible d'authentification** : `docs/contrat/auth-contrat-cible.yaml` (décrit en prose et en schéma d'après `docs/proposals/PROPOSITION-auth-back-E1.md`).
 - **Conséquence sur le front-end** : Les routes présentes dans `openapi.json` disposent de types générés automatiquement ; les routes d'authentification sont simulées via MSW à partir de `auth-contrat-cible.yaml`.
 
-### 2.1 Référentiel des routes d'authentification simulées (Stories F1.2 et F1.4)
+### 2.1 Référentiel des routes d'authentification simulées (Stories F1.2, F1.4 et F1.5)
 
 Les trois routes d'authentification ci-dessous sont interceptées et simulées par Mock Service Worker (MSW) dans `frontend/src/test/mocks/handlers.ts` :
 
@@ -36,13 +36,13 @@ Les trois routes d'authentification ci-dessous sont interceptées et simulées p
 | `POST /api/v1/auth/refresh` | Renouvellement silencieux du jeton d'accès via cookie httpOnly | simulée, contrat cible : auth-contrat-cible.yaml |
 | `POST /api/v1/auth/logout` | Déconnexion explicite et suppression du cookie httpOnly (Max-Age=0) | simulée, contrat cible : auth-contrat-cible.yaml |
 
-### 2.2 Référentiel des routes protégées simulées (Story F1.3)
+### 2.2 Référentiel des routes protégées simulées (Story F1.3 et F1.5)
 
 Les routes protégées ci-dessous sont interceptées et simulées par Mock Service Worker (MSW) dans `frontend/src/test/mocks/handlers.ts` pour tester l'injection de l'en-tête `Authorization: Bearer <token>` et la détection d'expiration (HTTP 401) :
 
 | Méthode et route HTTP | Description opérationnelle | Mention de statut |
 |---|---|---|
-| `GET /api/v1/auth/me` | Profil utilisateur connecté, requiert l'en-tête Authorization: Bearer en mémoire | simulée, contrat cible : openapi.json |
+| `GET /api/v1/auth/me` | Profil utilisateur connecté (schéma UserResponse préliminaire sans nom ni organisation), requiert l'en-tête Authorization: Bearer en mémoire | simulée, contrat cible : openapi.json (à réaligner pour identité F1.5) |
 | `GET /api/v1/cases` | Liste globale des dossiers accessibles, requiert l'en-tête Authorization: Bearer | simulée, contrat cible : openapi.json |
 
 #### Règle documentée pour les requêtes sans jeton (Story F1.3)
@@ -58,6 +58,19 @@ Conformément à l'ADR-0011, aux décisions D1, D3, D6 et DP-06 :
 5. **Éviction et redirection vers `/login`** : En cas d'échec du renouvellement (code HTTP 401 sur `/api/v1/auth/refresh` ou coupure réseau), l'access token est purgé de la mémoire vive, le cache TanStack Query est intégralement réinitialisé et l'opérateur est redirigé vers `/login` avec conservation de l'URL cible (state.from) pour réorientation post-connexion.
 6. **Déconnexion explicite** : L'action de déconnexion sollicite `POST /api/v1/auth/logout` (simulée, contrat cible : auth-contrat-cible.yaml) pour ordonner au navigateur la suppression du cookie de renouvellement (`Max-Age=0`), purge la mémoire vive, détruit le cache de données et redirige vers `/login`. Conformément au modèle stateless D6, aucune révocation côté serveur n'est enregistrée.
 7. **Politique d'inactivité de l'analyste** : point C4, à décider.
+
+### 2.4 Fourniture de l'identité et de l'organisation pour la barre supérieure (Story F1.5)
+
+Conformément à la spécification de la story F1.5 :
+1. **Source des données d'affichage** : La barre supérieure permanente (`TopBar`) affiche le nom de l'organisation et le nom de l'utilisateur connecté. Ces données proviennent exclusivement de l'état de session détenu en mémoire vive volatile (`auth-memory.ts`), sans aucun stockage dans `localStorage` ni dans `sessionStorage`.
+2. **Absence de route de profil utilisateur finalisée** :
+   - Le contrat cible d'authentification (`docs/contrat/auth-contrat-cible.yaml`) ne prévoit pas de route de profil utilisateur (route `/api/v1/auth/me` absente du contrat cible auth E1).
+   - Le schéma OpenAPI préliminaire (`docs/contrat/openapi.json`) définit une route `GET /api/v1/auth/me` dont le schéma `UserResponse` (`id`, `email`, `is_active`, `created_at`, `updated_at`) ne comporte ni nom complet de l'analyste, ni rôle opérationnel, ni rattachement d'organisation.
+3. **Traitement par valeurs neutres et non-invention de données** : Le front-end s'interdit formellement de deviner ou d'inventer la moindre donnée d'identité. Lorsque la session en mémoire ne fournit pas ces éléments, l'interface affiche les valeurs neutres :
+   - Utilisateur : « **Utilisateur** »
+   - Organisation : « **Organisation** »
+4. **Mention de statut** : **à réaligner**. Un contrat de profil enrichi (route `/api/v1/auth/me` complétée avec nom et organisation, ou route dédiée `/api/v1/users/me`) devra être formalisé côté back-end lors de l'intégration de l'Épic E1/E2.
+
 
 
 ---

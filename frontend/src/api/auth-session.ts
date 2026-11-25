@@ -201,4 +201,5 @@ export function resetAuthSession(): void {
   silentRefreshEnabled = false
   initialRefreshAttempted = false
   clearAuthEvictionListeners()
+  clearAccessToken()
 }
