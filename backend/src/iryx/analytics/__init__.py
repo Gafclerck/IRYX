@@ -17,8 +17,16 @@ from iryx.analytics.schemas import (
     FindingOut,
     FindingReview,
     FindingUpdate,
+    TimelineEventOut,
+    TimelineFactBase,
+    TimelineProjectionResponse,
+    UndatedFactOut,
 )
-from iryx.analytics.services import FindingService
+from iryx.analytics.services import (
+    FindingService,
+    TimelineService,
+    extract_technical_summary,
+)
 
 __all__ = [
     "Finding",
@@ -34,6 +42,12 @@ __all__ = [
     "FindingType",
     "FindingUpdate",
     "Observation",
+    "TimelineEventOut",
+    "TimelineFactBase",
+    "TimelineProjectionResponse",
+    "TimelineService",
     "UUIDList",
+    "UndatedFactOut",
+    "extract_technical_summary",
     "router",
 ]

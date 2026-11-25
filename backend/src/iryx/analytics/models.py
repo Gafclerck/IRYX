@@ -167,6 +167,12 @@ class Observation(Base):
     def __init__(self, **kw: Any) -> None:
         if kw.get("id") is None:
             kw["id"] = uuid.uuid4()
+        if kw.get("timestamp_utc") is not None:
+            ts = kw["timestamp_utc"]
+            if isinstance(ts, datetime):
+                kw["timestamp_utc"] = (
+                    ts.replace(tzinfo=UTC) if ts.tzinfo is None else ts.astimezone(UTC)
+                )
         super().__init__(**kw)
 
     def __repr__(self) -> str:

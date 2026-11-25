@@ -1,7 +1,7 @@
 """IRYX Analytics and Finding Pydantic Schemas."""
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -24,6 +24,10 @@ __all__ = [
     "FindingStatus",
     "FindingType",
     "FindingUpdate",
+    "TimelineEventOut",
+    "TimelineFactBase",
+    "TimelineProjectionResponse",
+    "UndatedFactOut",
 ]
 
 
@@ -176,4 +180,125 @@ class FindingListResponse(BaseModel):
             and not getattr(data, "total_items", None)
         ):
             data.total_items = data.total
+        return data
+
+
+class TimelineFactBase(BaseModel):
+    """Base schema for timeline technical facts extracted from observations."""
+
+    observation_id: uuid.UUID = Field(
+        ...,
+        description="Identifiant unique de l'observation source.",
+    )
+    tool_name: str = Field(
+        ...,
+        description="Nom de l'outil générateur de l'observation.",
+    )
+    tool_execution_id: uuid.UUID | None = Field(
+        default=None,
+        description="Identifiant de l'exécution d'outil source.",
+    )
+    evidence_id: uuid.UUID | None = Field(
+        default=None,
+        description="Identifiant de la preuve scellée source.",
+    )
+    evidence_name: str | None = Field(
+        default=None,
+        description="Nom original du fichier de preuve scellé.",
+    )
+    summary: str = Field(
+        ...,
+        description="Résumé textuel synthétique du fait technique.",
+    )
+    source_location: str | None = Field(
+        default=None,
+        description="Emplacement de l'artefact source.",
+    )
+    details: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Contenu technique normalisé intégral (normalized_content).",
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TimelineEventOut(TimelineFactBase):
+    """Public representation of a dated timeline event ordered in UTC."""
+
+    timestamp_utc: datetime = Field(
+        ...,
+        description="Horodatage UTC strict de l'événement.",
+    )
+
+    @field_validator("timestamp_utc", mode="after")
+    @classmethod
+    def ensure_utc(cls, v: datetime) -> datetime:
+        """Ensure datetime has UTC timezone."""
+        if v.tzinfo is None:
+            return v.replace(tzinfo=UTC)
+        return v.astimezone(UTC)
+
+
+class UndatedFactOut(TimelineFactBase):
+    """Public representation of an undated technical fact."""
+
+    timestamp_utc: datetime | None = Field(
+        default=None,
+        description="Horodatage nul pour les faits non horodatés.",
+    )
+
+    @field_validator("timestamp_utc")
+    @classmethod
+    def validate_timestamp_is_none(cls, v: Any) -> None:
+        """Enforce that undated facts must not have a timestamp."""
+        if v is not None:
+            raise ValueError("UndatedFactOut must have timestamp_utc set to None.")
+        return None
+
+
+class TimelineProjectionResponse(BaseModel):
+    """Deterministic timeline projection response partitioned into dated and undated events."""
+
+    case_id: uuid.UUID | None = Field(
+        default=None,
+        description="Identifiant du dossier d'investigation.",
+    )
+    events: list[TimelineEventOut] = Field(
+        default_factory=list,
+        description="Événements techniques horodatés, ordonnés en UTC croissant.",
+    )
+    undated_events: list[UndatedFactOut] = Field(
+        default_factory=list,
+        description="Faits techniques sans horodatage extractible.",
+    )
+    total_events: int = Field(
+        default=0,
+        ge=0,
+        description="Nombre total d'événements horodatés.",
+    )
+    total_undated: int = Field(
+        default=0,
+        ge=0,
+        description="Nombre total de faits non horodatés.",
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_totals(cls, data: Any) -> Any:
+        """Ensure total counters are populated when omitted or None."""
+        if isinstance(data, dict):
+            if (
+                data.get("total_events") is None
+                and "events" in data
+                and isinstance(data["events"], list)
+            ):
+                data["total_events"] = len(data["events"])
+            if (
+                data.get("total_undated") is None
+                and "undated_events" in data
+                and isinstance(data["undated_events"], list)
+            ):
+                data["total_undated"] = len(data["undated_events"])
         return data

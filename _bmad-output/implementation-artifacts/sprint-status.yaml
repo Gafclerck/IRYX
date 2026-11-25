@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 11-23-2026 17:18
-last_updated: 11-25-2026 09:00
+last_updated: 11-25-2026 09:10
 project: IRYX
 project_key: NOKEY
 story_location: D:\MY_PROEJCT\IRYX\_bmad-output\implementation-artifacts
@@ -82,8 +82,8 @@ development_status:
   6-4-porte-humaine-h2-validation-des-findings-et-api-de-revue-fr1: review
   epic-6-retrospective: optional
 
-  epic-7: backlog
-  7-1-service-de-reconstruction-et-de-corrélation-de-la-chronologi: backlog
+  epic-7: in-progress
+  7-1-service-de-reconstruction-et-de-corrélation-de-la-chronologi: review
   7-2-api-de-consultation-paginée-et-filtrage-de-la-timeline-d-enq: backlog
   7-3-moteur-de-corrélation-multi-sources-et-mise-en-correspondanc: backlog
   epic-7-retrospective: optional
