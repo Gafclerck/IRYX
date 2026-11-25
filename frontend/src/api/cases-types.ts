@@ -92,3 +92,41 @@ export interface CreateCaseResponse extends CaseItem {
   incident_type?: string
   affected_systems?: string
 }
+
+/**
+ * Membre autorisé d'un dossier d'investigation (Story F2.1).
+ * Aligné sur les rôles RBAC du contrat (MembershipRole).
+ */
+export interface CaseMember {
+  readonly id: string
+  readonly email: string
+  readonly name?: string
+  readonly role: 'admin' | 'analyst' | 'investigator' | 'viewer'
+}
+
+/**
+ * Détail d'un dossier d'investigation pour l'écran Contexte (Story F2.1).
+ * Comporte les champs du contrat OpenAPI CaseOut ainsi que les données complémentaires
+ * requises pour la qualification forensique (incident_date, affected_systems, members)
+ * marquées « à réaligner » tant que le contrat OpenAPI ne les formalise pas.
+ */
+export interface CaseDetail extends CaseItem {
+  readonly incident_date?: string | null
+  readonly incident_type?: string | null
+  readonly affected_systems?: string | null
+  readonly members?: readonly CaseMember[]
+}
+
+/**
+ * Données éditables du contexte d'un dossier (Story F2.1).
+ * Seuls le titre et la description sont modifiables en ligne au MVP.
+ */
+export interface UpdateCasePayload {
+  readonly title: string
+  readonly description?: string | null
+}
+
+/**
+ * Mention affichée pour les champs requis par le métier mais absents du contrat OpenAPI cible.
+ */
+export const CONTRACT_ALIGNMENT_REQUIRED_LABEL = 'à réaligner'

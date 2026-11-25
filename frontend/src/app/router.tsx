@@ -2,6 +2,7 @@ import { createBrowserRouter } from 'react-router-dom'
 import { LoginPage } from '../pages/LoginPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
 import { CasesPage } from '../pages/CasesPage'
+import { CaseContextPage } from '../pages/CaseContextPage'
 import { AuthGuard } from '../features/auth/components/AuthGuard'
 import { AuthenticatedLayout } from '../components/layout/AuthenticatedLayout'
 
@@ -24,6 +25,10 @@ export const router = createBrowserRouter([
       {
         path: '/cases',
         element: <CasesPage />,
+      },
+      {
+        path: '/cases/:caseId',
+        element: <CaseContextPage />,
       },
     ],
   },

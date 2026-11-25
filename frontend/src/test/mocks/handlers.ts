@@ -7,8 +7,23 @@ import type {
 } from '../../api/auth-types'
 
 /**
- * Données simulées d'investigation pour le contrat cible E2 (Story F1.6).
+ * Données simulées d'investigation pour le contrat cible E2 (Story F1.6 et F2.1).
  */
+export const MOCK_CASE_MEMBERS = [
+  {
+    id: 'user-001',
+    email: 'analyste@iryx.local',
+    name: 'Analyste Forensique',
+    role: 'analyst' as const,
+  },
+  {
+    id: 'user-002',
+    email: 'admin@iryx.local',
+    name: 'Administrateur Sécurité',
+    role: 'admin' as const,
+  },
+]
+
 export const MOCK_CASES = [
   {
     id: 'case-001',
@@ -685,10 +700,224 @@ export const handlers = [
       incident_date: incidentDate || new Date().toISOString(),
       incident_type: incidentType || 'a_decider',
       affected_systems: affectedSystems,
+      members: MOCK_CASE_MEMBERS,
     }
 
     MOCK_CASES.unshift(newCase)
 
     return HttpResponse.json(newCase, { status: 201 })
+  }),
+
+  /**
+   * Consultation unitaire d'un dossier d'investigation (Story F2.1).
+   * Route cible : GET /api/v1/cases/:caseId
+   * Statut : simulée, contrat cible : openapi.json
+   */
+  http.get('*/api/v1/cases/:caseId', ({ params, request }) => {
+    const authHeader = request.headers.get('Authorization')
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    const token = authHeader.replace('Bearer ', '').trim()
+
+    if (token === 'mock-expired-token' || token.includes('expired')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    const caseId = String(params.caseId)
+    const simHeader =
+      request.headers.get('X-Simulation-Case') || request.headers.get('X-Simulation-Cases')
+
+    // Simulation accès refusé 403 Forbidden
+    if (
+      token === 'mock-forbidden-token' ||
+      simHeader === 'forbidden' ||
+      caseId === 'case-forbidden'
+    ) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Vous n'avez pas accès à ce dossier." },
+        { status: 403 },
+      )
+    }
+
+    // Simulation erreur interne 500
+    if (
+      token === 'mock-server-error-token' ||
+      token.includes('server-error') ||
+      simHeader === 'server-error' ||
+      simHeader === '500' ||
+      caseId === 'case-500'
+    ) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Erreur interne du serveur lors de la récupération du dossier.' },
+        { status: 500 },
+      )
+    }
+
+    // Simulation dossier introuvable 404 Not Found
+    if (simHeader === 'not-found' || simHeader === '404' || caseId === 'case-not-found') {
+      return HttpResponse.json<ErrorResponse>({ detail: 'Dossier introuvable.' }, { status: 404 })
+    }
+
+    if (caseId === 'case-empty') {
+      return HttpResponse.json(
+        {
+          id: 'case-empty',
+          organization_id: 'org-001',
+          title: 'Dossier d investigation vide',
+          description: null,
+          status: 'open' as const,
+          created_by: 'analyste@iryx.local',
+          created_at: '2026-11-20T08:00:00Z',
+          updated_at: '2026-11-20T08:00:00Z',
+          evidence_count: 0,
+          incident_date: null,
+          incident_type: null,
+          affected_systems: null,
+          members: [],
+        },
+        { status: 200 },
+      )
+    }
+
+    const found = MOCK_CASES.find((c) => c.id === caseId)
+    if (!found) {
+      return HttpResponse.json<ErrorResponse>({ detail: 'Dossier introuvable.' }, { status: 404 })
+    }
+
+    const caseDetail = {
+      ...found,
+      incident_date: (found as Record<string, unknown>).incident_date ?? '2026-11-20T08:00:00Z',
+      incident_type: (found as Record<string, unknown>).incident_type ?? 'a_decider',
+      affected_systems:
+        (found as Record<string, unknown>).affected_systems ??
+        (caseId === 'case-001'
+          ? 'Contrôleur de domaine AD, Serveur Exchange, Postes analystes'
+          : 'Contrôleur de domaine AD, Serveur Exchange'),
+      members: (found as Record<string, unknown>).members ?? MOCK_CASE_MEMBERS,
+    }
+
+    return HttpResponse.json(caseDetail, { status: 200 })
+  }),
+
+  /**
+   * Mise à jour en ligne d'un dossier d'investigation (Story F2.1).
+   * Route cible : PATCH /api/v1/cases/:caseId
+   * Statut : simulée, contrat cible : à réaligner
+   */
+  http.patch('*/api/v1/cases/:caseId', async ({ params, request }) => {
+    const authHeader = request.headers.get('Authorization')
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    const token = authHeader.replace('Bearer ', '').trim()
+
+    if (token === 'mock-expired-token' || token.includes('expired')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    const caseId = String(params.caseId)
+    const simHeader =
+      request.headers.get('X-Simulation-Update-Case') || request.headers.get('X-Simulation-Case')
+
+    // Simulation accès refusé 403 Forbidden
+    if (
+      token === 'mock-forbidden-token' ||
+      simHeader === 'forbidden' ||
+      caseId === 'case-forbidden'
+    ) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Vous n'avez pas accès à ce dossier." },
+        { status: 403 },
+      )
+    }
+
+    // Simulation erreur interne 500
+    if (
+      token === 'mock-server-error-token' ||
+      token.includes('server-error') ||
+      simHeader === 'server-error' ||
+      simHeader === '500' ||
+      caseId === 'case-patch-500'
+    ) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Erreur interne du serveur lors de la mise à jour du dossier.' },
+        { status: 500 },
+      )
+    }
+
+    // Simulation erreur de validation serveur 422
+    if (simHeader === 'validation-error' || simHeader === '422') {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Erreur de validation des données transmises.' },
+        { status: 422 },
+      )
+    }
+
+    let body: Record<string, unknown> = {}
+    try {
+      body = (await request.json()) as Record<string, unknown>
+    } catch {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Format de corps de requête invalide.' },
+        { status: 400 },
+      )
+    }
+
+    const title = typeof body.title === 'string' ? body.title.trim() : ''
+    const description =
+      typeof body.description === 'string'
+        ? body.description.trim()
+        : body.description === null
+          ? null
+          : undefined
+
+    if (!title) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Le titre du dossier est obligatoire.' },
+        { status: 422 },
+      )
+    }
+
+    const found = MOCK_CASES.find((c) => c.id === caseId)
+    if (!found) {
+      return HttpResponse.json<ErrorResponse>({ detail: 'Dossier introuvable.' }, { status: 404 })
+    }
+
+    found.title = title
+    if (description !== undefined) {
+      found.description = description || ''
+    }
+    found.updated_at = new Date().toISOString()
+
+    const updatedDetail = {
+      ...found,
+      incident_date: (found as Record<string, unknown>).incident_date ?? '2026-11-20T08:00:00Z',
+      incident_type: (found as Record<string, unknown>).incident_type ?? 'a_decider',
+      affected_systems:
+        (found as Record<string, unknown>).affected_systems ??
+        (caseId === 'case-001'
+          ? 'Contrôleur de domaine AD, Serveur Exchange, Postes analystes'
+          : 'Contrôleur de domaine AD, Serveur Exchange'),
+      members: (found as Record<string, unknown>).members ?? MOCK_CASE_MEMBERS,
+    }
+
+    return HttpResponse.json(updatedDetail, { status: 200 })
   }),
 ]

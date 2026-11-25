@@ -36,15 +36,17 @@ Les trois routes d'authentification ci-dessous sont interceptées et simulées p
 | `POST /api/v1/auth/refresh` | Renouvellement silencieux du jeton d'accès via cookie httpOnly | simulée, contrat cible : auth-contrat-cible.yaml |
 | `POST /api/v1/auth/logout` | Déconnexion explicite et suppression du cookie httpOnly (Max-Age=0) | simulée, contrat cible : auth-contrat-cible.yaml |
 
-### 2.2 Référentiel des routes protégées simulées (Stories F1.3, F1.5, F1.6 et F1.7)
+### 2.2 Référentiel des routes protégées simulées (Stories F1.3, F1.5, F1.6, F1.7 et F2.1)
 
-Les routes protégées ci-dessous sont interceptées et simulées par Mock Service Worker (MSW) dans `frontend/src/test/mocks/handlers.ts` pour tester l'injection de l'en-tête `Authorization: Bearer <token>`, la détection d'expiration (HTTP 401), ainsi que la pagination, la recherche et la création en modale :
+Les routes protégées ci-dessous sont interceptées et simulées par Mock Service Worker (MSW) dans `frontend/src/test/mocks/handlers.ts` pour tester l'injection de l'en-tête `Authorization: Bearer <token>`, la détection d'expiration (HTTP 401), la pagination, la recherche, la création en modale, ainsi que la consultation et l'édition du contexte :
 
 | Méthode et route HTTP | Description opérationnelle | Mention de statut |
 |---|---|---|
 | `GET /api/v1/auth/me` | Profil utilisateur connecté (schéma UserResponse préliminaire sans nom ni organisation), requiert l'en-tête Authorization: Bearer en mémoire | simulée, contrat cible : openapi.json (à réaligner pour identité F1.5) |
 | `GET /api/v1/cases` | Consultation paginée et recherche des dossiers (Story F1.6), avec paramètres limit, offset, search, requiert l'en-tête Authorization: Bearer | simulée, contrat cible : openapi.json |
 | `POST /api/v1/cases` | Création d'un nouveau dossier d'investigation en modale (Story F1.7), validation Zod avant envoi, champs titre, date de l'incident, type d'incident, systèmes concernés et description, requiert l'en-tête Authorization: Bearer | simulée, contrat cible : openapi.json |
+| `GET /api/v1/cases/{case_id}` | Consultation unitaire du contexte d'un dossier d'investigation (Story F2.1), requiert l'en-tête Authorization: Bearer | simulée, contrat cible : openapi.json |
+| `PATCH /api/v1/cases/{case_id}` | Mise à jour en ligne du titre et de la description d'un dossier (Story F2.1), validation Zod avant envoi, requiert l'en-tête Authorization: Bearer | simulée, contrat cible : à réaligner |
 
 #### Règle documentée pour les requêtes sans jeton (Story F1.3)
 Lorsqu'aucun jeton d'accès n'est présent en mémoire vive volatile (état initial ou purge), la requête vers un endpoint protégé est transmise sans en-tête `Authorization`. Le serveur récepteur ou l'intercepteur de simulation MSW renvoie alors un code HTTP 401, déclenchant le signal interne « jeton expiré ou absent ». Emplacement réservé pour la politique d'inactivité de l'analyste : à décider (C4).
@@ -118,6 +120,27 @@ Conformément à la spécification de la story F1.7 et au contrat cible de l'Ép
 
 ---
 
+### 2.7 Simulation de la consultation et édition du contexte du dossier (Story F2.1)
+
+Conformément à la spécification de la story F2.1 et au contrat cible de l'Épic E2 (docs/contrat/openapi.json) :
+1. **Routes interceptées** :
+   - GET /api/v1/cases/{case_id} : **simulée, contrat cible : openapi.json**.
+   - PATCH /api/v1/cases/{case_id} : **simulée, contrat cible : à réaligner** (la méthode PATCH sur /api/v1/cases/{case_id} n'est pas encore déclarée dans le schéma OpenAPI du back-end qui ne fournit que GET).
+   - Toutes deux requièrent l'en-tête Authorization: Bearer <token> en mémoire vive volatile.
+2. **Champs métier et mentions d'alignement** :
+   - 	itle : modifiable en ligne, validation Zod (1 à 255 caractères).
+   - description : modifiable en ligne, validation Zod (max 5000 caractères), mention textuelle par défaut en teal (#019F9E) si vide (« Aucune description fournie »).
+   - status : cycle de vie du dossier (open, in_progress, review, closed), affiché en lecture seule dans cette story (l'arbitrage de statut relève de F2.2).
+   - created_at et updated_at (dernière activité) : horodatages UTC formatés selon la convention standard (AAAA-MM-JJ HH:mm UTC).
+   - incident_date, ffected_systems et members : non présents dans le contrat OpenAPI actuel (CaseOut), affichés avec la mention textuelle « **à réaligner** » et maintenus non éditables tant que le contrat ne les prévoit pas.
+3. **Scénarios simulés par MSW** :
+   - Succès nominal (HTTP 200) : retourne les détails du dossier, actualise immédiatement la vue et affiche une notification de succès.
+   - Dossier introuvable (HTTP 404) : simulation via case-not-found ou en-tête X-Simulation-Case: not-found, affichage d'un message neutre sans fuite de données et lien de retour vers /cases.
+   - Accès refusé (HTTP 403 Forbidden) : simulation via mock-forbidden-token, case-forbidden ou en-tête X-Simulation-Case: forbidden, blocage de l'affichage des informations sensibles, affichage de la notification « Vous n'avez pas accès à ce dossier » et redirection vers /cases.
+   - Erreur serveur (HTTP 500) et panne réseau : simulation via mock-server-error-token, case-500 ou en-tête X-Simulation-Case: server-error, notification explicite avec bouton « Réessayer », saisies en cours conservées en mode édition (NFR-ERR-02).
+
+---
+
 ## 3. Inventaire des stories d'intégration dépendantes du contrat
 
 Les stories front-end qui nécessitent la publication du contrat OpenAPI pour leur implémentation réelle sont classées par épic ci-dessous :
@@ -179,7 +202,7 @@ Pour chaque lot fonctionnel, le remplacement de la simulation par la connectivit
 | Lot Front-End | Épic Back-End associé | Statut du contrat d'API | Mode opérationnel actif |
 |---|---|---|---|
 | F1 : Socle, connexion et dossiers | E1 (Auth), E2 (Cases) | Brouillon openapi.json (routes auth en attente) | Simulation active (auth-contrat-cible.yaml) |
-| F2 : Contexte du dossier | E2 (Cases) | En attente | En attente de contrat / Simulation planifiée |
+| F2 : Contexte du dossier | E2 (Cases) | Brouillon openapi.json (PATCH à réaligner) | Simulation active (openapi.json + à réaligner) |
 | F3 : Registre des preuves | E3 (Evidence, Ingestion) | En attente | En attente de contrat / Simulation planifiée |
 | F4 : Plan, agents, résultats, revues | E4, E5, E6, E7 | En attente | En attente de contrat / Simulation planifiée |
 | F5 : Rapports et clôture | E8 (Reports), E9 (Déploiement) | En attente | En attente de contrat / Simulation planifiée |

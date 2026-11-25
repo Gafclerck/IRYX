@@ -5,6 +5,8 @@ import type {
   CaseItem,
   CreateCasePayload,
   CreateCaseResponse,
+  CaseDetail,
+  UpdateCasePayload,
 } from './cases-types'
 import { DEFAULT_PAGE_SIZE } from './cases-types'
 
@@ -207,5 +209,156 @@ export async function createCase(payload: CreateCasePayload): Promise<CreateCase
           ? err.message
           : 'Une erreur imprévue est survenue lors de la création du dossier.'
     throw new CaseCreationError(message, 0)
+  }
+}
+
+/**
+ * Consultation unitaire des métadonnées détaillées d'un dossier (Story F2.1).
+ * Route cible : GET /api/v1/cases/{case_id}
+ * Contrat cible : openapi.json (simulée E2)
+ *
+ * RÈGLES DE CONCEPTION :
+ * 1. Transmission de l'en-tête Authorization: Bearer par le client réseau (client.ts).
+ * 2. En cas de 403 Forbidden : lève CasesError avec statut 403 pour affichage de la notification d'interdiction et redirection /cases.
+ * 3. En cas de 404 Not Found : lève CasesError avec statut 404 pour message neutre de dossier introuvable.
+ * 4. En cas d'erreur 5xx ou réseau : lève CasesError avec statut correspondant permettant l'action « Réessayer ».
+ */
+export async function getCase(caseId: string): Promise<CaseDetail> {
+  try {
+    const { data, response, error } = await apiClient.GET('/api/v1/cases/{case_id}', {
+      params: {
+        path: { case_id: caseId },
+      },
+    })
+
+    if (response.status === 403) {
+      throw new CasesError("Vous n'avez pas accès à ce dossier.", 403)
+    }
+
+    if (response.status === 404) {
+      throw new CasesError('Dossier introuvable.', 404)
+    }
+
+    if (!response.ok || error) {
+      const detail =
+        (error as { detail?: string })?.detail ||
+        'Échec du chargement du dossier. Veuillez réessayer ultérieurement.'
+      throw new CasesError(detail, response.status)
+    }
+
+    if (!data) {
+      throw new CasesError('Données de dossier indisponibles.', 500)
+    }
+
+    const raw = data as unknown as Partial<CaseDetail>
+    return {
+      id: raw.id || caseId,
+      organization_id: raw.organization_id || '',
+      title: raw.title || '',
+      description: raw.description ?? null,
+      status: (raw.status || 'open') as CaseItem['status'],
+      created_by: raw.created_by ?? null,
+      created_at: raw.created_at || new Date().toISOString(),
+      updated_at: raw.updated_at || new Date().toISOString(),
+      evidence_count: typeof raw.evidence_count === 'number' ? raw.evidence_count : 0,
+      incident_date: raw.incident_date ?? null,
+      incident_type: raw.incident_type ?? null,
+      affected_systems: raw.affected_systems ?? null,
+      members: raw.members || [],
+    }
+  } catch (err) {
+    if (err instanceof CasesError) {
+      throw err
+    }
+    const message =
+      err instanceof Error &&
+      (err.name === 'TypeError' || err.message.toLowerCase().includes('fetch'))
+        ? 'Erreur réseau : impossible de joindre le serveur. Vérifiez votre connexion et réessayez.'
+        : err instanceof Error
+          ? err.message
+          : 'Une erreur imprévue est survenue lors de la récupération du dossier.'
+    throw new CasesError(message, 0)
+  }
+}
+
+/**
+ * Mise à jour en ligne du contexte d'un dossier d'investigation (Story F2.1).
+ * Route cible : PATCH /api/v1/cases/{case_id}
+ * Contrat cible : openapi.json (simulée, à réaligner E2)
+ *
+ * RÈGLES DE CONCEPTION :
+ * 1. Modifie le titre et la description avec validation Zod préalable.
+ * 2. Les champs non formalisés au contrat OpenAPI (ex. systèmes concernés) restent non éditables tant que le contrat ne les prévoit pas.
+ * 3. En cas d'erreur 5xx ou réseau : lève CasesError avec statut correspondant, les saisies en cours restent conservées (NFR-ERR-02).
+ */
+export async function updateCase(caseId: string, payload: UpdateCasePayload): Promise<CaseDetail> {
+  try {
+    const patchFn = apiClient.PATCH as unknown as (
+      url: string,
+      options: { body: unknown },
+    ) => Promise<{ data?: unknown; response: Response; error?: unknown }>
+
+    const { data, response, error } = await patchFn(`/api/v1/cases/${caseId}`, {
+      body: payload,
+    })
+
+    if (response.status === 403) {
+      throw new CasesError("Vous n'avez pas accès à ce dossier.", 403)
+    }
+
+    if (response.status === 404) {
+      throw new CasesError('Dossier introuvable.', 404)
+    }
+
+    if (response.status === 400 || response.status === 422) {
+      const err = error as unknown as {
+        detail?: string | Array<{ loc?: string[]; msg?: string }>
+      } | null
+      const message =
+        typeof err?.detail === 'string'
+          ? err.detail
+          : 'Erreur de validation lors de la mise à jour du dossier.'
+      throw new CasesError(message, response.status)
+    }
+
+    if (!response.ok || error) {
+      const detail =
+        (error as unknown as { detail?: string })?.detail ||
+        'Erreur serveur lors de la mise à jour du dossier. Veuillez réessayer.'
+      throw new CasesError(detail, response.status)
+    }
+
+    if (!data) {
+      throw new CasesError('Réponse de mise à jour indisponible.', response.status)
+    }
+
+    const raw = data as unknown as Partial<CaseDetail>
+    return {
+      id: raw.id || caseId,
+      organization_id: raw.organization_id || '',
+      title: raw.title || payload.title,
+      description: raw.description ?? payload.description ?? null,
+      status: (raw.status || 'open') as CaseItem['status'],
+      created_by: raw.created_by ?? null,
+      created_at: raw.created_at || new Date().toISOString(),
+      updated_at: raw.updated_at || new Date().toISOString(),
+      evidence_count: typeof raw.evidence_count === 'number' ? raw.evidence_count : 0,
+      incident_date: raw.incident_date ?? null,
+      incident_type: raw.incident_type ?? null,
+      affected_systems: raw.affected_systems ?? null,
+      members: raw.members || [],
+    }
+  } catch (err) {
+    if (err instanceof CasesError) {
+      throw err
+    }
+    const message =
+      err instanceof Error &&
+      (err.name === 'TypeError' || err.message.toLowerCase().includes('fetch'))
+        ? 'Erreur réseau : impossible de joindre le serveur. Vérifiez votre connexion et réessayez.'
+        : err instanceof Error
+          ? err.message
+          : 'Une erreur imprévue est survenue lors de la mise à jour du dossier.'
+    throw new CasesError(message, 0)
   }
 }
