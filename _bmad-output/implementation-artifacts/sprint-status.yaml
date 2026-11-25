@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 11-23-2026 17:18
-last_updated: 11-25-2026 09:10
+last_updated: 11-25-2026 11:15
 project: IRYX
 project_key: NOKEY
 story_location: D:\MY_PROEJCT\IRYX\_bmad-output\implementation-artifacts
@@ -88,8 +88,8 @@ development_status:
   7-3-moteur-de-corrélation-multi-sources-et-mise-en-correspondanc: done
   epic-7-retrospective: optional
 
-  epic-8: backlog
-  8-1-module-de-pseudonymisation-déterministe-microsoft-presidio-f: backlog
+  epic-8: in-progress
+  8-1-module-de-pseudonymisation-déterministe-microsoft-presidio-f: in-progress
   8-2-porte-humaine-h3-autorisation-d-envoi-llm-externe-et-prévisu: backlog
   8-3-modèle-report-agent-rapporteur-génération-et-scellement-sha: backlog
   8-4-endpoints-de-consultation-et-téléchargement-des-rapports-sce: backlog
