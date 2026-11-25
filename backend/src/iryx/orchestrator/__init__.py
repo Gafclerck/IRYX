@@ -1,5 +1,6 @@
 """IRYX Investigation Orchestration Package."""
 
+from iryx.orchestrator.executor import ExecutorAgent, ExecutorResult
 from iryx.orchestrator.graph import build_investigation_graph
 from iryx.orchestrator.models import (
     InvestigationRun,
@@ -20,6 +21,8 @@ from iryx.orchestrator.services import InvestigationService
 from iryx.orchestrator.state import InvestigationState
 
 __all__ = [
+    "ExecutorAgent",
+    "ExecutorResult",
     "InvestigationPlan",
     "InvestigationPlanStep",
     "InvestigationRun",

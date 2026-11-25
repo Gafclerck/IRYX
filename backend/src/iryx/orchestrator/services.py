@@ -546,3 +546,116 @@ class InvestigationService:
             phases=[PhaseOut.model_validate(p) for p in run.phases],
         )
 
+    def complete_executor_phase(
+        self,
+        case_id: uuid.UUID,
+        run_id: uuid.UUID,
+        error_count: int = 0,
+    ) -> InvestigationRun:
+        """Mark executor phase completed, increment error count, and transition to analyst."""
+        run = self.db.scalar(
+            select(InvestigationRun)
+            .where(
+                InvestigationRun.id == run_id,
+                InvestigationRun.case_id == case_id,
+            )
+            .with_for_update()
+        )
+        if run is None:
+            raise InvestigationNotFoundException(
+                message=(
+                    "La session d'investigation demandée n'existe pas ou "
+                    "n'appartient pas à ce dossier."
+                )
+            )
+
+        now = datetime.now(UTC)
+        run.error_count += max(error_count, 0)
+        run.current_phase = PhaseName.ANALYST
+        run.status = InvestigationStatus.RUNNING
+        run.updated_at = now
+
+        # Close active executor phase if present
+        active_phase = self.db.scalar(
+            select(Phase)
+            .where(
+                Phase.investigation_run_id == run.id,
+                Phase.phase_name.in_([PhaseName.EXECUTOR, PhaseName.EXECUTION]),
+                Phase.status == PhaseStatus.ACTIVE,
+            )
+            .order_by(Phase.started_at.desc())
+        )
+        if active_phase is not None:
+            active_phase.status = PhaseStatus.COMPLETED
+            active_phase.completed_at = now
+
+        # Open next phase: analyst
+        next_phase = Phase(
+            id=uuid.uuid4(),
+            investigation_run_id=run.id,
+            phase_name=PhaseName.ANALYST,
+            status=PhaseStatus.ACTIVE,
+            started_at=now,
+        )
+        self.db.add(next_phase)
+        self.db.commit()
+        self.db.refresh(run)
+
+        logger.info(
+            "Executor phase completed; transitioned to analyst",
+            extra={
+                "context": {
+                    "case_id": str(case_id),
+                    "run_id": str(run_id),
+                    "error_count": run.error_count,
+                    "current_phase": str(run.current_phase),
+                }
+            },
+        )
+        return run
+
+    def pause_at_executor(
+        self,
+        case_id: uuid.UUID,
+        run_id: uuid.UUID,
+        error_count: int = 0,
+    ) -> InvestigationRun:
+        """Suspend investigation run during executor phase due to a blocking error."""
+        run = self.db.scalar(
+            select(InvestigationRun)
+            .where(
+                InvestigationRun.id == run_id,
+                InvestigationRun.case_id == case_id,
+            )
+            .with_for_update()
+        )
+        if run is None:
+            raise InvestigationNotFoundException(
+                message=(
+                    "La session d'investigation demandée n'existe pas ou "
+                    "n'appartient pas à ce dossier."
+                )
+            )
+
+        now = datetime.now(UTC)
+        run.error_count += max(error_count, 0)
+        run.status = InvestigationStatus.PAUSED
+        run.current_phase = PhaseName.EXECUTOR
+        run.updated_at = now
+        self.db.commit()
+        self.db.refresh(run)
+
+        logger.warning(
+            "Investigation run paused at executor due to blocking error",
+            extra={
+                "context": {
+                    "case_id": str(case_id),
+                    "run_id": str(run_id),
+                    "error_count": run.error_count,
+                    "status": str(run.status),
+                }
+            },
+        )
+        return run
+
+

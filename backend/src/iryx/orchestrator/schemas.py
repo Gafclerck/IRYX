@@ -33,6 +33,18 @@ class InvestigationPlanStep(BaseModel):
     rationale: str = Field(
         ..., description="Forensic justification explaining why this step is necessary."
     )
+    is_blocking: bool = Field(
+        default=False,
+        description=(
+            "Indique si l'échec technique de cette étape doit suspendre immédiatement l'exécution."
+        ),
+    )
+    continue_on_error: bool = Field(
+        default=True,
+        description=(
+            "Indique si l'Executor doit poursuivre les étapes suivantes en cas d'erreur."
+        ),
+    )
 
     model_config = ConfigDict(from_attributes=True)
 

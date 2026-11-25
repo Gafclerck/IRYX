@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -267,9 +268,15 @@ class ToolRunner:
                             ts = datetime.fromisoformat(ts)
                         except ValueError:
                             ts = None
+                    src_id = obs_data.get("source_id") or context.evidence_id
+                    if isinstance(src_id, str):
+                        try:
+                            src_id = uuid.UUID(src_id)
+                        except ValueError:
+                            src_id = None
                     obs = Observation(
                         case_id=context.case_id,
-                        source_id=obs_data.get("source_id") or context.evidence_id,
+                        source_id=src_id,
                         tool_name=tool.name,
                         tool_execution_id=execution.id,
                         normalized_content=obs_data.get("normalized_content", obs_data),

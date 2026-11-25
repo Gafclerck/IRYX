@@ -71,7 +71,7 @@ development_status:
   5-2-modèles-investigationrun-et-phase-schémas-et-initialisation: review
   5-3-agent-planner-et-proposition-de-plan-d-investigation-borné-f: review
   5-4-porte-humaine-h1-validation-du-plan-d-action-et-api-d-arbitr: done
-  5-5-agent-executor-procédural-et-dispatch-sécurisé-vers-la-gatew: backlog
+  5-5-agent-executor-procédural-et-dispatch-sécurisé-vers-la-gatew: done
   5-6-persistance-transactionnelle-d-état-checkpointer-postgresql: backlog
   epic-5-retrospective: optional
 

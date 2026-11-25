@@ -20,6 +20,7 @@ from iryx.orchestrator.graph import (
     gate_h3_node,
     planner_node,
     reporting_node,
+    route_executor,
     route_gate_h1,
     route_planner,
     triage_node,
@@ -111,8 +112,13 @@ def test_node_functions_return_expected_updates() -> None:
         "h1_rejected": True,
     }
 
+    # Executor node with missing plan sets failed status
+    executor_res = executor_node(state_without_evidence)
+    assert executor_res["current_phase"] == "executor"
+    assert executor_res["status"] == "failed"
+    assert len(executor_res["errors"]) >= 1
+
     # Other nodes
-    assert executor_node(state_without_evidence) == {"current_phase": "executor"}
     assert analyst_node(state_without_evidence) == {"current_phase": "analyst"}
     assert verifier_node(state_without_evidence) == {"current_phase": "verifier"}
     assert gate_h2_node(state_without_evidence) == {"current_phase": "gate_h2"}
@@ -257,6 +263,14 @@ def test_route_gate_h1_conditional_edge() -> None:
     assert route_gate_h1({"h1_rejected": True, "return_to_planner": False}) == END
     assert route_gate_h1({"status": "paused"}) == END
     assert route_gate_h1({}) == END
+
+
+def test_route_executor_conditional_edge() -> None:
+    """Verify route_executor routes to analyst when running, and END when paused or failed."""
+    assert route_executor({"status": "running"}) == "analyst"
+    assert route_executor({"status": "completed"}) == "analyst"
+    assert route_executor({"status": "paused"}) == END
+    assert route_executor({"status": "failed"}) == END
 
 
 def test_graph_execution_halts_when_no_sealed_evidence() -> None:

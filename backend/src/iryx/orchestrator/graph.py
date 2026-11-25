@@ -192,8 +192,58 @@ def route_gate_h1(state: InvestigationState) -> str:
 
 
 def executor_node(state: InvestigationState) -> dict[str, Any]:
-    """Executor phase: deterministic execution of approved forensic tools."""
-    return {"current_phase": "executor"}
+    """Executor phase: deterministic execution of approved forensic tools (Story 5.5).
+
+    Strictly zero LLM calls. Executes steps sequentially via ToolRunner / Gateway.
+    Transitions to analyst phase upon completion.
+    """
+    from iryx.orchestrator.executor import ExecutorAgent
+
+    context = dict(state.get("context") or {})
+    db = context.get("db")
+    tool_registry = context.get("tool_registry")
+    tool_runner = context.get("tool_runner")
+
+    agent = ExecutorAgent(
+        tool_runner=tool_runner,
+        tool_registry=tool_registry,
+        db=db,
+    )
+
+    case_id = state.get("case_id")
+    run_id = state.get("run_id")
+    plan = state.get("plan")
+
+    result = agent.execute_sync(
+        plan=plan,
+        case_id=case_id,
+        run_id=run_id,
+        db=db,
+    )
+
+    next_phase = "analyst" if result.status == "completed" else "executor"
+    next_status = "running" if result.status == "completed" else result.status
+
+    update: dict[str, Any] = {
+        "current_phase": next_phase,
+        "status": next_status,
+        "error_count": state.get("error_count", 0) + result.error_count,
+    }
+    if result.tool_executions:
+        update["tool_executions"] = result.tool_executions
+    if result.observations:
+        update["observations"] = result.observations
+    if result.errors:
+        update["errors"] = result.errors
+
+    return update
+
+
+def route_executor(state: InvestigationState) -> str:
+    """Conditional edge from executor: route to analyst if running, else END if paused or failed."""
+    if state.get("status") in ("paused", "failed"):
+        return END
+    return "analyst"
 
 
 def analyst_node(state: InvestigationState) -> dict[str, Any]:
@@ -256,7 +306,14 @@ def build_investigation_graph(checkpointer: Any | None = None) -> CompiledStateG
             END: END,
         },
     )
-    workflow.add_edge("executor", "analyst")
+    workflow.add_conditional_edges(
+        "executor",
+        route_executor,
+        {
+            "analyst": "analyst",
+            END: END,
+        },
+    )
     workflow.add_edge("analyst", "verifier")
     workflow.add_edge("verifier", "gate_h2")
     workflow.add_edge("gate_h2", "gate_h3")
