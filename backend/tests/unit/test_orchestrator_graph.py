@@ -24,6 +24,7 @@ from iryx.orchestrator.graph import (
     route_executor,
     route_gate_h1,
     route_planner,
+    route_verifier,
     triage_node,
     verifier_node,
 )
@@ -125,8 +126,11 @@ def test_node_functions_return_expected_updates() -> None:
     assert analyst_res["status"] == "running"
     assert "notification" in analyst_res.get("context", {})
 
-    # Other nodes
-    assert verifier_node(state_without_evidence) == {"current_phase": "verifier"}
+    # Verifier and human gate nodes
+    assert verifier_node(state_without_evidence) == {
+        "current_phase": "gate_h2",
+        "status": "running",
+    }
     assert gate_h2_node(state_without_evidence) == {"current_phase": "gate_h2"}
     assert gate_h3_node(state_without_evidence) == {"current_phase": "gate_h3"}
     assert reporting_node(state_without_evidence) == {"current_phase": "reporting"}
@@ -288,6 +292,15 @@ def test_route_analyst_conditional_edge() -> None:
     assert route_analyst({}) == "verifier"
 
 
+def test_route_verifier_conditional_edge() -> None:
+    """Verify route_verifier routes to gate_h2 when running, and END when paused or failed."""
+    assert route_verifier({"status": "running"}) == "gate_h2"
+    assert route_verifier({"status": "completed"}) == "gate_h2"
+    assert route_verifier({"status": "paused"}) == END
+    assert route_verifier({"status": "failed"}) == END
+    assert route_verifier({}) == "gate_h2"
+
+
 def test_analyst_node_with_observations_and_mock_llm() -> None:
     """Verify analyst_node parses observations, invokes AnalystAgent, and updates findings."""
     obs_id = str(uuid.uuid4())
@@ -371,6 +384,157 @@ def test_analyst_node_failure_propagates_error() -> None:
     assert result["status"] == "failed"
     assert len(result["errors"]) >= 1
     assert "findings" not in result or len(result.get("findings", [])) == 0
+
+
+def test_verifier_node_empty_findings_advances_to_gate_h2() -> None:
+    """Verify verifier_node with no findings immediately advances to gate_h2."""
+    state: InvestigationState = {
+        "case_id": str(uuid.uuid4()),
+        "run_id": str(uuid.uuid4()),
+        "findings": [],
+        "iteration_count": 0,
+        "error_count": 0,
+    }
+    result = verifier_node(state)
+    assert result["current_phase"] == "gate_h2"
+    assert result["status"] == "running"
+
+
+def test_verifier_node_missing_db_with_findings_fails() -> None:
+    """Verify verifier_node fails if findings are present but DB session is absent."""
+    state: InvestigationState = {
+        "case_id": str(uuid.uuid4()),
+        "run_id": str(uuid.uuid4()),
+        "findings": [
+            {
+                "title": "Finding sans DB",
+                "observation_refs": [str(uuid.uuid4())],
+                "tool_execution_refs": [str(uuid.uuid4())],
+            }
+        ],
+        "iteration_count": 0,
+        "error_count": 0,
+    }
+    result = verifier_node(state)
+    assert result["current_phase"] == "verifier"
+    assert result["status"] == "failed"
+    assert len(result["errors"]) >= 1
+
+
+def test_verifier_node_with_db_verifies_and_updates_findings() -> None:
+    """Verify verifier_node certifies valid findings and invalidates hallucinations."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from iryx.analytics.models import Finding, FindingStatus, Observation
+    from iryx.auth.models import Organization, User
+    from iryx.cases.models import Case
+    from iryx.db.base import Base
+    from iryx.gateway.models import ToolExecution, ToolExecutionStatus
+
+    engine = create_engine("sqlite:///:memory:", poolclass=StaticPool)
+    Base.metadata.create_all(bind=engine)
+    session = sessionmaker(bind=engine)()
+
+    org = Organization(name="Test Org")
+    session.add(org)
+    session.flush()
+
+    user = User(email="test@soc.fr", hashed_password="pw")
+    session.add(user)
+    session.flush()
+
+    case = Case(title="Case Verifier Test", organization_id=org.id, created_by=user.id)
+    session.add(case)
+    session.flush()
+
+    tool = ToolExecution(
+        case_id=case.id,
+        tool_name="parse_evtx",
+        tool_version="1.0.0",
+        agent_role="executor",
+        status=ToolExecutionStatus.SUCCESS,
+    )
+    session.add(tool)
+    session.flush()
+
+    obs = Observation(
+        case_id=case.id,
+        tool_name="parse_evtx",
+        tool_execution_id=tool.id,
+        normalized_content={"event_id": 4688},
+    )
+    session.add(obs)
+    session.flush()
+
+    # Finding 1: Valid
+    f1 = Finding(
+        case_id=case.id,
+        title="Finding Valide",
+        status=FindingStatus.PROPOSED,
+        observation_refs=[obs.id],
+        tool_execution_refs=[tool.id],
+    )
+    # Finding 2: Hallucinated
+    fake_obs_id = uuid.uuid4()
+    f2 = Finding(
+        case_id=case.id,
+        title="Finding Hallucine",
+        status=FindingStatus.PROPOSED,
+        observation_refs=[fake_obs_id],
+        tool_execution_refs=[tool.id],
+    )
+    session.add_all([f1, f2])
+    session.commit()
+
+    state: InvestigationState = {
+        "case_id": str(case.id),
+        "run_id": str(uuid.uuid4()),
+        "findings": [
+            {
+                "id": str(f1.id),
+                "title": f1.title,
+                "observation_refs": [str(obs.id)],
+                "tool_execution_refs": [str(tool.id)],
+            },
+            {
+                "id": str(f2.id),
+                "title": f2.title,
+                "observation_refs": [str(fake_obs_id)],
+                "tool_execution_refs": [str(tool.id)],
+            },
+        ],
+        "context": {"db": session},
+        "iteration_count": 0,
+        "error_count": 0,
+    }
+
+    result = verifier_node(state)
+    assert result["current_phase"] == "gate_h2"
+    assert result["status"] == "running"
+    assert "findings" in result
+    assert len(result["findings"]) == 2
+
+    # Check finding 1 is certified
+    f1_res = next(f for f in result["findings"] if f["title"] == "Finding Valide")
+    assert f1_res["status"] == "proposed"
+    assert f1_res["is_verified"] is True
+
+    # Check finding 2 is rejected
+    f2_res = next(f for f in result["findings"] if f["title"] == "Finding Hallucine")
+    assert f2_res["status"] == "rejected"
+    assert f2_res["is_verified"] is False
+    assert f2_res["rejection_reason"] == "HALLUCINATED_REFERENCE_DETECTED"
+
+    # Verify DB persistence
+    session.refresh(f1)
+    session.refresh(f2)
+    assert f1.status == FindingStatus.PROPOSED
+    assert f2.status == FindingStatus.REJECTED
+
+    session.close()
+    Base.metadata.drop_all(bind=engine)
 
 
 def test_graph_execution_halts_when_no_sealed_evidence() -> None:

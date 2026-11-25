@@ -30,6 +30,12 @@ from iryx.orchestrator.schemas import (
 )
 from iryx.orchestrator.services import InvestigationService
 from iryx.orchestrator.state import InvestigationState
+from iryx.orchestrator.verifier import (
+    FindingVerificationDetail,
+    FindingVerifier,
+    VerificationResult,
+    VerificationStatus,
+)
 
 __all__ = [
     "AnalystAgent",
@@ -37,6 +43,8 @@ __all__ = [
     "AnalystResult",
     "ExecutorAgent",
     "ExecutorResult",
+    "FindingVerificationDetail",
+    "FindingVerifier",
     "InvestigationPlan",
     "InvestigationPlanStep",
     "InvestigationRun",
@@ -52,6 +60,8 @@ __all__ = [
     "PlannerAgent",
     "PlannerResult",
     "ProposedFinding",
+    "VerificationResult",
+    "VerificationStatus",
     "build_investigation_graph",
     "get_checkpointer",
     "get_checkpointer_dependency",

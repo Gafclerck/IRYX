@@ -429,6 +429,20 @@ class FindingNotFoundException(NotFoundException):
         self.status_code = status_code
 
 
+class HallucinatedReferenceException(ValidationException):
+    """Raised when a finding cites missing, non-existent, or foreign forensic references (FR23)."""
+
+    def __init__(
+        self,
+        message: str = "Référence forensique inexistante ou étrangère au dossier détectée.",
+        code: str = "HALLUCINATED_REFERENCE_DETECTED",
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+        )
+
+
 class ToolExecutionFailedException(IryxException):
     """Raised when an internal error occurs during tool execution (HTTP 500)."""
 

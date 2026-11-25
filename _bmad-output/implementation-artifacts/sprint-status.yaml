@@ -78,7 +78,7 @@ development_status:
   epic-6: in-progress
   6-1-modèle-finding-schémas-pydantic-et-migration-alembic: review
   6-2-agent-analyst-et-formulation-structurée-des-constats-d-enquê: review
-  6-3-composant-verifier-déterministe-formel-sans-appel-llm-fr23-n: backlog
+  6-3-composant-verifier-déterministe-formel-sans-appel-llm-fr23-n: review
   6-4-porte-humaine-h2-validation-des-findings-et-api-de-revue-fr1: backlog
   epic-6-retrospective: optional
 

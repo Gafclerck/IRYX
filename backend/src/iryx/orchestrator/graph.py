@@ -332,8 +332,52 @@ def route_analyst(state: InvestigationState) -> str:
 
 
 def verifier_node(state: InvestigationState) -> dict[str, Any]:
-    """Verifier phase: adversarial checks and verification of hypotheses."""
-    return {"current_phase": "verifier"}
+    """Verifier phase: deterministic formal verification without LLM (Story 6.3, FR23, NFR-REL-01).
+
+    Validates that each observation_ref and tool_execution_ref exists in the database
+    and belongs strictly to the current case_id.
+    """
+    from iryx.orchestrator.verifier import FindingVerifier, VerificationStatus
+
+    runtime_ctx = get_runtime_context()
+    context = dict(state.get("context") or {})
+    db = context.get("db") or runtime_ctx.get("db")
+    case_id = state.get("case_id")
+    findings = state.get("findings") or context.get("findings")
+
+    verifier = FindingVerifier(db=db)
+    result = verifier.verify_sync(
+        findings=findings,
+        case_id=case_id,
+        db=db,
+    )
+
+    if result.status == VerificationStatus.FAILED:
+        return {
+            "current_phase": "verifier",
+            "status": "failed",
+            "errors": result.errors,
+        }
+
+    update: dict[str, Any] = {
+        "current_phase": "gate_h2",
+        "status": "running",
+    }
+
+    if result.findings:
+        update["findings"] = result.findings
+
+    if result.errors:
+        update["errors"] = result.errors
+
+    return update
+
+
+def route_verifier(state: InvestigationState) -> str:
+    """Conditional edge from verifier: route to gate_h2 if running, else END if paused or failed."""
+    if state.get("status") in ("paused", "failed"):
+        return END
+    return "gate_h2"
 
 
 def gate_h2_node(state: InvestigationState) -> dict[str, Any]:
@@ -402,7 +446,14 @@ def build_investigation_graph(checkpointer: Any | None = None) -> CompiledStateG
             END: END,
         },
     )
-    workflow.add_edge("verifier", "gate_h2")
+    workflow.add_conditional_edges(
+        "verifier",
+        route_verifier,
+        {
+            "gate_h2": "gate_h2",
+            END: END,
+        },
+    )
     workflow.add_edge("gate_h2", "gate_h3")
     workflow.add_edge("gate_h3", "reporting")
     workflow.add_edge("reporting", END)
