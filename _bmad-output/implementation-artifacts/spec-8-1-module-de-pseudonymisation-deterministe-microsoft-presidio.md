@@ -1,17 +1,22 @@
 ---
-title: "Story 8.1 : Module de pseudonymisation déterministe Microsoft Presidio (FR25, D-19, NFR-SEC-07)"
+title: 'Story 8.1 : Module de pseudonymisation déterministe Microsoft Presidio (FR25, D-19, NFR-SEC-07)'
 type: 'feature'
 created: '2026-11-25'
-status: 'draft'
+status: 'ready-for-dev'
 baseline_commit: '1b28f0ac054540689af84bac2cdeeb243e8037e9'
 baseline_revision: '1b28f0ac054540689af84bac2cdeeb243e8037e9'
 route: 'dispatch'
 review_loop_iteration: 0
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/planning-artifacts/architecture.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-8-context.md'
   - '{project-root}/_bmad-output/planning-artifacts/epics.md'
+warnings: []
+deferred: []
 ---
+
+<intent-contract>
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
@@ -48,31 +53,30 @@ context:
 
 </frozen-after-approval>
 
+</intent-contract>
+
 ## Code Map
 
-- `backend/pyproject.toml` -- Déclaration des dépendances `presidio-analyzer>=2.2.35`, `presidio-anonymizer>=2.2.35`, `cryptography>=42.0.0`
-- `backend/src/iryx/core/config.py` -- Lecture de `Settings.secret_key` pour dérivation de la clé de scellement / chiffrement des correspondances
-- `backend/src/iryx/reporting/__init__.py` -- Package métier reporting
-- `backend/src/iryx/reporting/schemas.py` -- Schémas Pydantic v2 `PseudonymizeRequest`, `PseudonymizeResult`, `DetectedEntityInfo`
-- `backend/src/iryx/reporting/pseudonymizer.py` -- Moteur `DeterministicPseudonymizer` avec reconnaisseurs de motifs techniques et magasin chiffré `CasePseudonymStore`
-- `backend/tests/unit/test_pseudonymizer.py` -- Tests unitaires pour la détection, le déterminisme, l'isolation par dossier et les cas d'erreur
+- `backend/pyproject.toml:34-36` -- Dépendances `presidio-analyzer>=2.2.35`, `presidio-anonymizer>=2.2.35`, `cryptography>=42.0.0` déjà déclarées et présentes dans `uv.lock` ; lecture seule, aucune modification requise.
+- `backend/src/iryx/core/config.py:10-30,95-98` -- `Settings.secret_key` obligatoire et `get_settings()` mis en cache ; source unique de la clé de dérivation Fernet.
+- `backend/src/iryx/reporting/schemas.py:20-163` -- `PseudonymizeRequest`, `DetectedEntityInfo`, `PseudonymizeResult` déjà définis en Pydantic v2 ; réutiliser tels quels, valeur d'origine absente des métadonnées.
+- `backend/src/iryx/reporting/__init__.py` -- À créer ; exporte `DeterministicPseudonymizer`, `CasePseudonymStore`, `PseudonymStoreError` et les schémas publics.
+- `backend/src/iryx/reporting/pseudonymizer.py` -- À créer ; `CasePseudonymStore` (clé Fernet dérivée de `secret_key` + `case_id`, jeton chiffré comme état canonique) et `DeterministicPseudonymizer` (analyseur Presidio + `PatternRecognizer` + opérateur d'anonymisation personnalisé).
+- `backend/tests/unit/test_pseudonymizer.py` -- À créer ; couvre la matrice I/O et les contraintes de sécurité avec le `SECRET_KEY` de test défini dans `backend/tests/conftest.py:16`.
+- API Presidio vérifiée localement : `NlpEngineProvider(nlp_configuration={"nlp_engine_name": "no_op", "models": [{"lang_code": "en", "model_name": "noop"}]})` évite tout téléchargement de modèle ; `AnalyzerEngine(registry=RecognizerRegistry(recognizers=[...]), nlp_engine=..., supported_languages=["en"])` ; `AnonymizerEngine.add_anonymizer()` accepte un `Operator` dont `operator_name()` et `operator_type()` sont des méthodes ; `anonymize(..., merge_entities_with_spaces=False)` préserve la structure du texte.
 
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `backend/pyproject.toml` -- Ajouter les dépendances `presidio-analyzer`, `presidio-anonymizer` et `cryptography` et synchroniser l'environnement -- Nécessaire pour D-19 et le chiffrement local
-- [ ] `backend/src/iryx/reporting/__init__.py` -- Créer le module reporting et exporter les classes publiques -- Point d'entrée du package
-- [ ] `backend/src/iryx/reporting/schemas.py` -- Définir les schémas Pydantic v2 pour les requêtes, résultats et entités détectées -- Typage strict et validation
-- [ ] `backend/src/iryx/reporting/pseudonymizer.py` -- Implémenter `CasePseudonymStore` (chiffrement Fernet local) et `DeterministicPseudonymizer` (moteur Presidio + recognizers personnalisés) -- Cœur métier FR25 / D-19
-- [ ] `backend/tests/unit/test_pseudonymizer.py` -- Implémenter les tests unitaires couvrant l'ensemble de la matrice I/O et les contraintes de sécurité -- Vérification de non-régression et d'isolation
+- `backend/src/iryx/reporting/__init__.py` -- Créer le package et exporter les classes publiques -- Point d'entrée stable pour les stories 8.2 à 8.5.
+- `backend/src/iryx/reporting/pseudonymizer.py` -- Implémenter `PseudonymStoreError`, `CasePseudonymStore` (JSON sérialisé puis chiffré par `Fernet`, clé = SHA-256 de `secret_key`/`case_id`, import/export du jeton, exceptions contrôlées) et `DeterministicPseudonymizer` (quatre `PatternRecognizer` : `IP_ADDRESS`, `HOSTNAME`, `USER_ACCOUNT`, `EMAIL_ADDRESS`; moteur `no_op`; opérateur `pseudonymize` résolvant chaque valeur via le magasin; `pseudonymize()` et `depseudonymize()` prenant un `case_id`) -- Cœur métier FR25 / D-19, sans ORM ni migration.
+- `backend/tests/unit/test_pseudonymizer.py` -- Tester chaque scénario de la matrice I/O, le déterminisme, l'isolation, le round-trip chiffré, la dé-pseudonymisation et le jeton corrompu -- Non-régression et preuve de non-divulgation.
 
 **Acceptance Criteria:**
-- Given un texte contenant des adresses IP internes (`192.168.1.50`), des noms d'hôtes (`SRV-DC-01`) et des comptes (`admin_ad`), when le service de pseudonymisation est exécuté pour un `case_id`, then les entités sensibles sont détectées et substituées par des pseudonymes stables au sein du dossier et la table de correspondances locale est chiffrée.
-- Given un texte contenant des entités sensibles déjà indexées pour le même dossier, when la pseudonymisation est sollicitée, then les mêmes pseudonymes sont réattribués de manière strictement déterministe.
-- Given un texte ne contenant aucune entité sensible détectée, when la pseudonymisation est appliquée, then le texte est retourné intact sans altération de sa structure syntaxique.
-- Given deux dossiers distincts `case_1` et `case_2`, when la pseudonymisation est exécutée, then leurs tables de correspondances restent étanches et indépendantes.
-
-## Implementation Notes
+- Given une requête `PseudonymizeRequest` valide, when `pseudonymize()` est appelée, then le résultat est un `PseudonymizeResult` typé dont chaque `DetectedEntityInfo` contient le type, la position, le score et le pseudonyme, jamais la valeur sensible d'origine.
+- Given un jeton chiffré exporté pour un dossier, when une nouvelle instance recharge ce jeton pour le même `case_id`, then les pseudonymes déjà attribués sont réutilisés et le jeton ne contient aucune valeur en clair.
+- Given un jeton chiffré altéré ou une clé invalide, when le magasin tente de le charger, then `PseudonymStoreError` est levée sans exposer la valeur d'origine ni la clé.
+- Given des instances créées pour deux `case_id` distincts avec la même `secret_key`, when les clés Fernet sont dérivées, then elles sont différentes et aucun pseudonyme d'un dossier n'est réutilisable dans l'autre.
 
 ## Spec Change Log
 
@@ -80,18 +84,24 @@ context:
 
 ## Design Notes
 
-Pour garantir l'exécution sans dépendre du téléchargement d'un modèle lourd SpaCy, `DeterministicPseudonymizer` configure Presidio avec un `NlpEngineProvider` léger ou configure des `PatternRecognizer` dédiés pour les types critiques DFIR :
-- `IP_ADDRESS` : expressions régulières IPv4 et IPv6 (gestion des IP privées et publiques).
-- `HOSTNAME` : expressions régulières pour machines Windows / serveurs (ex. `SRV-.*`, `DC-.*`, `DESKTOP-.*`, `WORKSTATION-.*`, FQDNs).
-- `ACCOUNT` : expressions régulières pour comptes de domaine (`DOMAIN\\user`, `admin_.*`, `svc_.*`).
-- `EMAIL_ADDRESS` : détection d'adresses de courriel.
+Le moteur `no_op` de Presidio fournit des artefacts NLP vides : seuls les `PatternRecognizer` déterministes analysent le texte. Aucun modèle SpaCy n'est téléchargé et le comportement reste identique hors ligne. Exemple de flux :
 
-La classe `CasePseudonymStore` gère la correspondance bidirectionnelle `(entity_type, original_value) <-> pseudonym` en mémoire pour le dossier, avec sérialisation chiffrée (Fernet) dérivée de `secret_key` et `case_id`.
+```python
+analyzer = AnalyzerEngine(registry=registry, nlp_engine=no_op_engine, supported_languages=["en"])
+results = analyzer.analyze(text, language="en")
+result = anonymizer.anonymize(
+    text, results,
+    operators={"IP_ADDRESS": OperatorConfig("pseudonymize", {"resolver": resolver})},
+    merge_entities_with_spaces=False,
+)
+```
+
+Le résolveur reçoit `(entity_type, valeur_originale)` et interroge `CasePseudonymStore`, dont l'état canonique est le jeton Fernet chiffré : chaque mutation rechiffre le JSON complet. Les compteurs par type d'entité sont recalculés depuis le magasin, ce qui rend l'attribution stable même après restauration. Les entités d'un même texte sont attribuées par position croissante. Formats convenus : `IP_INTERNAL_{n}`, `HOST_SERVER_{n:02d}`, `USER_ACCOUNT_{lettre majeure}` (A, B, …), `EMAIL_ADDRESS_{n}`.
 
 ## Verification
 
 **Commands:**
-- `cd backend && uv run pytest tests/unit/test_pseudonymizer.py -v` -- expected: Tous les tests unitaires de pseudonymisation passent avec succès.
+- `cd backend && uv run pytest tests/unit/test_pseudonymizer.py -v` -- expected: tous les tests de pseudonymisation passent.
 - `cd backend && uv run ruff check src/iryx/reporting tests/unit/test_pseudonymizer.py` -- expected: 0 erreur et 0 avertissement.
 
 ## Auto Run Result
