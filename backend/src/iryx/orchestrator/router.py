@@ -7,10 +7,16 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from iryx.api.dependencies import get_db
-from iryx.auth.models import MembershipRole
+from iryx.auth.dependencies import get_current_user
+from iryx.auth.models import MembershipRole, User
 from iryx.cases.dependencies import require_case_role, verify_case_access
 from iryx.cases.models import Case
-from iryx.orchestrator.schemas import InvestigationRunOut
+from iryx.orchestrator.schemas import (
+    H1DecisionRequest,
+    H1DecisionResponse,
+    InvestigationPlan,
+    InvestigationRunOut,
+)
 from iryx.orchestrator.services import InvestigationService
 
 router = APIRouter(tags=["Orchestrator"])
@@ -82,3 +88,63 @@ def get_investigation(
     """Retrieve investigation run details."""
     service = InvestigationService(db)
     return service.get_investigation_run(case_id=case_id, run_id=run_id)
+
+
+@router.get(
+    "/api/v1/cases/{case_id}/investigations/{run_id}/plan",
+    response_model=InvestigationPlan,
+    status_code=status.HTTP_200_OK,
+    summary="Consultation du plan d'investigation",
+    description=(
+        "Récupère le plan d'actions forensiques proposé pour cette session d'investigation. "
+        "Renvoie HTTP 404 PLAN_NOT_FOUND si aucun plan n'est encore associé."
+    ),
+)
+def get_investigation_plan(
+    case_id: uuid.UUID,
+    run_id: uuid.UUID,
+    _case: Annotated[Case, Depends(verify_case_access)],
+    db: Annotated[Session, Depends(get_db)],
+) -> InvestigationPlan:
+    """Retrieve the investigation plan for a given run."""
+    service = InvestigationService(db)
+    return service.get_investigation_plan(case_id=case_id, run_id=run_id)
+
+
+@router.post(
+    "/api/v1/cases/{case_id}/investigations/{run_id}/gates/h1",
+    response_model=H1DecisionResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Arbitrage de la porte de validation humaine H1",
+    description=(
+        "Permet à un analyste ou enquêteur d'approuver, de modifier ou de rejeter "
+        "le plan d'investigation proposé par le Planner à la porte H1. "
+        "Réservé aux rôles ADMIN, INVESTIGATOR et ANALYST (interdit aux VIEWERS)."
+    ),
+)
+def arbitrate_gate_h1(
+    case_id: uuid.UUID,
+    run_id: uuid.UUID,
+    payload: H1DecisionRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    _case: Annotated[
+        Case,
+        Depends(
+            require_case_role(
+                MembershipRole.ADMIN,
+                MembershipRole.INVESTIGATOR,
+                MembershipRole.ANALYST,
+            )
+        ),
+    ],
+    db: Annotated[Session, Depends(get_db)],
+) -> H1DecisionResponse:
+    """Arbitrate the Human Gate H1 for an investigation run."""
+    service = InvestigationService(db)
+    return service.arbitrate_gate_h1(
+        case_id=case_id,
+        run_id=run_id,
+        decision_request=payload,
+        user_id=current_user.id,
+    )
+

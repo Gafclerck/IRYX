@@ -1,11 +1,15 @@
 """LangGraph state graph initialization and compilation for digital forensics investigation."""
 
+import logging
+import uuid
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from iryx.orchestrator.state import InvestigationState
+
+logger = logging.getLogger("iryx.orchestrator.graph")
 
 # 9 Required Nodes:
 # triage, planner, gate_h1, executor, analyst, verifier, gate_h2, gate_h3, reporting
@@ -54,11 +58,21 @@ def planner_node(state: InvestigationState) -> dict[str, Any]:
         db=db,
     )
 
+    replan_feedback = context.get("replan_feedback")
+    base_desc = (
+        context.get("incident_description") or state.get("incident_description") or ""
+    )
+    if replan_feedback:
+        incident_desc = f"{base_desc}\nFeedback analyste : {replan_feedback}".strip()
+    else:
+        incident_desc = base_desc
+
     try:
         result = agent.plan_sync(
             evidences=evidences,
             case_id=case_id,
             run_id=run_id,
+            incident_description=incident_desc,
             db=db,
         )
     except InvalidPlanException as exc:
@@ -98,8 +112,83 @@ def route_planner(state: InvestigationState) -> str:
 
 
 def gate_h1_node(state: InvestigationState) -> dict[str, Any]:
-    """Human Gate H1: analyst reviews and arbitrates the proposed plan."""
-    return {"current_phase": "gate_h1"}
+    """Human Gate H1: analyst reviews and arbitrates the proposed plan.
+
+    Automatically suspends execution awaiting analyst arbitration (status: paused,
+    current_phase: waiting_h1). When h1_approved is True, unblocks execution towards
+    the executor node.
+    """
+    context = dict(state.get("context") or {})
+
+    if state.get("h1_approved"):
+        return {
+            "current_phase": "gate_h1",
+            "status": "running",
+            "h1_approved": True,
+        }
+    if state.get("h1_rejected"):
+        if state.get("return_to_planner"):
+            feedback = (
+                state.get("feedback")
+                or context.get("feedback")
+                or context.get("replan_feedback")
+            )
+            updated_context = dict(context)
+            if feedback:
+                updated_context["replan_feedback"] = feedback
+            return {
+                "current_phase": "planner",
+                "status": "running",
+                "plan": None,
+                "h1_rejected": False,
+                "return_to_planner": False,
+                "context": updated_context,
+            }
+        return {
+            "current_phase": "gate_h1",
+            "status": "completed",
+            "h1_rejected": True,
+        }
+
+    # Automatically suspend execution at Gate H1
+    db = context.get("db")
+    case_id = state.get("case_id")
+    run_id = state.get("run_id")
+
+    if db is not None and case_id is not None and run_id is not None:
+        try:
+            from iryx.orchestrator.services import InvestigationService
+
+            case_uuid = uuid.UUID(str(case_id))
+            run_uuid = uuid.UUID(str(run_id))
+            InvestigationService(db).pause_at_gate_h1(case_id=case_uuid, run_id=run_uuid)
+        except Exception as exc:
+            logger.warning("Could not persist gate_h1 paused state in DB: %s", exc)
+    else:
+        logger.debug(
+            "DB session or identifiers omitted from context during gate_h1 pause",
+            extra={
+                "context": {
+                    "has_db": db is not None,
+                    "case_id": str(case_id) if case_id else None,
+                    "run_id": str(run_id) if run_id else None,
+                }
+            },
+        )
+
+    return {
+        "current_phase": "waiting_h1",
+        "status": "paused",
+    }
+
+
+def route_gate_h1(state: InvestigationState) -> str:
+    """Conditional edge from gate_h1: route to executor if approved, planner if replan, else END."""
+    if state.get("h1_approved"):
+        return "executor"
+    if state.get("return_to_planner") or state.get("current_phase") == "planner":
+        return "planner"
+    return END
 
 
 def executor_node(state: InvestigationState) -> dict[str, Any]:
@@ -158,7 +247,15 @@ def build_investigation_graph(checkpointer: Any | None = None) -> CompiledStateG
             END: END,
         },
     )
-    workflow.add_edge("gate_h1", "executor")
+    workflow.add_conditional_edges(
+        "gate_h1",
+        route_gate_h1,
+        {
+            "executor": "executor",
+            "planner": "planner",
+            END: END,
+        },
+    )
     workflow.add_edge("executor", "analyst")
     workflow.add_edge("analyst", "verifier")
     workflow.add_edge("verifier", "gate_h2")

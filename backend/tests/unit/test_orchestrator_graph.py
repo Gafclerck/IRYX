@@ -20,6 +20,7 @@ from iryx.orchestrator.graph import (
     gate_h3_node,
     planner_node,
     reporting_node,
+    route_gate_h1,
     route_planner,
     triage_node,
     verifier_node,
@@ -85,8 +86,32 @@ def test_node_functions_return_expected_updates() -> None:
     assert "notification" in planner_result.get("context", {})
     assert "errors" not in planner_result
 
+    # Gate H1 automatically suspends when unapproved
+    assert gate_h1_node(state_without_evidence) == {
+        "current_phase": "waiting_h1",
+        "status": "paused",
+    }
+    # Gate H1 advances when approved
+    assert gate_h1_node({"h1_approved": True}) == {
+        "current_phase": "gate_h1",
+        "status": "running",
+        "h1_approved": True,
+    }
+    # Gate H1 loops back when rejected with replanning
+    replan_res = gate_h1_node({"h1_rejected": True, "return_to_planner": True})
+    assert replan_res["current_phase"] == "planner"
+    assert replan_res["status"] == "running"
+    assert replan_res["plan"] is None
+    assert replan_res["h1_rejected"] is False
+    assert replan_res["return_to_planner"] is False
+    # Gate H1 terminates when rejected without replanning
+    assert gate_h1_node({"h1_rejected": True, "return_to_planner": False}) == {
+        "current_phase": "gate_h1",
+        "status": "completed",
+        "h1_rejected": True,
+    }
+
     # Other nodes
-    assert gate_h1_node(state_without_evidence) == {"current_phase": "gate_h1"}
     assert executor_node(state_without_evidence) == {"current_phase": "executor"}
     assert analyst_node(state_without_evidence) == {"current_phase": "analyst"}
     assert verifier_node(state_without_evidence) == {"current_phase": "verifier"}
@@ -224,6 +249,16 @@ def test_route_planner_conditional_edge() -> None:
     assert route_planner({}) == "gate_h1"
 
 
+def test_route_gate_h1_conditional_edge() -> None:
+    """Verify route_gate_h1 routes to executor when approved, planner when replan, else END."""
+    assert route_gate_h1({"h1_approved": True}) == "executor"
+    assert route_gate_h1({"return_to_planner": True}) == "planner"
+    assert route_gate_h1({"h1_rejected": True, "return_to_planner": True}) == "planner"
+    assert route_gate_h1({"h1_rejected": True, "return_to_planner": False}) == END
+    assert route_gate_h1({"status": "paused"}) == END
+    assert route_gate_h1({}) == END
+
+
 def test_graph_execution_halts_when_no_sealed_evidence() -> None:
     """Verify graph executes triage -> planner and halts at END when no evidence is present."""
     graph = build_investigation_graph()
@@ -241,8 +276,8 @@ def test_graph_execution_halts_when_no_sealed_evidence() -> None:
     assert result.get("plan") is None
 
 
-def test_graph_execution_flow_with_pre_set_plan() -> None:
-    """Verify execution of the linear scaffolding flow through all 9 nodes to reporting."""
+def test_graph_suspends_automatically_at_gate_h1() -> None:
+    """Verify that reaching gate_h1 automatically suspends execution with status: paused."""
     graph = build_investigation_graph()
     initial_state: InvestigationState = {
         "case_id": "test-case-123",
@@ -254,17 +289,37 @@ def test_graph_execution_flow_with_pre_set_plan() -> None:
 
     result = graph.invoke(initial_state)
     assert isinstance(result, dict)
+    assert result.get("current_phase") == "waiting_h1"
+    assert result.get("status") == "paused"
+    assert result.get("case_id") == "test-case-123"
+
+
+def test_graph_execution_flow_with_approved_plan() -> None:
+    """Verify execution flows through executor to reporting when h1_approved is True."""
+    graph = build_investigation_graph()
+    initial_state: InvestigationState = {
+        "case_id": "test-case-123",
+        "run_id": "test-run-456",
+        "plan": _create_sample_pre_set_plan(),
+        "h1_approved": True,
+        "iteration_count": 0,
+        "error_count": 0,
+    }
+
+    result = graph.invoke(initial_state)
+    assert isinstance(result, dict)
     assert result.get("current_phase") == "reporting"
     assert result.get("case_id") == "test-case-123"
 
 
 def test_graph_sequential_stream_nodes() -> None:
-    """VG-3: Verify via graph.stream that all 9 nodes are traversed in exact sequential order."""
+    """VG-3: Verify via stream that all 9 nodes are traversed sequentially when approved."""
     graph = build_investigation_graph()
     initial_state: InvestigationState = {
         "case_id": "stream-case",
         "run_id": "stream-run",
         "plan": _create_sample_pre_set_plan(),
+        "h1_approved": True,
         "iteration_count": 0,
         "error_count": 0,
     }
@@ -288,6 +343,100 @@ def test_graph_sequential_stream_nodes() -> None:
     assert traversed_nodes == expected_sequence
 
 
+def test_graph_stream_halts_at_gate_h1_when_unapproved() -> None:
+    """Verify via graph.stream that execution stops at gate_h1 when not approved."""
+    graph = build_investigation_graph()
+    initial_state: InvestigationState = {
+        "case_id": "stream-case-pause",
+        "run_id": "stream-run-pause",
+        "plan": _create_sample_pre_set_plan(),
+        "iteration_count": 0,
+        "error_count": 0,
+    }
+
+    traversed_nodes: list[str] = []
+    for event in graph.stream(initial_state):
+        for node_name in event:
+            traversed_nodes.append(node_name)
+
+    assert traversed_nodes == ["triage", "planner", "gate_h1"]
+
+
+def test_graph_rebouclage_planner_when_rejected_with_replan() -> None:
+    """Verify via graph.stream that rejection with replan loops back to planner."""
+    graph = build_investigation_graph()
+    initial_state: InvestigationState = {
+        "case_id": "replan-case",
+        "run_id": "replan-run",
+        "plan": _create_sample_pre_set_plan(),
+        "h1_rejected": True,
+        "return_to_planner": True,
+        "iteration_count": 0,
+        "error_count": 0,
+    }
+
+    traversed_nodes: list[str] = []
+    for event in graph.stream(initial_state):
+        for node_name in event:
+            traversed_nodes.append(node_name)
+
+    assert traversed_nodes == ["triage", "planner", "gate_h1", "planner"]
+
+
+def test_gate_h1_node_persists_pause_when_db_in_context() -> None:
+    """Verify gate_h1_node invokes pause_at_gate_h1 when db session is in context."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from iryx.auth.schemas import UserCreate
+    from iryx.auth.services import UserService
+    from iryx.cases.services import CaseService
+    from iryx.db.base import Base
+    from iryx.orchestrator.models import InvestigationStatus, PhaseName
+    from iryx.orchestrator.services import InvestigationService
+    from iryx.organizations.services import OrganizationService
+
+    engine = create_engine("sqlite:///:memory:", poolclass=StaticPool)
+    Base.metadata.create_all(bind=engine)
+    session = sessionmaker(bind=engine)()
+
+    user_svc = UserService(session)
+    org_svc = OrganizationService(session)
+    case_svc = CaseService(session)
+    user = user_svc.create_user(UserCreate(email="lead@soc.fr", password="Password123!"))
+    org = org_svc.create_organization(name="SOC Lab", creator_id=user.id)
+    case = case_svc.create_case(
+        org_id=org.id,
+        title="Test Case",
+        description="Test Case Description",
+        creator_id=user.id,
+    )
+
+    inv_svc = InvestigationService(session)
+    run = inv_svc.start_investigation(case.id)
+    assert run.status == InvestigationStatus.RUNNING
+
+    state: InvestigationState = {
+        "case_id": str(case.id),
+        "run_id": str(run.id),
+        "context": {"db": session},
+        "iteration_count": 0,
+        "error_count": 0,
+    }
+
+    res = gate_h1_node(state)
+    assert res["current_phase"] == "waiting_h1"
+    assert res["status"] == "paused"
+
+    session.refresh(run)
+    assert run.status == InvestigationStatus.PAUSED
+    assert run.current_phase == PhaseName.WAITING_H1
+
+    session.close()
+    Base.metadata.drop_all(bind=engine)
+
+
 def test_graph_compilation_with_checkpointer() -> None:
     """BH-16: Verify graph compiles and executes successfully with a MemorySaver checkpointer."""
     checkpointer = MemorySaver()
@@ -298,6 +447,7 @@ def test_graph_compilation_with_checkpointer() -> None:
         "case_id": "checkpointer-case",
         "run_id": "checkpointer-run",
         "plan": _create_sample_pre_set_plan(),
+        "h1_approved": True,
         "iteration_count": 0,
         "error_count": 0,
     }
@@ -311,3 +461,4 @@ def test_graph_compilation_with_checkpointer() -> None:
     state_snapshot = graph.get_state(config)
     assert state_snapshot is not None
     assert state_snapshot.values["current_phase"] == "reporting"
+

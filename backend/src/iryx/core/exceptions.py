@@ -504,6 +504,37 @@ class InvalidPlanException(ValidationException):
         )
 
 
+class PlanNotFoundException(NotFoundException):
+    """Raised when an investigation plan is not found for an investigation run (HTTP 404)."""
+
+    def __init__(
+        self,
+        message: str = "Aucun plan d'investigation n'est associé à cette session.",
+        code: str = "PLAN_NOT_FOUND",
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+        )
+
+
+class InvalidGateStateException(ValidationException):
+    """Raised when an arbitration action is submitted on a run not paused at H1 (HTTP 422)."""
+
+    def __init__(
+        self,
+        message: str = (
+            "La session d'investigation n'est pas dans l'état d'attente requis "
+            "pour cette porte de contrôle."
+        ),
+        code: str = "INVALID_GATE_STATE",
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+        )
+
+
 def _format_error_response(code: str, message: str) -> dict[str, Any]:
     """Return the standardized error response envelope."""
     return {

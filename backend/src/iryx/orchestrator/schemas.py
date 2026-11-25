@@ -2,11 +2,20 @@
 
 import uuid
 from datetime import datetime
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from iryx.orchestrator.models import InvestigationStatus, PhaseName, PhaseStatus
+
+
+class H1Decision(StrEnum):
+    """Arbitration decisions for Human Gate H1."""
+
+    APPROVE = "approve"
+    MODIFY = "modify"
+    REJECT = "reject"
 
 
 class InvestigationPlanStep(BaseModel):
@@ -49,6 +58,13 @@ class InvestigationPlan(BaseModel):
             raise ValueError("Le plan d'investigation doit comporter au moins 1 étape.")
         if len(v) > 10:
             raise ValueError("Le plan d'investigation ne peut comporter plus de 10 étapes.")
+        step_ids = [step.step_id for step in v]
+        expected_ids = list(range(1, len(v) + 1))
+        if step_ids != expected_ids:
+            raise ValueError(
+                f"Les step_id doivent être strictement uniques et séquentiels de 1 à {len(v)}. "
+                f"Reçu : {step_ids}"
+            )
         return v
 
     model_config = ConfigDict(from_attributes=True)
@@ -79,7 +95,7 @@ class InvestigationRunOut(BaseModel):
     id: uuid.UUID
     case_id: uuid.UUID
     status: InvestigationStatus
-    current_phase: PhaseName
+    current_phase: PhaseName | str
     validated_plan: dict[str, Any] | None = None
     iteration_count: int = 0
     error_count: int = 0
@@ -88,3 +104,43 @@ class InvestigationRunOut(BaseModel):
     phases: list[PhaseOut] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class H1DecisionRequest(BaseModel):
+    """Payload submitted by analyst to arbitrate Human Gate H1."""
+
+    decision: H1Decision = Field(
+        ...,
+        description="Arbitration decision: 'approve', 'modify', or 'reject'.",
+    )
+    modified_plan: dict[str, Any] | InvestigationPlan | None = Field(
+        default=None,
+        description="Modified investigation plan (mandatory if decision is 'modify').",
+    )
+    feedback: str | None = Field(
+        default=None,
+        max_length=2000,
+        description="Analyst feedback or observations.",
+    )
+    return_to_planner: bool = Field(
+        default=False,
+        description="If True on rejection, loops back to PlannerAgent instead of halting.",
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class H1DecisionResponse(BaseModel):
+    """Response returned after Human Gate H1 arbitration."""
+
+    run_id: uuid.UUID
+    case_id: uuid.UUID
+    status: InvestigationStatus
+    current_phase: PhaseName | str
+    decision: H1Decision
+    validated_plan: dict[str, Any] | None = None
+    message: str
+    phases: list[PhaseOut] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+

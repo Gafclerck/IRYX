@@ -20,6 +20,8 @@ class InvestigationState(TypedDict, total=False):
     errors: Annotated[list[str], operator.add]
     report: dict[str, Any] | None
     h1_approved: bool
+    h1_rejected: bool
+    return_to_planner: bool
     h2_approved: bool
     h3_approved: bool
     context: dict[str, Any]

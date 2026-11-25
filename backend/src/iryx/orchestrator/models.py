@@ -41,6 +41,7 @@ class PhaseName(StrEnum):
     PLANNER = "planner"
     PLANNING = "planning"
     GATE_H1 = "gate_h1"
+    WAITING_H1 = "waiting_h1"
     EXECUTOR = "executor"
     EXECUTION = "execution"
     ANALYST = "analyst"

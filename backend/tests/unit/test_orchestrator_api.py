@@ -23,6 +23,7 @@ Validates:
 
 import uuid
 from collections.abc import Generator
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -36,13 +37,19 @@ from iryx.auth.schemas import UserCreate
 from iryx.auth.services import UserService
 from iryx.cases.models import Case, CaseStatus
 from iryx.cases.services import CaseService
+from iryx.core.exceptions import ValidationException
 from iryx.core.security import create_access_token
 from iryx.db.base import Base
+from iryx.evidence.models import Evidence
 from iryx.main import app
 from iryx.orchestrator.models import (
     InvestigationRun,
     InvestigationStatus,
+    Phase,
+    PhaseName,
+    PhaseStatus,
 )
+from iryx.orchestrator.services import InvestigationService
 from iryx.organizations.services import OrganizationService
 
 
@@ -479,3 +486,646 @@ def test_unauthenticated_request_401(
 
     resp_list = client.get(f"/api/v1/cases/{case.id}/investigations")
     assert resp_list.status_code == 401
+
+
+def _setup_paused_h1_run(
+    db_session: Session,
+    case_id: uuid.UUID,
+    with_plan: bool = True,
+    evidence_id: uuid.UUID | None = None,
+) -> tuple[InvestigationRun, Evidence | None]:
+    """Helper creating an investigation run paused at Gate H1 with an optional plan."""
+    now = datetime.now(UTC)
+    evidence: Evidence | None = None
+    if evidence_id is None:
+        evidence = Evidence(
+            id=uuid.uuid4(),
+            case_id=case_id,
+            original_name="Security.evtx",
+            file_size=2048,
+            sha256="abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+            detected_type="application/x-ms-evtx",
+        )
+        db_session.add(evidence)
+        db_session.commit()
+        target_evidence_id = evidence.id
+    else:
+        target_evidence_id = evidence_id
+
+    plan_data = None
+    if with_plan:
+        plan_data = {
+            "summary": "Plan forensique pour analyse des logs",
+            "steps": [
+                {
+                    "step_id": 1,
+                    "tool_name": "parse_evtx",
+                    "target_evidence_id": str(target_evidence_id),
+                    "parameters": {},
+                    "rationale": "Analyse des connexions suspectes",
+                }
+            ],
+        }
+
+    run = InvestigationRun(
+        id=uuid.uuid4(),
+        case_id=case_id,
+        status=InvestigationStatus.PAUSED,
+        current_phase=PhaseName.WAITING_H1,
+        validated_plan=plan_data,
+        iteration_count=0,
+        error_count=0,
+        started_at=now,
+        updated_at=now,
+    )
+    db_session.add(run)
+    db_session.flush()
+
+    phase = Phase(
+        id=uuid.uuid4(),
+        investigation_run_id=run.id,
+        phase_name=PhaseName.GATE_H1,
+        status=PhaseStatus.ACTIVE,
+        started_at=now,
+    )
+    db_session.add(phase)
+    db_session.commit()
+    return run, evidence
+
+
+def test_get_investigation_plan_nominal_200(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Consultation nominale du plan (HTTP 200 OK avec InvestigationPlan)."""
+    case = test_setup["case"]
+    headers = test_setup["analyst_headers"]
+    run, evidence = _setup_paused_h1_run(db_session, case.id, with_plan=True)
+
+    resp = client.get(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/plan", headers=headers
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["summary"] == "Plan forensique pour analyse des logs"
+    assert len(data["steps"]) == 1
+    assert data["steps"][0]["tool_name"] == "parse_evtx"
+    assert data["steps"][0]["target_evidence_id"] == str(evidence.id)
+
+
+def test_get_investigation_plan_not_found_404(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Consultation plan inexistant (HTTP 404 PLAN_NOT_FOUND)."""
+    case = test_setup["case"]
+    headers = test_setup["analyst_headers"]
+    run, _ = _setup_paused_h1_run(db_session, case.id, with_plan=False)
+
+    resp = client.get(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/plan", headers=headers
+    )
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "PLAN_NOT_FOUND"
+
+
+def test_get_investigation_plan_viewer_allowed_200(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Viewer can read the investigation plan via verify_case_access."""
+    case = test_setup["case"]
+    headers = test_setup["viewer_headers"]
+    run, _ = _setup_paused_h1_run(db_session, case.id, with_plan=True)
+
+    resp = client.get(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/plan", headers=headers
+    )
+    assert resp.status_code == 200
+
+
+def test_get_investigation_plan_unauthenticated_401(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Unauthenticated request to GET plan returns 401 UNAUTHORIZED."""
+    case = test_setup["case"]
+    run, _ = _setup_paused_h1_run(db_session, case.id, with_plan=True)
+
+    resp = client.get(f"/api/v1/cases/{case.id}/investigations/{run.id}/plan")
+    assert resp.status_code == 401
+
+
+def test_arbitrate_h1_approve_nominal_200(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Approbation nominale H1: HTTP 200 OK, status: running, current_phase: executor."""
+    case = test_setup["case"]
+    headers = test_setup["analyst_headers"]
+    run, _ = _setup_paused_h1_run(db_session, case.id, with_plan=True)
+
+    resp = client.post(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/gates/h1",
+        headers=headers,
+        json={"decision": "approve"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "running"
+    assert data["current_phase"] == "executor"
+    assert data["decision"] == "approve"
+    assert "approuvé" in data["message"].lower()
+
+    # Verify DB persistence
+    refreshed_run = db_session.get(InvestigationRun, run.id)
+    assert refreshed_run.status == InvestigationStatus.RUNNING
+    assert refreshed_run.current_phase == PhaseName.EXECUTOR
+
+    # Verify phase lifecycle
+    phases = refreshed_run.phases
+    assert len(phases) == 2
+    gate_phase = phases[0]
+    executor_phase = phases[1]
+    assert gate_phase.phase_name == PhaseName.GATE_H1
+    assert gate_phase.status == PhaseStatus.COMPLETED
+    assert gate_phase.completed_at is not None
+    assert executor_phase.phase_name == PhaseName.EXECUTOR
+    assert executor_phase.status == PhaseStatus.ACTIVE
+
+
+def test_arbitrate_h1_approve_admin_allowed_200(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Admin role is authorized to approve Gate H1."""
+    case = test_setup["case"]
+    headers = test_setup["admin_headers"]
+    run, _ = _setup_paused_h1_run(db_session, case.id, with_plan=True)
+
+    resp = client.post(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/gates/h1",
+        headers=headers,
+        json={"decision": "approve"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "running"
+
+
+def test_arbitrate_h1_approve_investigator_allowed_200(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Investigator role is authorized to approve Gate H1."""
+    case = test_setup["case"]
+    headers = test_setup["investigator_headers"]
+    run, _ = _setup_paused_h1_run(db_session, case.id, with_plan=True)
+
+    resp = client.post(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/gates/h1",
+        headers=headers,
+        json={"decision": "approve"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "running"
+
+
+def test_arbitrate_h1_modify_nominal_200(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Modification nominale H1 avec modified_plan valide: HTTP 200, transition executor."""
+    case = test_setup["case"]
+    headers = test_setup["analyst_headers"]
+    run, evidence = _setup_paused_h1_run(db_session, case.id, with_plan=True)
+
+    modified_plan = {
+        "summary": "Plan modifié par l'analyste avec étape supplémentaire",
+        "steps": [
+            {
+                "step_id": 1,
+                "tool_name": "parse_evtx",
+                "target_evidence_id": str(evidence.id),
+                "parameters": {"filter": "EventID=4624"},
+                "rationale": "Filtrage sur les connexions réussies",
+            }
+        ],
+    }
+
+    resp = client.post(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/gates/h1",
+        headers=headers,
+        json={"decision": "modify", "modified_plan": modified_plan},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "running"
+    assert data["current_phase"] == "executor"
+    assert data["decision"] == "modify"
+    assert data["validated_plan"]["summary"] == modified_plan["summary"]
+    assert len(data["validated_plan"]["steps"]) == 1
+
+    # Verify DB persistence
+    refreshed_run = db_session.get(InvestigationRun, run.id)
+    assert refreshed_run.validated_plan["summary"] == modified_plan["summary"]
+    assert refreshed_run.status == InvestigationStatus.RUNNING
+    assert refreshed_run.current_phase == PhaseName.EXECUTOR
+
+
+def test_arbitrate_h1_modify_missing_modified_plan_422(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Modification sans modified_plan: HTTP 422 MISSING_MODIFIED_PLAN."""
+    case = test_setup["case"]
+    headers = test_setup["analyst_headers"]
+    run, _ = _setup_paused_h1_run(db_session, case.id, with_plan=True)
+
+    resp = client.post(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/gates/h1",
+        headers=headers,
+        json={"decision": "modify"},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "MISSING_MODIFIED_PLAN"
+
+
+def test_arbitrate_h1_modify_invalid_steps_count_422(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Modification avec modified_plan ayant plus de 10 étapes: HTTP 422 INVALID_PLAN."""
+    case = test_setup["case"]
+    headers = test_setup["analyst_headers"]
+    run, evidence = _setup_paused_h1_run(db_session, case.id, with_plan=True)
+
+    # 11 steps (> 10)
+    steps = [
+        {
+            "step_id": i + 1,
+            "tool_name": "parse_evtx",
+            "target_evidence_id": str(evidence.id),
+            "parameters": {},
+            "rationale": f"Etape {i + 1}",
+        }
+        for i in range(11)
+    ]
+    bad_plan = {"summary": "Plan avec trop d'étapes", "steps": steps}
+
+    resp = client.post(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/gates/h1",
+        headers=headers,
+        json={"decision": "modify", "modified_plan": bad_plan},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "INVALID_PLAN"
+
+
+def test_arbitrate_h1_modify_unknown_tool_422(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Modification avec modified_plan ayant un outil non whitelisté: HTTP 422 INVALID_PLAN."""
+    case = test_setup["case"]
+    headers = test_setup["analyst_headers"]
+    run, evidence = _setup_paused_h1_run(db_session, case.id, with_plan=True)
+
+    bad_plan = {
+        "summary": "Plan avec outil non autorisé",
+        "steps": [
+            {
+                "step_id": 1,
+                "tool_name": "arbitrary_shell_command",
+                "target_evidence_id": str(evidence.id),
+                "parameters": {},
+                "rationale": "Execution de commande arbitraire",
+            }
+        ],
+    }
+
+    resp = client.post(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/gates/h1",
+        headers=headers,
+        json={"decision": "modify", "modified_plan": bad_plan},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "INVALID_PLAN"
+
+
+def test_arbitrate_h1_modify_evidence_not_in_case_422(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Modification ciblant une preuve n'appartenant pas au dossier: HTTP 422 INVALID_PLAN."""
+    case = test_setup["case"]
+    headers = test_setup["analyst_headers"]
+    run, _ = _setup_paused_h1_run(db_session, case.id, with_plan=True)
+
+    foreign_evidence_id = uuid.uuid4()
+    bad_plan = {
+        "summary": "Plan ciblant une preuve étrangère",
+        "steps": [
+            {
+                "step_id": 1,
+                "tool_name": "parse_evtx",
+                "target_evidence_id": str(foreign_evidence_id),
+                "parameters": {},
+                "rationale": "Analyse d'une preuve d'un autre dossier",
+            }
+        ],
+    }
+
+    resp = client.post(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/gates/h1",
+        headers=headers,
+        json={"decision": "modify", "modified_plan": bad_plan},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "INVALID_PLAN"
+
+
+def test_arbitrate_h1_reject_nominal_stop_200(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Rejet nominal sans replanification (return_to_planner=False): HTTP 200, status: completed."""
+    case = test_setup["case"]
+    headers = test_setup["analyst_headers"]
+    run, _ = _setup_paused_h1_run(db_session, case.id, with_plan=True)
+
+    resp = client.post(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/gates/h1",
+        headers=headers,
+        json={"decision": "reject", "return_to_planner": False},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "completed"
+    assert data["decision"] == "reject"
+
+    refreshed_run = db_session.get(InvestigationRun, run.id)
+    assert refreshed_run.status == InvestigationStatus.COMPLETED
+
+
+def test_arbitrate_h1_reject_with_return_to_planner_200(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Rejet avec replanification: HTTP 200, status: running, current_phase: planner."""
+    case = test_setup["case"]
+    headers = test_setup["analyst_headers"]
+    run, _ = _setup_paused_h1_run(db_session, case.id, with_plan=True)
+
+    resp = client.post(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/gates/h1",
+        headers=headers,
+        json={
+            "decision": "reject",
+            "return_to_planner": True,
+            "feedback": "Périmètre incomplet : ajouter analyse de mémoire vive.",
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "running"
+    assert data["current_phase"] == "planner"
+    assert data["decision"] == "reject"
+
+    refreshed_run = db_session.get(InvestigationRun, run.id)
+    assert refreshed_run.status == InvestigationStatus.RUNNING
+    assert refreshed_run.current_phase == PhaseName.PLANNER
+    assert refreshed_run.iteration_count == 1
+
+
+def test_arbitrate_h1_invalid_gate_state_running_422(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Arbitrage sur session non en pause H1 (status: running): HTTP 422 INVALID_GATE_STATE."""
+    case = test_setup["case"]
+    headers = test_setup["analyst_headers"]
+
+    # Start a nominal investigation (status: running, current_phase: triage)
+    resp_start = client.post(f"/api/v1/cases/{case.id}/investigations", headers=headers)
+    assert resp_start.status_code == 201
+    run_id = resp_start.json()["id"]
+
+    resp = client.post(
+        f"/api/v1/cases/{case.id}/investigations/{run_id}/gates/h1",
+        headers=headers,
+        json={"decision": "approve"},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "INVALID_GATE_STATE"
+
+
+def test_arbitrate_h1_invalid_gate_state_completed_422(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Arbitrage sur session déjà terminée (status: completed): HTTP 422 INVALID_GATE_STATE."""
+    case = test_setup["case"]
+    headers = test_setup["analyst_headers"]
+    run, _ = _setup_paused_h1_run(db_session, case.id, with_plan=True)
+
+    # Mark run completed
+    run.status = InvestigationStatus.COMPLETED
+    db_session.commit()
+
+    resp = client.post(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/gates/h1",
+        headers=headers,
+        json={"decision": "approve"},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "INVALID_GATE_STATE"
+
+
+def test_arbitrate_h1_viewer_forbidden_403(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Viewer attempting to submit Gate H1 arbitration: HTTP 403 Forbidden."""
+    case = test_setup["case"]
+    headers = test_setup["viewer_headers"]
+    run, _ = _setup_paused_h1_run(db_session, case.id, with_plan=True)
+
+    resp = client.post(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/gates/h1",
+        headers=headers,
+        json={"decision": "approve"},
+    )
+    assert resp.status_code == 403
+    assert resp.json()["error"]["code"] in ("FORBIDDEN", "INSUFFICIENT_PERMISSIONS")
+
+
+def test_arbitrate_h1_outside_user_forbidden_403(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """User outside case organization attempting Gate H1 arbitration: HTTP 403 Forbidden."""
+    case = test_setup["case"]
+    headers = test_setup["outside_headers"]
+    run, _ = _setup_paused_h1_run(db_session, case.id, with_plan=True)
+
+    resp = client.post(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/gates/h1",
+        headers=headers,
+        json={"decision": "approve"},
+    )
+    assert resp.status_code == 403
+    assert resp.json()["error"]["code"] in ("FORBIDDEN", "INSUFFICIENT_PERMISSIONS")
+
+
+def test_arbitrate_h1_cross_case_isolation_404(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Run belonging to Case 1 arbitrated via Case 2 path returns 404 INVESTIGATION_NOT_FOUND."""
+    case = test_setup["case"]
+    case_2 = test_setup["case_2"]
+    headers = test_setup["analyst_headers"]
+    run, _ = _setup_paused_h1_run(db_session, case.id, with_plan=True)
+
+    resp = client.post(
+        f"/api/v1/cases/{case_2.id}/investigations/{run.id}/gates/h1",
+        headers=headers,
+        json={"decision": "approve"},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "INVESTIGATION_NOT_FOUND"
+
+
+def test_arbitrate_h1_unauthenticated_401(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Unauthenticated request to Gate H1 arbitration returns 401 UNAUTHORIZED."""
+    case = test_setup["case"]
+    run, _ = _setup_paused_h1_run(db_session, case.id, with_plan=True)
+
+    resp = client.post(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/gates/h1",
+        json={"decision": "approve"},
+    )
+    assert resp.status_code == 401
+
+
+def test_pause_at_gate_h1_service_lifecycle(
+    test_setup: dict[str, object], db_session: Session
+) -> None:
+    """pause_at_gate_h1 pauses running session, closes active phase, and activates gate_h1."""
+    case = test_setup["case"]
+    service = InvestigationService(db_session)
+    run = service.start_investigation(case.id)
+    assert run.status == InvestigationStatus.RUNNING
+    assert run.current_phase == PhaseName.TRIAGE
+
+    paused_run = service.pause_at_gate_h1(case.id, run.id)
+    assert paused_run.status == InvestigationStatus.PAUSED
+    assert paused_run.current_phase == PhaseName.WAITING_H1
+
+    # Active phase must now be gate_h1
+    active_phase = [p for p in paused_run.phases if p.status == PhaseStatus.ACTIVE]
+    assert len(active_phase) == 1
+    assert active_phase[0].phase_name == PhaseName.GATE_H1
+
+    # Attempting to pause a completed run raises ValidationException
+    paused_run.status = InvestigationStatus.COMPLETED
+    db_session.commit()
+    with pytest.raises(ValidationException) as exc_info:
+        service.pause_at_gate_h1(case.id, paused_run.id)
+    assert exc_info.value.code == "INVALID_STATUS_TRANSITION"
+
+
+def test_arbitrate_h1_approve_no_plan_404(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Approbation d'un run pausé à H1 sans plan associé retourne 404 PLAN_NOT_FOUND."""
+    case = test_setup["case"]
+    headers = test_setup["analyst_headers"]
+    run, _ = _setup_paused_h1_run(db_session, case.id, with_plan=False)
+
+    resp = client.post(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/gates/h1",
+        headers=headers,
+        json={"decision": "approve"},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "PLAN_NOT_FOUND"
+
+
+def test_get_investigation_plan_cross_case_isolation_404(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """GET plan sur un mauvais dossier retourne 404 INVESTIGATION_NOT_FOUND."""
+    case = test_setup["case"]
+    case_2 = test_setup["case_2"]
+    headers = test_setup["analyst_headers"]
+    run, _ = _setup_paused_h1_run(db_session, case.id, with_plan=True)
+
+    resp = client.get(
+        f"/api/v1/cases/{case_2.id}/investigations/{run.id}/plan",
+        headers=headers,
+    )
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "INVESTIGATION_NOT_FOUND"
+
+
+def test_get_investigation_plan_outside_user_forbidden_403(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """GET plan par un utilisateur externe à l'organisation retourne 403 Forbidden."""
+    case = test_setup["case"]
+    headers = test_setup["outside_headers"]
+    run, _ = _setup_paused_h1_run(db_session, case.id, with_plan=True)
+
+    resp = client.get(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/plan",
+        headers=headers,
+    )
+    assert resp.status_code == 403
+    assert resp.json()["error"]["code"] in ("FORBIDDEN", "INSUFFICIENT_PERMISSIONS")
+
+
+def test_arbitrate_h1_replan_max_iteration_bound_422(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Replanification rejetée avec 422 MAX_ITERATIONS_REACHED si iteration_count >= 5."""
+    case = test_setup["case"]
+    headers = test_setup["analyst_headers"]
+    run, _ = _setup_paused_h1_run(db_session, case.id, with_plan=True)
+
+    run.iteration_count = 5
+    db_session.commit()
+
+    resp = client.post(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/gates/h1",
+        headers=headers,
+        json={"decision": "reject", "return_to_planner": True},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "MAX_ITERATIONS_REACHED"
+
+
+def test_arbitrate_h1_modify_evidence_without_sha256_422(
+    client: TestClient, test_setup: dict[str, object], db_session: Session
+) -> None:
+    """Modification ciblant une preuve non scellée (sha256 vide/nul) retourne 422 INVALID_PLAN."""
+    case = test_setup["case"]
+    headers = test_setup["analyst_headers"]
+    run, _ = _setup_paused_h1_run(db_session, case.id, with_plan=True)
+
+    unsealed_evidence = Evidence(
+        id=uuid.uuid4(),
+        case_id=case.id,
+        original_name="unsealed.raw",
+        file_size=1024,
+        sha256=None,
+        detected_type="raw",
+    )
+    db_session.add(unsealed_evidence)
+    db_session.commit()
+
+    modified_plan = {
+        "summary": "Plan ciblant une preuve non scellée",
+        "steps": [
+            {
+                "step_id": 1,
+                "tool_name": "parse_evtx",
+                "target_evidence_id": str(unsealed_evidence.id),
+                "parameters": {},
+                "rationale": "Test preuve non scellée",
+            }
+        ],
+    }
+
+    resp = client.post(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/gates/h1",
+        headers=headers,
+        json={"decision": "modify", "modified_plan": modified_plan},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "INVALID_PLAN"
+
+

@@ -12,9 +12,11 @@ from sqlalchemy.orm import Session, selectinload
 from iryx.cases.models import Case, CaseStatus
 from iryx.core.exceptions import (
     CaseNotFoundException,
+    InvalidGateStateException,
     InvalidPlanException,
     InvestigationAlreadyRunningException,
     InvestigationNotFoundException,
+    PlanNotFoundException,
     ValidationException,
 )
 from iryx.orchestrator.models import (
@@ -24,7 +26,13 @@ from iryx.orchestrator.models import (
     PhaseName,
     PhaseStatus,
 )
-from iryx.orchestrator.schemas import InvestigationPlan
+from iryx.orchestrator.schemas import (
+    H1Decision,
+    H1DecisionRequest,
+    H1DecisionResponse,
+    InvestigationPlan,
+    PhaseOut,
+)
 
 logger = logging.getLogger("iryx.orchestrator")
 
@@ -218,3 +226,323 @@ class InvestigationService:
             },
         )
         return run
+
+    def get_investigation_plan(self, case_id: uuid.UUID, run_id: uuid.UUID) -> InvestigationPlan:
+        """Retrieve the validated investigation plan associated with a run.
+
+        Raises:
+            InvestigationNotFoundException: If the run doesn't exist or doesn't belong to the case.
+            PlanNotFoundException: If no plan has been generated or associated with the run yet.
+            InvalidPlanException: If the stored plan data fails schema validation.
+        """
+        run = self.get_investigation_run(case_id=case_id, run_id=run_id)
+        if run.validated_plan is None:
+            raise PlanNotFoundException(
+                message="Aucun plan d'investigation n'est associé à cette session.",
+                code="PLAN_NOT_FOUND",
+            )
+        try:
+            return InvestigationPlan.model_validate(run.validated_plan)
+        except ValidationError as exc:
+            raise InvalidPlanException(
+                message=f"Plan d'investigation invalide en base : {exc}",
+            ) from exc
+
+    def pause_at_gate_h1(self, case_id: uuid.UUID, run_id: uuid.UUID) -> InvestigationRun:
+        """Pause an investigation run at Human Gate H1 awaiting analyst validation.
+
+        Sets run.status to paused and current_phase to waiting_h1, closing the previous
+        active phase and ensuring a gate_h1 phase is active.
+        """
+        run = self.get_investigation_run(case_id=case_id, run_id=run_id)
+
+        if run.status in (InvestigationStatus.COMPLETED, InvestigationStatus.FAILED):
+            raise ValidationException(
+                message=f"Impossible de suspendre une session avec le statut '{run.status}'.",
+                code="INVALID_STATUS_TRANSITION",
+            )
+
+        now = datetime.now(UTC)
+        run.status = InvestigationStatus.PAUSED
+        run.current_phase = PhaseName.WAITING_H1
+        run.updated_at = now
+
+        # Close currently active phase if not already gate_h1
+        active_phase = self.db.scalar(
+            select(Phase).where(
+                Phase.investigation_run_id == run.id,
+                Phase.status == PhaseStatus.ACTIVE,
+            )
+        )
+        if active_phase is not None and active_phase.phase_name != PhaseName.GATE_H1:
+            active_phase.status = PhaseStatus.COMPLETED
+            active_phase.completed_at = now
+            gate_phase = Phase(
+                id=uuid.uuid4(),
+                investigation_run_id=run.id,
+                phase_name=PhaseName.GATE_H1,
+                status=PhaseStatus.ACTIVE,
+                started_at=now,
+            )
+            self.db.add(gate_phase)
+        elif active_phase is None:
+            gate_phase = Phase(
+                id=uuid.uuid4(),
+                investigation_run_id=run.id,
+                phase_name=PhaseName.GATE_H1,
+                status=PhaseStatus.ACTIVE,
+                started_at=now,
+            )
+            self.db.add(gate_phase)
+
+        self.db.commit()
+        self.db.refresh(run)
+
+        logger.info(
+            "Investigation run paused at Human Gate H1",
+            extra={
+                "context": {
+                    "case_id": str(case_id),
+                    "run_id": str(run_id),
+                    "current_phase": str(run.current_phase),
+                    "status": str(run.status),
+                }
+            },
+        )
+        return run
+
+    def arbitrate_gate_h1(
+        self,
+        case_id: uuid.UUID,
+        run_id: uuid.UUID,
+        decision_request: H1DecisionRequest,
+        user_id: uuid.UUID | None = None,
+    ) -> H1DecisionResponse:
+        """Arbitrate Human Gate H1: approve, modify, or reject the proposed investigation plan."""
+        # Pessimistic row-level lock on InvestigationRun
+        run = self.db.scalar(
+            select(InvestigationRun)
+            .options(selectinload(InvestigationRun.phases))
+            .where(
+                InvestigationRun.id == run_id,
+                InvestigationRun.case_id == case_id,
+            )
+            .with_for_update()
+        )
+        if run is None:
+            raise InvestigationNotFoundException(
+                message=(
+                    "La session d'investigation demandée n'existe pas ou "
+                    "n'appartient pas à ce dossier."
+                )
+            )
+
+        # Invariant check: run must be paused at gate H1
+        is_gate_h1 = (
+            run.status == InvestigationStatus.PAUSED
+            and str(run.current_phase)
+            in (
+                PhaseName.GATE_H1,
+                PhaseName.WAITING_H1,
+                "gate_h1",
+                "waiting_h1",
+            )
+        )
+        if not is_gate_h1:
+            raise InvalidGateStateException(
+                message=(
+                    "La session d'investigation n'est pas en attente d'arbitrage sur la porte H1."
+                ),
+                code="INVALID_GATE_STATE",
+            )
+
+        now = datetime.now(UTC)
+        run.updated_at = now
+
+        # Close current active gate phase
+        active_phase = self.db.scalar(
+            select(Phase).where(
+                Phase.investigation_run_id == run.id,
+                Phase.status == PhaseStatus.ACTIVE,
+            )
+        )
+        if active_phase is not None:
+            active_phase.status = PhaseStatus.COMPLETED
+            active_phase.completed_at = now
+
+        message: str
+
+        if decision_request.decision == H1Decision.APPROVE:
+            if run.validated_plan is None:
+                raise PlanNotFoundException(
+                    message=(
+                        "Aucun plan d'investigation n'est associé à cette session pour approbation."
+                    ),
+                    code="PLAN_NOT_FOUND",
+                )
+            run.status = InvestigationStatus.RUNNING
+            run.current_phase = PhaseName.EXECUTOR
+
+            # Next phase: executor
+            next_phase = Phase(
+                id=uuid.uuid4(),
+                investigation_run_id=run.id,
+                phase_name=PhaseName.EXECUTOR,
+                status=PhaseStatus.ACTIVE,
+                started_at=now,
+            )
+            self.db.add(next_phase)
+            message = (
+                "Plan d'investigation approuvé avec succès. "
+                "Transition vers la phase d'exécution."
+            )
+
+        elif decision_request.decision == H1Decision.MODIFY:
+            if decision_request.modified_plan is None:
+                raise ValidationException(
+                    message="Un plan modifié est requis pour la décision 'modify'.",
+                    code="MISSING_MODIFIED_PLAN",
+                )
+
+            # Validate against InvestigationPlan
+            try:
+                if isinstance(decision_request.modified_plan, InvestigationPlan):
+                    plan_obj = decision_request.modified_plan
+                elif isinstance(decision_request.modified_plan, dict):
+                    plan_obj = InvestigationPlan.model_validate(decision_request.modified_plan)
+                else:
+                    raise ValueError("Format de plan invalide.")
+            except Exception as exc:
+                raise InvalidPlanException(
+                    message=f"Plan d'investigation modifié invalide : {exc}",
+                    code="INVALID_PLAN",
+                ) from exc
+
+            # Verify tools in ToolRegistry whitelist
+            from iryx.gateway.registry import get_tool_registry
+
+            tool_reg = get_tool_registry()
+            authorized_tools = set(tool_reg.list_tool_names()) | set(
+                getattr(tool_reg, "_whitelist", set())
+            )
+            for step in plan_obj.steps:
+                if step.tool_name not in authorized_tools:
+                    raise InvalidPlanException(
+                        message=(
+                            f"Outil non autorisé ou inconnu '{step.tool_name}'. "
+                            f"Outils autorisés : {sorted(authorized_tools)}"
+                        ),
+                        code="INVALID_PLAN",
+                    )
+
+            # Verify target evidences belong to this case
+            from iryx.evidence.models import Evidence
+
+            target_evidence_ids = {step.target_evidence_id for step in plan_obj.steps}
+            existing_ids = set(
+                self.db.scalars(
+                    select(Evidence.id).where(
+                        Evidence.case_id == case_id,
+                        Evidence.id.in_(target_evidence_ids),
+                        Evidence.sha256.isnot(None),
+                        Evidence.sha256 != "",
+                    )
+                ).all()
+            )
+            for target_id in target_evidence_ids:
+                if target_id not in existing_ids:
+                    raise InvalidPlanException(
+                        message=(
+                            f"La preuve ciblée '{target_id}' n'existe pas, "
+                            "n'appartient pas à ce dossier ou n'est pas scellée."
+                        ),
+                        code="INVALID_PLAN",
+                    )
+
+            plan_dict = plan_obj.model_dump(mode="json")
+            run.validated_plan = plan_dict
+            run.status = InvestigationStatus.RUNNING
+            run.current_phase = PhaseName.EXECUTOR
+
+            # Next phase: executor
+            next_phase = Phase(
+                id=uuid.uuid4(),
+                investigation_run_id=run.id,
+                phase_name=PhaseName.EXECUTOR,
+                status=PhaseStatus.ACTIVE,
+                started_at=now,
+            )
+            self.db.add(next_phase)
+            message = (
+                "Plan d'investigation modifié et validé avec succès. "
+                "Transition vers la phase d'exécution."
+            )
+
+        elif decision_request.decision == H1Decision.REJECT:
+            if decision_request.return_to_planner:
+                if run.iteration_count >= 5:
+                    raise ValidationException(
+                        message="Nombre maximal d'itérations de replanification atteint (5).",
+                        code="MAX_ITERATIONS_REACHED",
+                    )
+                run.status = InvestigationStatus.RUNNING
+                run.current_phase = PhaseName.PLANNER
+                run.iteration_count += 1
+                run.validated_plan = None
+
+                # Next phase: planner
+                next_phase = Phase(
+                    id=uuid.uuid4(),
+                    investigation_run_id=run.id,
+                    phase_name=PhaseName.PLANNER,
+                    status=PhaseStatus.ACTIVE,
+                    started_at=now,
+                )
+                self.db.add(next_phase)
+                message = (
+                    "Plan d'investigation rejeté avec demande de replanification. "
+                    "Retour vers la phase Planner."
+                )
+            else:
+                run.status = InvestigationStatus.COMPLETED
+                run.current_phase = PhaseName.GATE_H1
+                message = (
+                    "Plan d'investigation rejeté par l'analyste. "
+                    "Session d'investigation terminée."
+                )
+        else:
+            raise ValidationException(
+                message=f"Décision d'arbitrage invalide : '{decision_request.decision}'.",
+                code="INVALID_DECISION",
+            )
+
+        self.db.commit()
+        self.db.refresh(run)
+
+        logger.info(
+            "Human Gate H1 arbitration recorded",
+            extra={
+                "context": {
+                    "case_id": str(case_id),
+                    "run_id": str(run.id),
+                    "user_id": str(user_id) if user_id else None,
+                    "decision": str(decision_request.decision),
+                    "feedback": decision_request.feedback,
+                    "return_to_planner": decision_request.return_to_planner,
+                    "current_phase": str(run.current_phase),
+                    "status": str(run.status),
+                }
+            },
+        )
+
+        return H1DecisionResponse(
+            run_id=run.id,
+            case_id=run.case_id,
+            status=run.status,
+            current_phase=run.current_phase,
+            decision=decision_request.decision,
+            validated_plan=run.validated_plan,
+            message=message,
+            phases=[PhaseOut.model_validate(p) for p in run.phases],
+        )
+
