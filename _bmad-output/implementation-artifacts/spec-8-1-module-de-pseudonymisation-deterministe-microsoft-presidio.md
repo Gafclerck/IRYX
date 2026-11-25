@@ -2,7 +2,7 @@
 title: "Story 8.1 : Module de pseudonymisation déterministe Microsoft Presidio (FR25, D-19, NFR-SEC-07)"
 type: 'feature'
 created: '2026-11-25'
-status: 'blocked'
+status: 'draft'
 baseline_commit: '1b28f0ac054540689af84bac2cdeeb243e8037e9'
 baseline_revision: '1b28f0ac054540689af84bac2cdeeb243e8037e9'
 route: 'dispatch'
@@ -105,3 +105,5 @@ Status: blocked
 Blocking condition: dirty working tree
 
 Nouvelle tentative « continue la story 8.1 » : le contrôle de cohérence version-control échoue. Après `git add --refresh -- .`, l'arbre de travail reste non propre sur `main` (sprint-status.yaml, pyproject.toml et uv.lock modifiés ; epic-8-context.md, la spec 8.1 et backend/src/iryx/reporting/ non suivis). Aucune planification ni implémentation n'a été reprise.
+
+Blocage levé : l'utilisateur a demandé le commit (`a0730b5`), l'arbre est de nouveau propre et la spec repasse en `draft` pour reprise de la planification.
