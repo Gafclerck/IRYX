@@ -26,6 +26,46 @@ Conformément à la gouvernance technique du projet, les décisions suivantes fi
 | D-42 | Mode de déploiement | Hébergement statique (Vercel, Netlify ou Nginx) | Serveur Node.js dédié | Le front-end constitue un assemblage d'artefacts purement statiques |
 | D-43 | Sécurisation de l'authentification (révisée) | Jeton d'accès Bearer en mémoire vive (sans aucun stockage dans localStorage ni sessionStorage, sans cookie pour les requêtes) et refresh token sous cookie httpOnly inaccessible au client (sans vulnérabilité CSRF par vérification d'origine) | Stockage dans localStorage ou sessionStorage | Protection renforcée contre XSS : aucun jeton persistant dans localStorage ni sessionStorage |
 
+### 1.1 Outillage et versions installées (figées dans package-lock.json - F1.1)
+
+| Outil / Dépendance | Catégorie | Rôle | Version installée |
+|---|---|---|---|
+| `react` | Dépendance | Cadre applicatif (D-27) | `19.3.1` |
+| `react-dom` | Dépendance | Rendu DOM React | `19.3.1` |
+| `vite` | DevDépendance | Moteur de construction (D-28) | `6.4.6` |
+| `typescript` | DevDépendance | Langage strict (D-29) | `5.7.3` |
+| `react-router-dom` | Dépendance | Routage applicatif (D-30) | `7.18.7` |
+| `@tanstack/react-query` | Dépendance | Gestion d'état serveur (D-31) | `5.108.4` |
+| `tailwindcss` | DevDépendance | Moteur de style strict (D-35) | `3.4.19` |
+| `postcss` | DevDépendance | Processeur CSS Tailwind | `8.5.33` |
+| `autoprefixer` | DevDépendance | Préfixes CSS automatiques | `10.7.0` |
+| `lucide-react` | Dépendance | Système d'icônes (D-37) | `0.468.0` |
+| `clsx` | Dépendance | Utilitaire de classes conditionnelles | `2.1.1` |
+| `tailwind-merge` | Dépendance | Fusion de classes Tailwind | `2.6.2` |
+| `msw` | DevDépendance | Couche de simulation réseau (D-14) | `2.15.0` |
+| `vitest` | DevDépendance | Moteur de tests unitaires/composants (D-39) | `2.1.9` |
+| `jsdom` | DevDépendance | Environnement DOM pour tests | `25.0.1` |
+| `@testing-library/react` | DevDépendance | Utilitaires de test de composants | `16.3.3` |
+| `@testing-library/dom` | DevDépendance | Primitives Testing Library | `10.4.2` |
+| `@testing-library/jest-dom` | DevDépendance | Matchers d'assertions DOM | `6.9.1` |
+| `@testing-library/user-event` | DevDépendance | Simulation d'interactions utilisateur | `14.6.13` |
+| `eslint` | DevDépendance | Linter qualité de code (D-41) | `9.39.5` |
+| `@eslint/js` | DevDépendance | Règles standard JavaScript ESLint | `9.39.5` |
+| `typescript-eslint` | DevDépendance | Intégration TypeScript ESLint | `8.74.0` |
+| `eslint-plugin-react-hooks` | DevDépendance | Règles de hooks React | `5.2.0` |
+| `eslint-plugin-react-refresh` | DevDépendance | Support rechargement à chaud | `0.4.26` |
+| `eslint-config-prettier` | DevDépendance | Désactivation des règles en conflit | `9.1.2` |
+| `prettier` | DevDépendance | Formateur de code (D-41) | `3.10.1` |
+| `@vitejs/plugin-react` | DevDépendance | Plugin Vite pour React | `4.7.0` |
+| `@types/react` | DevDépendance | Définitions de types React | `19.3.1` |
+| `@types/react-dom` | DevDépendance | Définitions de types ReactDOM | `19.3.0` |
+| `@types/node` | DevDépendance | Définitions de types Node | `22.20.5` |
+| `openapi-fetch` | Dépendance | Client API typé OpenAPI (D-33) | `0.17.0` |
+| `react-hook-form` | Dépendance | Gestion des formulaires réactifs (D-34) | `7.92.0` |
+| `zod` | Dépendance | Schémas de validation déclaratifs (D-34) | `4.6.7` |
+| `@hookform/resolvers` | Dépendance | Intégration Zod pour React Hook Form | `7.0.9` |
+| `openapi-typescript` | DevDépendance | Générateur de types depuis contrat OpenAPI (D-33) | `7.13.0` |
+
 ---
 
 ## 2. Charte graphique stricte à cinq couleurs

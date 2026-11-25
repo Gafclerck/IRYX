@@ -19,11 +19,22 @@ Afin de permettre un développement front-end rigoureux et parfaitement synchron
 
 ## 2. Statut actuel du contrat OpenAPI
 
-À la date de formalisation de ce document, le fichier de spécification OpenAPI n'a pas encore été généré ni publié par la piste back-end :
+À la date de formalisation de ce document, le fichier de spécification OpenAPI existe sous forme de brouillon (`docs/contrat/openapi.json`), sans routes d'authentification finalisées :
 
-- **Statut opérationnel** : **EN ATTENTE**
-- **Emplacement cible prévu** : À définir en concertation avec la piste back-end (ex. `docs/contrat-api.yaml` ou point d'exposition direct dans la suite de tests back-end).
-- **Conséquence sur la planification front-end** : **Aucun blocage**. La planification suit son cours normal. Les stories d'intégration concernées sont simplement tracées avec la mention « bloquée par contrat » en attendant la livraison du schéma.
+- **Statut opérationnel** : **DISPONIBLE (BROUILLON)** pour les routes de dossiers, preuves et orchestration ; routes d'authentification en attente côté back-end.
+- **Emplacement du fichier** : `docs/contrat/openapi.json` (types TypeScript générés via `npm run generate:api` vers `frontend/src/api/schema.ts`).
+- **Contrat cible d'authentification** : `docs/contrat/auth-contrat-cible.yaml` (décrit en prose et en schéma d'après `docs/proposals/PROPOSITION-auth-back-E1.md`).
+- **Conséquence sur le front-end** : Les routes présentes dans `openapi.json` disposent de types générés automatiquement ; les routes d'authentification sont simulées via MSW à partir de `auth-contrat-cible.yaml`.
+
+### 2.1 Référentiel des routes d'authentification simulées (Story F1.2)
+
+Les trois routes d'authentification ci-dessous sont interceptées et simulées par Mock Service Worker (MSW) dans `frontend/src/test/mocks/handlers.ts` :
+
+| Méthode et route HTTP | Description opérationnelle | Mention de statut |
+|---|---|---|
+| `POST /api/auth/login` | Authentification analyste, délivrance jeton Bearer (15 min) et cookie refresh (7 j) | simulée, contrat cible : auth-contrat-cible.yaml |
+| `POST /api/auth/refresh` | Renouvellement silencieux du jeton d'accès via cookie httpOnly | simulée, contrat cible : auth-contrat-cible.yaml |
+| `POST /api/auth/logout` | Déconnexion explicite et suppression du cookie httpOnly (Max-Age=0) | simulée, contrat cible : auth-contrat-cible.yaml |
 
 ---
 
@@ -87,7 +98,7 @@ Pour chaque lot fonctionnel, le remplacement de la simulation par la connectivit
 
 | Lot Front-End | Épic Back-End associé | Statut du contrat d'API | Mode opérationnel actif |
 |---|---|---|---|
-| F1 : Socle, connexion et dossiers | E1 (Auth), E2 (Cases) | En attente | En attente de contrat / Simulation planifiée |
+| F1 : Socle, connexion et dossiers | E1 (Auth), E2 (Cases) | Brouillon openapi.json (routes auth en attente) | Simulation active (auth-contrat-cible.yaml) |
 | F2 : Contexte du dossier | E2 (Cases) | En attente | En attente de contrat / Simulation planifiée |
 | F3 : Registre des preuves | E3 (Evidence, Ingestion) | En attente | En attente de contrat / Simulation planifiée |
 | F4 : Plan, agents, résultats, revues | E4, E5, E6, E7 | En attente | En attente de contrat / Simulation planifiée |
