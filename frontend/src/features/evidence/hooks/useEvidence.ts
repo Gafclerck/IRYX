@@ -42,14 +42,12 @@ export interface UseEvidenceReturn {
  * 4. Recul exponentiel en cas d'erreur réseau temporaire.
  * 5. La scrutation s'arrête dès qu'un état terminal est atteint (completed ou failed) ou au départ de la page.
  * 6. Dès qu'au moins une preuve est confirmée intègre (completed), hasIntegrityEvidence = true.
- * 7. DP-05 : en cas de coupure prolongée (3 erreurs consécutives), la scrutation s'interrompt et
- *    isNetworkCutoff bascule à true avec proposition du bouton « Réessayer la connexion ».
+ * 7. DP-05 : en cas de coupure prolongée, la scrutation s'interrompt et isNetworkCutoff bascule
+ *    à true avec proposition du bouton « Réessayer la connexion ». Le seuil d'échecs consécutifs
+ *    est paramétré par DP05_MAX_CONSECUTIVE_NETWORK_ERRORS et reste « à décider » (docs/frontend/15).
  * 8. En cas de réponse 401 ou 403, la scrutation s'interrompt immédiatement.
  */
-export function useEvidence({
-  caseId,
-  enabled = true,
-}: UseEvidenceOptions): UseEvidenceReturn {
+export function useEvidence({ caseId, enabled = true }: UseEvidenceOptions): UseEvidenceReturn {
   const [evidences, setEvidences] = useState<EvidenceInventoryItem[]>([])
   const [total, setTotal] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
@@ -86,10 +84,7 @@ export function useEvidence({
       setIsFetching(true)
 
       try {
-        const { data, retryAfterSeconds } = await getEvidenceIngestionStatus(
-          caseId,
-          evidenceId,
-        )
+        const { data, retryAfterSeconds } = await getEvidenceIngestionStatus(caseId, evidenceId)
 
         if (!isMountedRef.current) return
 
@@ -151,9 +146,7 @@ export function useEvidence({
           // Arrêt de l'interrogation sur coupure prolongée
           clearAllTimers()
           setIsNetworkCutoff(true)
-          setEvidences((prev) =>
-            prev.map((item) => ({ ...item, isPollingActive: false })),
-          )
+          setEvidences((prev) => prev.map((item) => ({ ...item, isPollingActive: false })))
         } else {
           // Recul exponentiel plafonné (ADR-0008)
           const backoff = Math.min(
@@ -202,12 +195,15 @@ export function useEvidence({
           // Préservation du statut d'ingestion déjà présent s'il existe
           const existing = evidences.find((e) => e.id === raw.id)
           const initialStatus = existing?.ingestionStatus || (raw.sha256 ? 'completed' : 'pending')
-          const isTerminal = (TERMINAL_INGESTION_STATUSES as readonly string[]).includes(initialStatus)
+          const isTerminal = (TERMINAL_INGESTION_STATUSES as readonly string[]).includes(
+            initialStatus,
+          )
 
           return {
             ...raw,
             ingestionStatus: initialStatus,
-            ingestionProgress: existing?.ingestionProgress ?? (initialStatus === 'completed' ? 100 : 0),
+            ingestionProgress:
+              existing?.ingestionProgress ?? (initialStatus === 'completed' ? 100 : 0),
             ingestionErrorMessage: existing?.ingestionErrorMessage ?? null,
             isPollingActive: !isTerminal,
           }
@@ -269,9 +265,7 @@ export function useEvidence({
   }, [fetchEvidences])
 
   // Détection de la condition d'analyse : au moins une preuve est intègre (completed)
-  const hasIntegrityEvidence = evidences.some(
-    (item) => item.ingestionStatus === 'completed',
-  )
+  const hasIntegrityEvidence = evidences.some((item) => item.ingestionStatus === 'completed')
 
   return {
     evidences,

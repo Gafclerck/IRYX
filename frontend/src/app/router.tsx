@@ -35,6 +35,10 @@ export const router = createBrowserRouter([
         path: '/cases/:caseId/evidence',
         element: <EvidencePage />,
       },
+      {
+        path: '/cases/:caseId/evidence/:evidenceId',
+        element: <EvidencePage />,
+      },
     ],
   },
   {

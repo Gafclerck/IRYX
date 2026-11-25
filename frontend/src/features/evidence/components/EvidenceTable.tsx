@@ -32,6 +32,7 @@ export interface EvidenceTableProps {
   readonly onRefetch: () => void
   readonly onRetryConnection: () => void
   readonly onLaunchAnalysis?: () => void
+  readonly onSelectEvidence?: (evidenceId: string) => void
 }
 
 /**
@@ -83,9 +84,18 @@ export function EvidenceTable({
   onRefetch,
   onRetryConnection,
   onLaunchAnalysis,
+  onSelectEvidence,
 }: EvidenceTableProps) {
   const navigate = useNavigate()
   const [copiedId, setCopiedId] = useState<string | null>(null)
+
+  const handleSelectEvidence = (evidenceId: string) => {
+    if (onSelectEvidence) {
+      onSelectEvidence(evidenceId)
+    } else {
+      navigate(`/cases/${caseId}/evidence/${evidenceId}`)
+    }
+  }
 
   const handleCopySha256 = async (hash: string, id: string) => {
     try {
@@ -248,8 +258,8 @@ export function EvidenceTable({
                 Aucune preuve déposée pour ce dossier
               </h3>
               <p className="text-xs text-mist/70 max-w-md mx-auto">
-                Déposez des artefacts forensiques dans la zone ci-dessus pour initialiser la chaîne de
-                possession et l’ingestion cryptographique.
+                Déposez des artefacts forensiques dans la zone ci-dessus pour initialiser la chaîne
+                de possession et l’ingestion cryptographique.
               </p>
             </div>
           ) : (
@@ -292,8 +302,19 @@ export function EvidenceTable({
                     return (
                       <tr
                         key={item.id}
-                        className="hover:bg-deep/20 transition-colors"
+                        id={`evidence-row-${item.id}`}
                         data-testid={`evidence-row-${item.id}`}
+                        tabIndex={0}
+                        role="button"
+                        aria-label={`Inspecter la preuve ${item.original_name}`}
+                        onClick={() => handleSelectEvidence(item.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            handleSelectEvidence(item.id)
+                          }
+                        }}
+                        className="hover:bg-deep/20 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan focus:ring-inset"
                       >
                         {/* 1. Nom */}
                         <td className="px-4 py-3 font-medium text-mist">
@@ -304,9 +325,7 @@ export function EvidenceTable({
 
                         {/* 2. Type détecté */}
                         <td className="px-4 py-3 text-mist/80">
-                          <span className="font-mono text-[11px]">
-                            {item.detected_type || '—'}
-                          </span>
+                          <span className="font-mono text-[11px]">{item.detected_type || '—'}</span>
                         </td>
 
                         {/* 3. Taille */}
@@ -327,7 +346,10 @@ export function EvidenceTable({
                               </span>
                               <button
                                 type="button"
-                                onClick={() => handleCopySha256(item.sha256!, item.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleCopySha256(item.sha256!, item.id)
+                                }}
                                 className="rounded p-1 text-mist/70 hover:text-cyan focus:outline-none focus:ring-1 focus:ring-cyan transition-colors"
                                 aria-label="Copier l'empreinte SHA-256"
                                 title="Copier l'empreinte SHA-256"
@@ -372,7 +394,9 @@ export function EvidenceTable({
                             /* État failed ou non intègre : « ÉCHEC » ou « NON INTÈGRE » avec icône d'alerte */
                             <span
                               className="inline-flex items-center gap-1 rounded border border-teal/40 bg-deep/40 px-2 py-0.5 text-[11px] font-semibold text-mist"
-                              title={item.ingestionErrorMessage || 'Échec de traitement cryptographique'}
+                              title={
+                                item.ingestionErrorMessage || 'Échec de traitement cryptographique'
+                              }
                               data-testid={`status-badge-${item.id}`}
                             >
                               <AlertTriangle className="h-3.5 w-3.5 text-cyan" aria-hidden="true" />
@@ -384,7 +408,10 @@ export function EvidenceTable({
                               className="inline-flex items-center gap-1 rounded border border-deep bg-deep/30 px-2 py-0.5 text-[11px] font-medium text-teal"
                               data-testid={`status-badge-${item.id}`}
                             >
-                              <RotateCw className="h-3 w-3 animate-spin text-teal" aria-hidden="true" />
+                              <RotateCw
+                                className="h-3 w-3 animate-spin text-teal"
+                                aria-hidden="true"
+                              />
                               <span>
                                 {statusInfo.label}
                                 {item.ingestionProgress > 0 ? ` (${item.ingestionProgress}%)` : ''}
@@ -424,10 +451,7 @@ export function EvidenceTable({
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-deep">
         <div className="text-xs text-mist/70">
           {!hasIntegrityEvidence ? (
-            <p
-              className="text-mist/70 italic"
-              data-testid="analysis-disabled-help"
-            >
+            <p className="text-mist/70 italic" data-testid="analysis-disabled-help">
               Le lancement de l’analyse requiert au moins une preuve scellée et confirmée intègre.
             </p>
           ) : (

@@ -369,12 +369,141 @@ export function resetMockEvidences() {
   Object.keys(MOCK_CASE_EVIDENCES).forEach((key) => {
     delete MOCK_CASE_EVIDENCES[key]
   })
-  Object.assign(
-    MOCK_CASE_EVIDENCES,
-    JSON.parse(JSON.stringify(INITIAL_MOCK_CASE_EVIDENCES)),
-  )
+  Object.assign(MOCK_CASE_EVIDENCES, JSON.parse(JSON.stringify(INITIAL_MOCK_CASE_EVIDENCES)))
 }
 
+/**
+ * Construit un contenu brut volumineux pour éprouver la troncature DP-04 (Story F3.3).
+ */
+function buildLargeObservationText(lineCount: number): string {
+  return Array.from(
+    { length: lineCount },
+    (_, index) =>
+      `2026-11-20T08:${String(index % 60).padStart(2, '0')}:00Z evenement=4624 session=${1000 + index} compte=NT AUTHORITY\\SYSTEM`,
+  ).join('\n')
+}
+
+/**
+ * Données simulées de consultation détaillée d'une preuve (Story F3.3).
+ * Le schéma EvidenceRead du contrat ne porte que les métadonnées de base ; les champs
+ * ingestion_runs, observation_count et observations sont des enrichissements du contrat cible
+ * à réaligner avec l'épic back-end E3.
+ */
+export function getMockEvidenceDetail(caseId: string, evidenceId: string) {
+  const evidence = (MOCK_CASE_EVIDENCES[caseId] || []).find((item) => item.id === evidenceId)
+  if (!evidence) return null
+
+  if (evidenceId === 'evi-001') {
+    return {
+      ...evidence,
+      ingestion_runs: [
+        {
+          id: 'run-001',
+          status: 'completed',
+          progress: 100,
+          started_at: '2026-11-20T08:31:00Z',
+          completed_at: '2026-11-20T08:32:10Z',
+          error_message: null,
+        },
+        {
+          id: 'run-000',
+          status: 'failed',
+          progress: 10,
+          started_at: '2026-11-20T08:30:10Z',
+          completed_at: '2026-11-20T08:30:40Z',
+          error_message: 'Format binaire invalide ou corruption de fichier.',
+        },
+      ],
+      observation_count: 2,
+      observations: [
+        {
+          id: 'obs-001',
+          tool_name: 'analyseur EVTX',
+          timestamp_utc: '2026-11-20T08:31:30Z',
+          source_location: 'Security.evtx / EventID 4624',
+          raw_text:
+            'EventID=4624\nCompte=NT AUTHORITY\\SYSTEM\nType de connexion=5\nHeure UTC=2026-11-20T08:31:30Z',
+        },
+        {
+          id: 'obs-002',
+          tool_name: 'analyseur EVTX',
+          timestamp_utc: '2026-11-20T08:31:45Z',
+          source_location: 'Security.evtx / EventID 4688',
+          raw_text: buildLargeObservationText(620),
+        },
+      ],
+      error_message: null,
+    }
+  }
+
+  if (evidenceId === 'evi-002') {
+    return {
+      ...evidence,
+      ingestion_runs: [
+        {
+          id: 'run-002',
+          status: 'completed',
+          progress: 100,
+          started_at: '2026-11-20T08:46:00Z',
+          completed_at: '2026-11-20T09:02:00Z',
+          error_message: null,
+        },
+      ],
+      observation_count: 1,
+      observations: [
+        {
+          id: 'obs-003',
+          tool_name: 'Volatility 3',
+          timestamp_utc: '2026-11-20T09:01:00Z',
+          source_location: 'memory_dump.raw / pslist',
+          normalized_content: {
+            processus: 'lsass.exe',
+            pid: 620,
+            parent_pid: 512,
+          },
+        },
+      ],
+      error_message: null,
+    }
+  }
+
+  if (evidenceId === 'evi-004') {
+    return {
+      ...evidence,
+      ingestion_runs: [
+        {
+          id: 'run-004',
+          status: 'failed',
+          progress: 10,
+          started_at: '2026-11-20T09:16:00Z',
+          completed_at: '2026-11-20T09:16:20Z',
+          error_message: 'Format binaire invalide ou corruption de fichier.',
+        },
+      ],
+      observation_count: 0,
+      observations: [],
+      error_message: 'Le scellement cryptographique n’a pas pu être achevé.',
+    }
+  }
+
+  // evi-003 : ingestion en cours, aucune observation encore extraite
+  return {
+    ...evidence,
+    ingestion_runs: [
+      {
+        id: 'run-003',
+        status: 'processing',
+        progress: 45,
+        started_at: '2026-11-20T09:01:00Z',
+        completed_at: null,
+        error_message: null,
+      },
+    ],
+    observation_count: 0,
+    observations: [],
+    error_message: null,
+  }
+}
 
 /**
  * Handlers MSW simulant les routes réseau de l'application IRYX.
@@ -1293,10 +1422,7 @@ export const handlers = [
     }
 
     if (caseId === 'case-not-found') {
-      return HttpResponse.json<ErrorResponse>(
-        { detail: 'Dossier introuvable.' },
-        { status: 404 },
-      )
+      return HttpResponse.json<ErrorResponse>({ detail: 'Dossier introuvable.' }, { status: 404 })
     }
 
     if (caseId === 'case-empty' || simHeader === 'empty') {
@@ -1441,10 +1567,66 @@ export const handlers = [
         progress: 100,
         error_message: null,
         sha256:
-          foundItem?.sha256 ||
-          'a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789abcdef0',
+          foundItem?.sha256 || 'a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789abcdef0',
         detected_type: foundItem?.detected_type || 'application/x-ms-evtx',
       })
     },
   ),
+
+  /**
+   * Consultation des métadonnées détaillées d'une preuve (Story F3.3).
+   * Route cible : GET /api/v1/cases/:caseId/evidences/:evidenceId
+   * Statut : simulée, contrat cible : openapi.json
+   */
+  http.get('*/api/v1/cases/:caseId/evidences/:evidenceId', ({ params, request }) => {
+    const authHeader = request.headers.get('Authorization')
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    const token = authHeader.replace('Bearer ', '').trim()
+    const caseId = String(params.caseId)
+    const evidenceId = String(params.evidenceId)
+    const simHeader =
+      request.headers.get('X-Simulation-Evidence') ||
+      request.headers.get('X-Simulation-Evidence-Detail')
+
+    if (
+      token === 'mock-forbidden-token' ||
+      simHeader === 'forbidden' ||
+      caseId === 'case-forbidden'
+    ) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Accès refusé. Vous n'avez pas accès aux détails de cette preuve." },
+        { status: 403 },
+      )
+    }
+
+    if (
+      token === 'mock-server-error-token' ||
+      simHeader === 'server-error' ||
+      caseId === 'case-error' ||
+      evidenceId === 'evi-error'
+    ) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Erreur interne lors de la consultation des détails de la preuve.' },
+        { status: 500 },
+      )
+    }
+
+    if (caseId === 'case-not-found') {
+      return HttpResponse.json<ErrorResponse>({ detail: 'Dossier introuvable.' }, { status: 404 })
+    }
+
+    const detail = getMockEvidenceDetail(caseId, evidenceId)
+    if (!detail) {
+      return HttpResponse.json<ErrorResponse>({ detail: 'Preuve introuvable.' }, { status: 404 })
+    }
+
+    return HttpResponse.json(detail)
+  }),
 ]

@@ -2,10 +2,9 @@ import { apiClient } from '../../../api/client'
 import type {
   EvidenceListResponse,
   EvidenceIngestionStatusResponse,
+  EvidenceDetail,
 } from '../types'
-import {
-  ADR0008_POLLING_DEFAULT_INTERVAL_SECONDS,
-} from '../constants'
+import { ADR0008_POLLING_DEFAULT_INTERVAL_SECONDS } from '../constants'
 
 /**
  * Erreur spécifique liée à l'inventaire et au suivi des preuves.
@@ -32,15 +31,12 @@ export async function getEvidences(
   const limit = params.limit ?? 50
   const offset = params.offset ?? 0
 
-  const { data, response, error } = await apiClient.GET(
-    '/api/v1/cases/{case_id}/evidences',
-    {
-      params: {
-        path: { case_id: caseId },
-        query: { limit, offset } as never,
-      },
+  const { data, response, error } = await apiClient.GET('/api/v1/cases/{case_id}/evidences', {
+    params: {
+      path: { case_id: caseId },
+      query: { limit, offset } as never,
     },
-  )
+  })
 
   if (response.status === 403) {
     throw new EvidenceApiError(
@@ -51,8 +47,7 @@ export async function getEvidences(
 
   if (!response.ok || error) {
     const detail =
-      (error as { detail?: string })?.detail ||
-      'Échec de la récupération des preuves du dossier.'
+      (error as { detail?: string })?.detail || 'Échec de la récupération des preuves du dossier.'
     throw new EvidenceApiError(detail, response.status)
   }
 
@@ -83,23 +78,16 @@ export async function getEvidenceIngestionStatus(
   )
 
   if (response.status === 403) {
-    throw new EvidenceApiError(
-      "Accès refusé lors de la vérification d'ingestion.",
-      403,
-    )
+    throw new EvidenceApiError("Accès refusé lors de la vérification d'ingestion.", 403)
   }
 
   if (response.status === 401) {
-    throw new EvidenceApiError(
-      'Session expirée lors de la vérification.',
-      401,
-    )
+    throw new EvidenceApiError('Session expirée lors de la vérification.', 401)
   }
 
   if (!response.ok || error) {
     const detail =
-      (error as { detail?: string })?.detail ||
-      "Échec de l'interrogation du statut d'ingestion."
+      (error as { detail?: string })?.detail || "Échec de l'interrogation du statut d'ingestion."
     throw new EvidenceApiError(detail, response.status)
   }
 
@@ -122,4 +110,51 @@ export async function getEvidenceIngestionStatus(
     data: data as EvidenceIngestionStatusResponse,
     retryAfterSeconds,
   }
+}
+
+/**
+ * Récupère les métadonnées détaillées d'une preuve pour le panneau d'inspection latérale (Story F3.3).
+ * Route cible : GET /api/v1/cases/{case_id}/evidences/{evidence_id}
+ * Contrat : openapi.json
+ */
+export async function getEvidenceDetail(
+  caseId: string,
+  evidenceId: string,
+): Promise<EvidenceDetail> {
+  const { data, response, error } = await apiClient.GET(
+    '/api/v1/cases/{case_id}/evidences/{evidence_id}',
+    {
+      params: {
+        path: { case_id: caseId, evidence_id: evidenceId },
+      },
+    },
+  )
+
+  if (response.status === 403) {
+    throw new EvidenceApiError(
+      "Accès refusé. Vous n'avez pas accès aux détails de cette preuve.",
+      403,
+    )
+  }
+
+  if (response.status === 404) {
+    throw new EvidenceApiError('Preuve introuvable ou inexistante dans ce dossier.', 404)
+  }
+
+  if (response.status === 401) {
+    throw new EvidenceApiError('Session expirée lors de la consultation de la preuve.', 401)
+  }
+
+  if (!response.ok || error) {
+    const detail =
+      (error as { detail?: string })?.detail || 'Échec de la récupération des détails de la preuve.'
+    throw new EvidenceApiError(detail, response.status)
+  }
+
+  if (!data) {
+    const status = (response as unknown as { status?: number })?.status || 500
+    throw new EvidenceApiError('Données de la preuve indisponibles.', status)
+  }
+
+  return data as EvidenceDetail
 }

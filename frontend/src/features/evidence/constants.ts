@@ -86,11 +86,24 @@ export const ADR0008_POLLING_MAX_BACKOFF_MS = 15000
 
 /**
  * Décision DP-05 : arrêt de l'interrogation en cas de coupure prolongée avec bouton « Réessayer la connexion ».
- * Le délai ou nombre de tentatives avant déclaration de coupure n'étant pas chiffré dans l'ADR-0008,
- * il est consigné « à décider » et adossé à un seuil de sécurité de 3 échecs consécutifs.
+ * Le seuil de déclenchement (3 échecs consécutifs) n'est pas une décision validée : il est consigné
+ * « à décider » dans docs/frontend/15-decisions-ouvertes.md.
+ * Le comportement reste en place (interruption de scrutation et bouton « Réessayer la connexion »),
+ * mais la valeur n'est plus présentée comme acquise.
  */
-export const DP05_NETWORK_CUTOFF_NOTE = 'Délai de coupure réseau prolongée : à décider (DP-05)'
+export const DP05_NETWORK_CUTOFF_NOTE = 'Seuil de coupure réseau prolongée : à décider (DP-05)'
+/** Valeur technique de repli : seuil « à décider » (DP-05, docs/frontend/15-decisions-ouvertes.md). */
 export const DP05_MAX_CONSECUTIVE_NETWORK_ERRORS = 3
+
+/**
+ * Décision DP-04 : troncature volumétrique des artefacts et observations.
+ * Les observations brutes dépassant 500 lignes ou 64 Ko sont tronquées à l'affichage
+ * avec proposition d'un bouton de téléchargement direct de l'intégralité.
+ */
+export const DP04_MAX_PREVIEW_LINES = 500
+export const DP04_MAX_PREVIEW_BYTES = 64 * 1024 // 64 Ko = 65 536 octets
+export const DP04_TRUNCATION_NOTE =
+  'Artefacts tronqués à 500 lignes ou 64 Ko, avec téléchargement direct (DP-04)'
 
 /**
  * Statuts d'ingestion autorisés selon docs/frontend/12-parcours-et-etats.md et docs/03-modele-de-donnees.md.
@@ -113,7 +126,9 @@ export interface IngestionStatusDisplayInfo {
  * « Si l'API transmet une valeur de statut non répertoriée (...), le front-end applique la règle :
  * Le statut est affiché sous la forme « État inconnu » suivi du code textuel brut retourné entre parenthèses. »
  */
-export function formatIngestionStatus(status: string | undefined | null): IngestionStatusDisplayInfo {
+export function formatIngestionStatus(
+  status: string | undefined | null,
+): IngestionStatusDisplayInfo {
   if (!status) {
     return {
       label: 'EN ATTENTE',
@@ -167,4 +182,3 @@ export function formatIngestionStatus(status: string | undefined | null): Ingest
       }
   }
 }
-

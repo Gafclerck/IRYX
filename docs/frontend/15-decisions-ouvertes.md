@@ -56,4 +56,16 @@ Le présent document consigne formellement les arbitrages rendus sur les paramè
 
 ---
 
+## 5. Décision DP-05 — Seuil de coupure réseau pour la scrutation
+
+- **Identifiant** : DP-05 (NFR-PERF-03)
+- **Statut** : **à décider**
+- **Date** : 2026-11-25
+- **Décision consignée** :
+  - Le seuil de déclenchement de la coupure réseau prolongée (positionné par défaut technique à 3 échecs consécutifs de transport HTTP) n'est pas une décision validée.
+  - La valeur numérique précise reste « à décider ».
+  - Le comportement d'interface reste en place conformément à DP-05 : en cas d'erreurs répétées, l'interrogation automatique de l'API est interrompue pour protéger l'infrastructure et un bouton « Réessayer la connexion » est mis à la disposition de l'opérateur.
+
+---
+
 *Note de portée : Ces décisions ne s'appliquent pas à la configuration du back-end.*

@@ -348,9 +348,9 @@ describe('Story F3.2 : Registre d’inventaire des preuves, suivi d’ingestion 
         expect(screen.getByTestId('evidence-inventory-empty-state')).toBeInTheDocument()
       })
 
-      expect(
-        screen.getByTestId('evidence-inventory-empty-state'),
-      ).toHaveTextContent('Aucune preuve déposée pour ce dossier')
+      expect(screen.getByTestId('evidence-inventory-empty-state')).toHaveTextContent(
+        'Aucune preuve déposée pour ce dossier',
+      )
 
       const launchBtn = screen.getByTestId('launch-analysis-btn')
       expect(launchBtn).toBeDisabled()
@@ -363,10 +363,7 @@ describe('Story F3.2 : Registre d’inventaire des preuves, suivi d’ingestion 
       server.use(
         http.get('*/api/v1/cases/:caseId/evidences', () => {
           if (fail) {
-            return HttpResponse.json(
-              { detail: 'Incident interne de stockage.' },
-              { status: 500 },
-            )
+            return HttpResponse.json({ detail: 'Incident interne de stockage.' }, { status: 500 })
           }
           return HttpResponse.json({
             items: [
@@ -396,9 +393,7 @@ describe('Story F3.2 : Registre d’inventaire des preuves, suivi d’ingestion 
         expect(screen.getByTestId('evidence-table-error')).toBeInTheDocument()
       })
 
-      expect(
-        screen.getByText('Erreur de chargement du registre des preuves'),
-      ).toBeInTheDocument()
+      expect(screen.getByText('Erreur de chargement du registre des preuves')).toBeInTheDocument()
 
       // Clic sur Réessayer
       fail = false
@@ -413,8 +408,6 @@ describe('Story F3.2 : Registre d’inventaire des preuves, suivi d’ingestion 
 
   describe('7. DP-05 : Coupure réseau prolongée et bouton « Réessayer la connexion »', () => {
     it('interrompt la scrutation sur coupure prolongée et permet la relance via « Réessayer la connexion »', async () => {
-      let callCount = 0
-
       server.use(
         http.get('*/api/v1/cases/:caseId/evidences', () => {
           return HttpResponse.json({
@@ -438,12 +431,8 @@ describe('Story F3.2 : Registre d’inventaire des preuves, suivi d’ingestion 
           })
         }),
         http.get('*/api/v1/cases/:caseId/evidences/:evidenceId/ingestion-status', () => {
-          callCount++
           // Erreur réseau répétée
-          return HttpResponse.json(
-            { detail: 'Rupture de transport' },
-            { status: 503 },
-          )
+          return HttpResponse.json({ detail: 'Rupture de transport' }, { status: 503 })
         }),
       )
 

@@ -80,3 +80,48 @@ export interface EvidenceInventoryItem extends EvidenceRead {
   readonly isPollingActive?: boolean
 }
 
+/**
+ * Trace d'une exécution d'ingestion liée à une preuve (Story F3.3, docs/03 section 1.6).
+ */
+export interface EvidenceIngestionExecution {
+  readonly id: string
+  readonly status: IngestionStatus | string
+  readonly progress: number
+  readonly started_at: string
+  readonly completed_at?: string | null
+  readonly error_message?: string | null
+}
+
+/**
+ * Observation forensique unitaire extraite d'une preuve (Story F3.3, docs/03 section 1.7).
+ */
+export interface EvidenceObservationItem {
+  readonly id: string
+  readonly tool_name: string
+  readonly timestamp_utc?: string | null
+  readonly source_location?: string | null
+  readonly normalized_content?: Record<string, unknown> | null
+  readonly raw_text?: string
+}
+
+/**
+ * Détails complets d'une preuve pour le panneau d'inspection (Story F3.3, GET /api/v1/cases/:caseId/evidences/:evidenceId).
+ */
+export interface EvidenceDetail extends EvidenceRead {
+  readonly ingestion_runs?: readonly EvidenceIngestionExecution[]
+  readonly observation_count?: number
+  readonly observations?: readonly EvidenceObservationItem[]
+  readonly error_message?: string | null
+}
+
+/**
+ * Résultat du calcul de troncature volumétrique selon la décision DP-04.
+ */
+export interface TruncatedContent {
+  readonly isTruncated: boolean
+  readonly previewText: string
+  readonly fullText: string
+  readonly totalLines: number
+  readonly totalBytes: number
+  readonly truncationReason?: 'lines' | 'bytes' | 'both'
+}

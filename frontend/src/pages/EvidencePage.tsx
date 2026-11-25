@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
   ArrowLeft,
@@ -16,6 +16,7 @@ import {
   EvidenceDropZone,
   EvidenceUploadList,
   EvidenceTable,
+  EvidenceDetailDrawer,
   useEvidenceUpload,
   useEvidence,
 } from '../features/evidence'
@@ -38,9 +39,10 @@ import {
  * 11. Palette stricte (ink, deep, teal, cyan, mist) sans aucun code hexadécimal en dur.
  */
 export function EvidencePage() {
-  const { caseId } = useParams<{ caseId: string }>()
+  const { caseId, evidenceId } = useParams<{ caseId: string; evidenceId?: string }>()
   const navigate = useNavigate()
   const sessionUser = useSessionUser()
+  const [accessDeniedToast, setAccessDeniedToast] = useState<string | null>(null)
 
   const safeCaseId = caseId || ''
   const { data: caseData, isLoading, isError, error, refetch } = useCaseDetail(safeCaseId)
@@ -111,6 +113,46 @@ export function EvidencePage() {
       return () => clearTimeout(timer)
     }
   }, [isForbidden, navigate])
+
+  // Identifiant de la ligne à re-focaliser après fermeture du tiroir d'inspection (Story F3.3)
+  const pendingFocusEvidenceIdRef = useRef<string | null>(null)
+
+  // Restauration du focus sur la ligne d'origine une fois l'URL revenue à la liste
+  useEffect(() => {
+    if (evidenceId || !pendingFocusEvidenceIdRef.current) return
+
+    const focusTargetId = pendingFocusEvidenceIdRef.current
+    pendingFocusEvidenceIdRef.current = null
+    const timer = setTimeout(() => {
+      document.getElementById(`evidence-row-${focusTargetId}`)?.focus()
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [evidenceId])
+
+  // Fermeture du tiroir d'inspection : retour à la liste et restauration du focus sur la ligne d'origine
+  const handleCloseDrawer = () => {
+    if (evidenceId) {
+      pendingFocusEvidenceIdRef.current = evidenceId
+    }
+    navigate(`/cases/${safeCaseId}/evidence`)
+  }
+
+  // Accès refusé (403) sur la consultation unitaire d'une preuve via URL directe (Story F3.3)
+  const handleDrawerForbidden = () => {
+    setAccessDeniedToast("Accès refusé. Vous n'avez pas accès aux détails de cette preuve.")
+    navigate(`/cases/${safeCaseId}/evidence`, { replace: true })
+  }
+
+  // Disparition automatique de la notification d'accès refusé
+  useEffect(() => {
+    if (!accessDeniedToast) return
+    const timer = setTimeout(() => setAccessDeniedToast(null), 6000)
+    return () => clearTimeout(timer)
+  }, [accessDeniedToast])
+
+  const handleOpenEvidence = (selectedEvidenceId: string) => {
+    navigate(`/cases/${safeCaseId}/evidence/${selectedEvidenceId}`)
+  }
 
   return (
     <div className="flex flex-col md:flex-row min-h-[calc(100vh-56px)] bg-ink text-mist">
@@ -349,12 +391,43 @@ export function EvidencePage() {
                   hasIntegrityEvidence={hasIntegrityEvidence}
                   onRefetch={refetchEvidences}
                   onRetryConnection={retryConnection}
+                  onSelectEvidence={handleOpenEvidence}
                 />
               </section>
             </div>
           )}
         </div>
       </div>
+
+      {/* Notification d'accès refusé (403) sur la consultation unitaire d'une preuve (Story F3.3) */}
+      {accessDeniedToast && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="fixed bottom-4 right-4 z-50 flex max-w-sm items-start gap-3 rounded-lg border border-teal bg-deep px-4 py-3 text-mist shadow-2xl"
+          data-testid="evidence-access-denied-toast"
+        >
+          <ShieldAlert className="h-4 w-4 flex-shrink-0 text-cyan mt-0.5" aria-hidden="true" />
+          <p className="text-xs text-mist/90">{accessDeniedToast}</p>
+          <button
+            type="button"
+            onClick={() => setAccessDeniedToast(null)}
+            className="rounded p-0.5 text-mist/70 hover:text-cyan focus:outline-none focus:ring-1 focus:ring-cyan"
+            aria-label="Fermer la notification d’accès refusé"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        </div>
+      )}
+
+      {/* Panneau latéral d'inspection détaillée d'une preuve (Story F3.3) */}
+      <EvidenceDetailDrawer
+        isOpen={Boolean(evidenceId)}
+        caseId={safeCaseId}
+        evidenceId={evidenceId}
+        onClose={handleCloseDrawer}
+        onForbidden={handleDrawerForbidden}
+      />
     </div>
   )
 }
