@@ -1,0 +1,47 @@
+# Porte de préparation passée le 2026-11-25 : checklist manuelle, sans bmad-sprint-planning.
+# Suivi tenu à la main, bmad-sprint-planning non utilisé (chemin de sortie figé sur sprint-status.yaml du back).
+#
+# Statut : à faire
+# Projet : IRYX - Front-End
+# Fichier : _bmad-output/implementation-artifacts/frontend-sprint-status.yaml
+# Date : 2026-11-25
+
+project: IRYX-Frontend
+tracking_system: manual
+status: à faire
+development_status:
+  epic-f1: à faire
+  F1.1: à faire
+  F1.2: à faire
+  F1.3: à faire
+  F1.4: à faire
+  F1.5: à faire
+  F1.6: à faire
+  F1.7: à faire
+
+  epic-f2: à faire
+  F2.1: à faire
+  F2.2: à faire
+
+  epic-f3: à faire
+  F3.1: à faire
+  F3.2: à faire
+  F3.3: à faire
+
+  epic-f4: à faire
+  F4.1: à faire
+  F4.2: à faire
+  F4.3: à faire
+  F4.4: à faire
+  F4.5: à faire
+  F4.6: à faire
+  F4.7: à faire
+  F4.8: à faire
+  F4.9: à faire
+
+  epic-f5: à faire
+  F5.1: à faire
+  F5.2: à faire
+  F5.3: à faire
+  F5.4: à faire
+  F5.5: à faire
