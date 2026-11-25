@@ -1,4 +1,4 @@
-import { Link, useParams } from 'react-router-dom'
+﻿import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, LoaderCircle } from 'lucide-react'
 import { CaseSidebar } from '../features/cases/components/CaseSidebar'
 import { useCaseDetail } from '../features/cases/hooks/useCaseDetail'
@@ -16,6 +16,7 @@ import {
   ReportUnknownState,
 } from '../features/report/components'
 import { useReport } from '../features/report/hooks/useReport'
+import { useReview } from '../features/review/hooks/useReview'
 
 export interface ReportPageProps {
   /** Réservé aux tests : raccourcit la cadence de scrutation ADR-0008. */
@@ -23,19 +24,15 @@ export interface ReportPageProps {
 }
 
 /**
- * Génération et consultation du rapport — étape 5 (Story F5.1, FR-REP-01).
+ * Génération et consultation du rapport — étape 5 (Stories F5.1, F4.8 porte H2).
  * Route : /cases/:caseId/report, dans AuthenticatedLayout.
  *
- * RÈGLES DE CONCEPTION :
- * 1. DP-03 : le bouton demande la compilation au back ; le front n'assemble
- *    aucun chapitre et affiche le document reçu sans modification.
- * 2. ADR-0008 / DP-05 : scrutation pilotée par Retry-After, arrêt à l'état
- *    terminal ou au départ de la page, et « Réessayer la connexion » en cas
- *    de coupure prolongée.
- * 3. F4.8 / F4.9 non implémentées : aucun contrôle H2/H3 n'est appliqué ;
- *    l'écart est signalé dans l'interface, à réaligner.
- * 4. Aucune écriture dans localStorage ni sessionStorage ; palette stricte,
- *    aperçu sur fond mist avec texte ink.
+ * RÈGLES :
+ * 1. DP-03 : le bouton demande la compilation au back ; le front n'assemble rien.
+ * 2. ADR-0008 / DP-05 : scrutation Retry-After, arrêt terminal/départ/coupure.
+ * 3. F4.8 : "Générer le rapport" actif uniquement si au moins un finding est validé
+ *    selon l'état reçu du serveur. Le front reflète l'état reçu, ne calcule pas de décision.
+ * 4. F4.9 non implémentée : écart signalé, à réaligner.
  */
 export function ReportPage({ pollIntervalMs }: ReportPageProps) {
   const { caseId } = useParams<{ caseId: string }>()
@@ -46,13 +43,16 @@ export function ReportPage({ pollIntervalMs }: ReportPageProps) {
     enabled: Boolean(safeCaseId),
     pollIntervalMs,
   })
+  const review = useReview({ caseId: safeCaseId, enabled: Boolean(safeCaseId) })
+  const hasValidatedFinding = review.findings.some((f) => f.status === 'validated')
 
   const isForbidden = caseError?.status === 403 || report.state === 'forbidden'
-  const canGenerate =
+  const canGenerateBase =
     report.state === 'empty' ||
     report.state === 'error' ||
     report.state === 'generationFailed' ||
     (report.state === 'generating' && report.document?.status === 'draft')
+  const canGenerate = canGenerateBase && hasValidatedFinding
   const showPreview = !isForbidden && Boolean(report.document?.content)
   const canDownload = !isForbidden && report.state === 'ready' && Boolean(report.document?.content)
 
@@ -112,6 +112,7 @@ export function ReportPage({ pollIntervalMs }: ReportPageProps) {
                 type="button"
                 onClick={report.generate}
                 disabled={!canGenerate}
+                title={!hasValidatedFinding ? 'Aucun finding validé en porte H2.' : undefined}
                 className="rounded border border-cyan bg-cyan px-4 py-2 text-sm font-bold text-ink hover:bg-cyan/80 focus:outline-none focus:ring-2 focus:ring-cyan disabled:cursor-not-allowed disabled:border-deep disabled:bg-deep/40 disabled:text-mist/60"
                 data-testid="report-generate-button"
               >
@@ -119,6 +120,12 @@ export function ReportPage({ pollIntervalMs }: ReportPageProps) {
               </button>
             </div>
           </div>
+
+          {!hasValidatedFinding && !isForbidden && (
+            <p className="text-xs text-teal" data-testid="report-h2-gate-note">
+              Le rapport reste indisponible tant qu’aucun finding n’est validé en porte H2.
+            </p>
+          )}
 
           <div
             className="rounded-lg border border-deep bg-deep/10 p-3 text-xs text-teal"
@@ -136,34 +143,26 @@ export function ReportPage({ pollIntervalMs }: ReportPageProps) {
           )}
 
           {report.state === 'loading' && <ReportLoadingState />}
-
           {isForbidden && <ReportForbiddenState />}
-
           {!isForbidden && report.state === 'empty' && <ReportEmptyState />}
-
           {!isForbidden && report.state === 'generating' && (
             <ReportGeneratingState isFetching={report.isFetching} />
           )}
-
           {!isForbidden && report.state === 'generationFailed' && (
             <ReportGenerationFailedState
               message={report.errorMessage}
               onRetry={report.retryGeneration}
             />
           )}
-
           {!isForbidden && report.state === 'error' && (
             <ReportErrorState message={report.errorMessage} onRetry={report.refetch} />
           )}
-
           {!isForbidden && report.state === 'networkCutoff' && (
             <ReportNetworkCutoffState onRetry={report.retryConnection} />
           )}
-
           {!isForbidden && report.state === 'unknown' && report.statusLabel && (
             <ReportUnknownState statusLabel={report.statusLabel} />
           )}
-
           {showPreview && report.document && <ReportPreview document={report.document} />}
         </div>
       </div>

@@ -6,8 +6,8 @@
  *    document renvoyé par le back-end, sans modification.
  * 2. DP-05 : après une coupure prolongée, la scrutation s'arrête et le bouton
  *    « Réessayer la connexion » est proposé. Le seuil reste « à décider ».
- * 3. F4.8 et F4.9 ne sont pas implémentées : la génération reste active sans
- *    contrôle H2/H3. L'écart est signalé explicitement, à réaligner.
+ * 3. F4.8 reflète l'état reçu du serveur pour la porte H2 ; F4.9/H3 non
+ *    implémentée reste signalée « à réaligner ».
  * 4. Aucune couleur en dur : fond mist et texte ink via les jetons Tailwind.
  */
 
@@ -28,7 +28,7 @@ export const REPORT_READ_ONLY_NOTE =
 export const REPORT_FORMATS_NOTE =
   'Formats cibles du MVP : markdown et json (ADR-0004). Export scellé et historique : F5.2 (hors périmètre).'
 export const REPORT_H2_H3_GAP_NOTE =
-  'Écart à réaligner : les contrôles H2 (F4.8) et H3 (F4.9) ne sont pas implémentés. Le bouton « Générer le rapport » reste actif sans contrôle préalable.'
+  "Porte H2 reflétée depuis l'état reçu du serveur (F4.8). Écart à réaligner : H3 (F4.9) non implémentée."
 
 export const REPORT_UNKNOWN_LABEL_PREFIX = 'État inconnu'
 export const REPORT_UNKNOWN_DISABLED_NOTE =

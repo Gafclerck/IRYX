@@ -51,6 +51,7 @@ describe('Story F5.1 - Compilation et visualisation du rapport', () => {
       const captured = input instanceof Request ? input.clone() : new Request(input, init)
       const url = new URL(captured.url)
       const isReportRoute = url.pathname.includes('/report') || url.pathname.includes('/tasks/')
+      const isFindingsRoute = url.pathname.includes('/findings')
 
       if (isReportRoute) {
         reportRequests.push({ method: captured.method, pathname: url.pathname })
@@ -62,6 +63,14 @@ describe('Story F5.1 - Compilation et visualisation du rapport', () => {
           headers.set('X-Simulation-Report', headerValue)
           return originalFetch(new Request(captured, { headers }))
         }
+      }
+      if (isFindingsRoute) {
+        const headers = new Headers(captured.headers)
+        headers.set(
+          'X-Simulation-Findings',
+          simulation === 'forbidden' ? 'forbidden' : 'has-validated',
+        )
+        return originalFetch(new Request(captured, { headers }))
       }
       return originalFetch(input, init)
     }) as typeof fetch
@@ -118,7 +127,7 @@ describe('Story F5.1 - Compilation et visualisation du rapport', () => {
       'Aucune modification côté front (DP-03)',
     )
     expect(screen.getByTestId('report-h2-h3-gap-note')).toHaveTextContent(
-      'contrôles H2 (F4.8) et H3 (F4.9) ne sont pas implémentés',
+      "Porte H2 reflétée depuis l'état reçu du serveur (F4.8)",
     )
   })
 

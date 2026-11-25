@@ -8,9 +8,10 @@ import type {
 import type { EvidenceRead } from '../../features/evidence/types'
 import type { components } from '../../api/schema'
 import { TIMELINE_PAGE_SIZE } from '../../features/results/constants'
+import type { FindingOut } from '../../features/review/types'
 
 /**
- * Données simulées d'investigation pour le contrat cible E2 (Story F1.6 et F2.1).
+ * DonnÃ©es simulÃ©es d'investigation pour le contrat cible E2 (Story F1.6 et F2.1).
  */
 export const MOCK_CASE_MEMBERS = [
   {
@@ -22,7 +23,7 @@ export const MOCK_CASE_MEMBERS = [
   {
     id: 'user-002',
     email: 'admin@iryx.local',
-    name: 'Administrateur Sécurité',
+    name: 'Administrateur SÃ©curitÃ©',
     role: 'admin' as const,
   },
 ]
@@ -32,7 +33,7 @@ export const MOCK_CASES = [
     id: 'case-001',
     organization_id: 'org-001',
     title: 'Incident Ransomware LockBit v3',
-    description: 'Compromission initiale par pièce jointe malveillante',
+    description: 'Compromission initiale par piÃ¨ce jointe malveillante',
     status: 'open',
     created_by: 'analyste@iryx.local',
     created_at: '2026-11-20T08:15:00Z',
@@ -42,8 +43,8 @@ export const MOCK_CASES = [
   {
     id: 'case-002',
     organization_id: 'org-001',
-    title: 'Fuite de données confidentielles RH',
-    description: 'Exfiltration massive détectée sur canal cloud non approuvé',
+    title: 'Fuite de donnÃ©es confidentielles RH',
+    description: 'Exfiltration massive dÃ©tectÃ©e sur canal cloud non approuvÃ©',
     status: 'in_progress',
     created_by: 'analyste@iryx.local',
     created_at: '2026-11-19T14:30:00Z',
@@ -54,7 +55,7 @@ export const MOCK_CASES = [
     id: 'case-003',
     organization_id: 'org-001',
     title: 'Attaque DDoS infrastructure Cloud',
-    description: 'Saturation volumétrique des passerelles de terminaison TLS',
+    description: 'Saturation volumÃ©trique des passerelles de terminaison TLS',
     status: 'review',
     created_by: 'analyste@iryx.local',
     created_at: '2026-11-18T10:00:00Z',
@@ -65,7 +66,7 @@ export const MOCK_CASES = [
     id: 'case-004',
     organization_id: 'org-001',
     title: 'Compromission Active Directory Kerberoasting',
-    description: 'Détection de tickets SPN chiffrés avec algorithme faible',
+    description: 'DÃ©tection de tickets SPN chiffrÃ©s avec algorithme faible',
     status: 'open',
     created_by: 'analyste@iryx.local',
     created_at: '2026-11-17T09:20:00Z',
@@ -75,7 +76,7 @@ export const MOCK_CASES = [
   {
     id: 'case-005',
     organization_id: 'org-001',
-    title: 'Exfiltration données financières via DNS',
+    title: 'Exfiltration donnÃ©es financiÃ¨res via DNS',
     description: 'Canal de communication discret sur sous-domaines dynamiques',
     status: 'closed',
     created_by: 'analyste@iryx.local',
@@ -86,8 +87,8 @@ export const MOCK_CASES = [
   {
     id: 'case-006',
     organization_id: 'org-001',
-    title: 'Campagne Phishing bancaire ciblée',
-    description: 'Messages usurpant la direction financière pour virement frauduleux',
+    title: 'Campagne Phishing bancaire ciblÃ©e',
+    description: 'Messages usurpant la direction financiÃ¨re pour virement frauduleux',
     status: 'open',
     created_by: 'analyste@iryx.local',
     created_at: '2026-11-15T11:10:00Z',
@@ -98,7 +99,7 @@ export const MOCK_CASES = [
     id: 'case-007',
     organization_id: 'org-001',
     title: 'Intrusion SCADA automate industriel',
-    description: 'Anomalie de télécommande et modification de consignes critiques',
+    description: 'Anomalie de tÃ©lÃ©commande et modification de consignes critiques',
     status: 'in_progress',
     created_by: 'analyste@iryx.local',
     created_at: '2026-11-14T07:30:00Z',
@@ -108,8 +109,8 @@ export const MOCK_CASES = [
   {
     id: 'case-008',
     organization_id: 'org-001',
-    title: 'Usurpation identité dirigeant BEC',
-    description: 'Fraude au président par ingénierie sociale avancée',
+    title: 'Usurpation identitÃ© dirigeant BEC',
+    description: 'Fraude au prÃ©sident par ingÃ©nierie sociale avancÃ©e',
     status: 'review',
     created_by: 'analyste@iryx.local',
     created_at: '2026-11-13T13:00:00Z',
@@ -130,8 +131,8 @@ export const MOCK_CASES = [
   {
     id: 'case-010',
     organization_id: 'org-001',
-    title: 'Détection malware Cobalt Strike balise',
-    description: 'Trafic C2 périodique vers adresse IP suspecte',
+    title: 'DÃ©tection malware Cobalt Strike balise',
+    description: 'Trafic C2 pÃ©riodique vers adresse IP suspecte',
     status: 'in_progress',
     created_by: 'analyste@iryx.local',
     created_at: '2026-11-11T18:40:00Z',
@@ -141,8 +142,8 @@ export const MOCK_CASES = [
   {
     id: 'case-011',
     organization_id: 'org-001',
-    title: 'Élévation de privilèges CVE-2026-1337',
-    description: 'Exploitation locale du démon d impression sur serveur linux',
+    title: 'Ã‰lÃ©vation de privilÃ¨ges CVE-2026-1337',
+    description: 'Exploitation locale du dÃ©mon d impression sur serveur linux',
     status: 'open',
     created_by: 'analyste@iryx.local',
     created_at: '2026-11-10T12:00:00Z',
@@ -152,7 +153,7 @@ export const MOCK_CASES = [
   {
     id: 'case-012',
     organization_id: 'org-001',
-    title: 'Mouvement latéral SMB pass-the-hash',
+    title: 'Mouvement latÃ©ral SMB pass-the-hash',
     description: 'Propagation d un compte administrateur local compromis',
     status: 'in_progress',
     created_by: 'analyste@iryx.local',
@@ -164,7 +165,7 @@ export const MOCK_CASES = [
     id: 'case-013',
     organization_id: 'org-001',
     title: 'Compromission compte VPN sans MFA',
-    description: 'Accès distant nocturne depuis géolocalisation inhabituelle',
+    description: 'AccÃ¨s distant nocturne depuis gÃ©olocalisation inhabituelle',
     status: 'closed',
     created_by: 'analyste@iryx.local',
     created_at: '2026-11-08T17:15:00Z',
@@ -174,8 +175,8 @@ export const MOCK_CASES = [
   {
     id: 'case-014',
     organization_id: 'org-001',
-    title: 'Détournement session OAuth collaborateur',
-    description: 'Jeton de rafraîchissement réutilisé hors de l entreprise',
+    title: 'DÃ©tournement session OAuth collaborateur',
+    description: 'Jeton de rafraÃ®chissement rÃ©utilisÃ© hors de l entreprise',
     status: 'review',
     created_by: 'analyste@iryx.local',
     created_at: '2026-11-07T10:45:00Z',
@@ -186,7 +187,7 @@ export const MOCK_CASES = [
     id: 'case-015',
     organization_id: 'org-001',
     title: 'Attaque par force brute SSH serveur bastion',
-    description: 'Tentatives répétées bloquées par fail2ban et filtrage',
+    description: 'Tentatives rÃ©pÃ©tÃ©es bloquÃ©es par fail2ban et filtrage',
     status: 'closed',
     created_by: 'analyste@iryx.local',
     created_at: '2026-11-06T22:30:00Z',
@@ -196,8 +197,8 @@ export const MOCK_CASES = [
   {
     id: 'case-016',
     organization_id: 'org-001',
-    title: 'Analyse mémoire vivante machine compromise',
-    description: 'Dump RAM station travail avec processus injecté',
+    title: 'Analyse mÃ©moire vivante machine compromise',
+    description: 'Dump RAM station travail avec processus injectÃ©',
     status: 'open',
     created_by: 'analyste@iryx.local',
     created_at: '2026-11-05T09:15:00Z',
@@ -207,8 +208,8 @@ export const MOCK_CASES = [
   {
     id: 'case-017',
     organization_id: 'org-001',
-    title: 'Découverte porte dérobée script PowerShell',
-    description: 'Persistance via tâche planifiée dissimulée',
+    title: 'DÃ©couverte porte dÃ©robÃ©e script PowerShell',
+    description: 'Persistance via tÃ¢che planifiÃ©e dissimulÃ©e',
     status: 'in_progress',
     created_by: 'analyste@iryx.local',
     created_at: '2026-11-04T14:10:00Z',
@@ -219,7 +220,7 @@ export const MOCK_CASES = [
     id: 'case-018',
     organization_id: 'org-001',
     title: 'Attaque Supply Chain paquet npm corrompu',
-    description: 'Injection de code obfusqué dans dépendance tierce',
+    description: 'Injection de code obfusquÃ© dans dÃ©pendance tierce',
     status: 'review',
     created_by: 'analyste@iryx.local',
     created_at: '2026-11-03T16:00:00Z',
@@ -229,8 +230,8 @@ export const MOCK_CASES = [
   {
     id: 'case-019',
     organization_id: 'org-001',
-    title: 'Scan de vulnérabilités agressif externe',
-    description: 'Balayage de ports et énumération de services exposés',
+    title: 'Scan de vulnÃ©rabilitÃ©s agressif externe',
+    description: 'Balayage de ports et Ã©numÃ©ration de services exposÃ©s',
     status: 'closed',
     created_by: 'analyste@iryx.local',
     created_at: '2026-11-02T11:20:00Z',
@@ -240,8 +241,8 @@ export const MOCK_CASES = [
   {
     id: 'case-020',
     organization_id: 'org-001',
-    title: 'Évasion bac à sable endpoint EDR',
-    description: 'Contournement par appel direct d API système non surveillée',
+    title: 'Ã‰vasion bac Ã  sable endpoint EDR',
+    description: 'Contournement par appel direct d API systÃ¨me non surveillÃ©e',
     status: 'open',
     created_by: 'analyste@iryx.local',
     created_at: '2026-11-01T15:40:00Z',
@@ -252,7 +253,7 @@ export const MOCK_CASES = [
     id: 'case-021',
     organization_id: 'org-001',
     title: 'Compromission conteneur Kubernetes',
-    description: 'Échappement vers le nœud hôte via socket système',
+    description: 'Ã‰chappement vers le nÅ“ud hÃ´te via socket systÃ¨me',
     status: 'in_progress',
     created_by: 'analyste@iryx.local',
     created_at: '2026-10-31T13:20:00Z',
@@ -262,8 +263,8 @@ export const MOCK_CASES = [
   {
     id: 'case-022',
     organization_id: 'org-001',
-    title: 'Tentative de pivot réseau zone DMZ',
-    description: 'Communication inter-VLAN bloquée par filtrage',
+    title: 'Tentative de pivot rÃ©seau zone DMZ',
+    description: 'Communication inter-VLAN bloquÃ©e par filtrage',
     status: 'review',
     created_by: 'analyste@iryx.local',
     created_at: '2026-10-30T09:10:00Z',
@@ -273,8 +274,8 @@ export const MOCK_CASES = [
   {
     id: 'case-023',
     organization_id: 'org-001',
-    title: 'Vol de jetons d accès API production',
-    description: 'Clés statiques trouvées dans archive publique',
+    title: 'Vol de jetons d accÃ¨s API production',
+    description: 'ClÃ©s statiques trouvÃ©es dans archive publique',
     status: 'open',
     created_by: 'analyste@iryx.local',
     created_at: '2026-10-29T17:00:00Z',
@@ -284,7 +285,7 @@ export const MOCK_CASES = [
   {
     id: 'case-024',
     organization_id: 'org-001',
-    title: 'Sabotage logique base de données archivage',
+    title: 'Sabotage logique base de donnÃ©es archivage',
     description: 'Tentative de suppression d enregistrements d audit',
     status: 'closed',
     created_by: 'analyste@iryx.local',
@@ -295,8 +296,8 @@ export const MOCK_CASES = [
   {
     id: 'case-025',
     organization_id: 'org-001',
-    title: 'Altération certificat TLS passerelle web',
-    description: 'Tentative d interposition sur flux chiffré',
+    title: 'AltÃ©ration certificat TLS passerelle web',
+    description: 'Tentative d interposition sur flux chiffrÃ©',
     status: 'in_progress',
     created_by: 'analyste@iryx.local',
     created_at: '2026-10-27T14:50:00Z',
@@ -308,7 +309,7 @@ export const MOCK_CASES = [
 const INITIAL_MOCK_CASES = [...MOCK_CASES]
 
 /**
- * Réinitialise la liste des dossiers simulés à son état initial (Story F1.7).
+ * RÃ©initialise la liste des dossiers simulÃ©s Ã  son Ã©tat initial (Story F1.7).
  */
 export function resetMockCases() {
   MOCK_CASES.length = 0
@@ -316,7 +317,7 @@ export function resetMockCases() {
 }
 
 /**
- * Données simulées d'inventaire des preuves pour le contrat cible E3 (Story F3.2).
+ * DonnÃ©es simulÃ©es d'inventaire des preuves pour le contrat cible E3 (Story F3.2).
  */
 export const INITIAL_MOCK_CASE_EVIDENCES: Record<string, EvidenceRead[]> = {
   'case-001': [
@@ -375,7 +376,7 @@ export function resetMockEvidences() {
 }
 
 /**
- * Construit un contenu brut volumineux pour éprouver la troncature DP-04 (Story F3.3).
+ * Construit un contenu brut volumineux pour Ã©prouver la troncature DP-04 (Story F3.3).
  */
 function buildLargeObservationText(lineCount: number): string {
   return Array.from(
@@ -386,10 +387,10 @@ function buildLargeObservationText(lineCount: number): string {
 }
 
 /**
- * Données simulées de consultation détaillée d'une preuve (Story F3.3).
- * Le schéma EvidenceRead du contrat ne porte que les métadonnées de base ; les champs
+ * DonnÃ©es simulÃ©es de consultation dÃ©taillÃ©e d'une preuve (Story F3.3).
+ * Le schÃ©ma EvidenceRead du contrat ne porte que les mÃ©tadonnÃ©es de base ; les champs
  * ingestion_runs, observation_count et observations sont des enrichissements du contrat cible
- * à réaligner avec l'épic back-end E3.
+ * Ã  rÃ©aligner avec l'Ã©pic back-end E3.
  */
 export function getMockEvidenceDetail(caseId: string, evidenceId: string) {
   const evidence = (MOCK_CASE_EVIDENCES[caseId] || []).find((item) => item.id === evidenceId)
@@ -484,7 +485,7 @@ export function getMockEvidenceDetail(caseId: string, evidenceId: string) {
       ],
       observation_count: 0,
       observations: [],
-      error_message: 'Le scellement cryptographique n’a pas pu être achevé.',
+      error_message: 'Le scellement cryptographique nâ€™a pas pu Ãªtre achevÃ©.',
     }
   }
 
@@ -508,16 +509,16 @@ export function getMockEvidenceDetail(caseId: string, evidenceId: string) {
 }
 
 /**
- * Données simulées de planification pour la Story F4.1.
- * Types strictement dérivés du contrat cible (openapi.json) : aucun champ d'agent
- * assigné n'existe dans InvestigationPlanStep, il reste « à réaligner » côté UI.
- * Statut : simulée, contrat cible : openapi.json (à réaligner pour l'agent assigné).
+ * DonnÃ©es simulÃ©es de planification pour la Story F4.1.
+ * Types strictement dÃ©rivÃ©s du contrat cible (openapi.json) : aucun champ d'agent
+ * assignÃ© n'existe dans InvestigationPlanStep, il reste Â« Ã  rÃ©aligner Â» cÃ´tÃ© UI.
+ * Statut : simulÃ©e, contrat cible : openapi.json (Ã  rÃ©aligner pour l'agent assignÃ©).
  */
 export const MOCK_PLAN_RUN_ID = 'run-plan-001'
 
 let mockPlanAttempts = 0
 
-/** Réinitialise le compteur de scrutation du plan entre deux scénarios de test. */
+/** RÃ©initialise le compteur de scrutation du plan entre deux scÃ©narios de test. */
 export function resetMockPlanPolling() {
   mockPlanAttempts = 0
 }
@@ -547,15 +548,15 @@ function readMockH1State(caseId: string, runId: string): MockH1State | null {
   return mockH1States.get(mockH1Key(caseId, runId)) ?? null
 }
 
-/** Réinitialise les décisions H1 simulées entre deux scénarios de test. */
+/** RÃ©initialise les dÃ©cisions H1 simulÃ©es entre deux scÃ©narios de test. */
 export function resetMockH1Decisions() {
   mockH1States.clear()
 }
 
 /**
- * État de session conservé en mémoire pour la supervision F4.3 (reprise effective).
- * Les statuts hors contrat (`canceled`, codes inconnus) sont explicitement simulés
- * pour éprouver la robustesse et marqués « à réaligner » dans la documentation.
+ * Ã‰tat de session conservÃ© en mÃ©moire pour la supervision F4.3 (reprise effective).
+ * Les statuts hors contrat (`canceled`, codes inconnus) sont explicitement simulÃ©s
+ * pour Ã©prouver la robustesse et marquÃ©s Â« Ã  rÃ©aligner Â» dans la documentation.
  */
 interface MockRunState {
   readonly status: string
@@ -569,7 +570,7 @@ function mockRunKey(caseId: string, runId: string): string {
   return `${caseId}::${runId}`
 }
 
-/** Réinitialise les sessions simulées de supervision entre deux scénarios de test. */
+/** RÃ©initialise les sessions simulÃ©es de supervision entre deux scÃ©narios de test. */
 export function resetMockRunSupervision() {
   mockRunStates.clear()
 }
@@ -656,7 +657,7 @@ function buildMockRunDetail(caseId: string, runId: string, simulation: string | 
       mockRunPhase(runId, 'reporting', 'completed', '2026-11-20T09:11:00Z', '2026-11-20T09:12:00Z'),
     ]
   } else if (scenario === 'case-run-canceled' || scenario === 'canceled') {
-    // Statut demandé par la story mais absent de InvestigationStatus : à réaligner.
+    // Statut demandÃ© par la story mais absent de InvestigationStatus : Ã  rÃ©aligner.
     status = 'canceled'
   } else if (scenario === 'case-run-unknown' || scenario === 'unknown-status') {
     status = 'unrecognized_run_code'
@@ -710,7 +711,7 @@ const MOCK_PLAN_STEPS: components['schemas']['InvestigationPlanStep'][] = [
     step_id: 1,
     tool_name: 'Analyseur EVTX',
     target_evidence_id: 'evi-001',
-    rationale: 'Extraire les événements d’authentification et les sessions suspectes.',
+    rationale: 'Extraire les Ã©vÃ©nements dâ€™authentification et les sessions suspectes.',
     is_blocking: true,
     continue_on_error: false,
   },
@@ -718,7 +719,7 @@ const MOCK_PLAN_STEPS: components['schemas']['InvestigationPlanStep'][] = [
     step_id: 2,
     tool_name: 'regipy',
     target_evidence_id: 'evi-004',
-    rationale: 'Analyser les ruches de registre à la recherche de persistance.',
+    rationale: 'Analyser les ruches de registre Ã  la recherche de persistance.',
     is_blocking: false,
     continue_on_error: true,
   },
@@ -726,7 +727,7 @@ const MOCK_PLAN_STEPS: components['schemas']['InvestigationPlanStep'][] = [
     step_id: 3,
     tool_name: 'Volatility 3',
     target_evidence_id: 'evi-002',
-    rationale: 'Rechercher les artefacts d’exécution dans l’image mémoire.',
+    rationale: 'Rechercher les artefacts dâ€™exÃ©cution dans lâ€™image mÃ©moire.',
     is_blocking: false,
     continue_on_error: true,
   },
@@ -735,7 +736,8 @@ const MOCK_PLAN_STEPS: components['schemas']['InvestigationPlanStep'][] = [
 function buildMockPlan(steps = MOCK_PLAN_STEPS): components['schemas']['InvestigationPlan'] {
   return {
     steps,
-    summary: 'Trois étapes forensiques permettent d’établir la chronologie de la compromission.',
+    summary:
+      'Trois Ã©tapes forensiques permettent dâ€™Ã©tablir la chronologie de la compromission.',
   }
 }
 
@@ -751,8 +753,8 @@ function buildMockInvestigationRun(caseId: string, simulation: string | null) {
     caseId === 'case-timeline-partial' ||
     simulation === 'partial-failure'
 
-  // Le contrat signale un résultat partiel par une phase `failed` : aucun champ
-  // supplémentaire n'est inventé pour déclencher le bandeau de la chronologie.
+  // Le contrat signale un rÃ©sultat partiel par une phase `failed` : aucun champ
+  // supplÃ©mentaire n'est inventÃ© pour dÃ©clencher le bandeau de la chronologie.
   const phases: readonly components['schemas']['PhaseOut'][] | undefined = isPartial
     ? [
         mockRunPhase(
@@ -769,7 +771,7 @@ function buildMockInvestigationRun(caseId: string, simulation: string | null) {
   return {
     id: MOCK_PLAN_RUN_ID,
     case_id: caseId,
-    // Un statut non répertorié est délibérément restitué brut pour éprouver la robustesse.
+    // Un statut non rÃ©pertoriÃ© est dÃ©libÃ©rÃ©ment restituÃ© brut pour Ã©prouver la robustesse.
     status: decisionState
       ? decisionState.status
       : isUnknown
@@ -816,10 +818,10 @@ function isPlanServerError(request: Request, caseId: string): boolean {
 }
 
 /**
- * Données simulées de la chronologie unifiée (Story F4.6).
- * Chaque objet respecte `ObservationRead` de openapi.json. Le volume simulé
- * couvre plusieurs blocs complets (DP-01), y compris après filtrage par source,
- * pour éprouver la pagination serveur sans accumulation côté client.
+ * DonnÃ©es simulÃ©es de la chronologie unifiÃ©e (Story F4.6).
+ * Chaque objet respecte `ObservationRead` de openapi.json. Le volume simulÃ©
+ * couvre plusieurs blocs complets (DP-01), y compris aprÃ¨s filtrage par source,
+ * pour Ã©prouver la pagination serveur sans accumulation cÃ´tÃ© client.
  */
 const TIMELINE_MOCK_TOOLS = ['Analyseur EVTX', 'regipy', 'Volatility 3', 'Prefetch'] as const
 const TIMELINE_MOCK_FILES = ['Security.evtx', 'auth.log', 'memory_dump.raw', 'NTUSER.DAT'] as const
@@ -835,7 +837,7 @@ function buildMockObservations(caseId: string): components['schemas']['Observati
     const line = index + 1
     const sourceId = `evi-00${(index % 4) + 1}`
     const timestamp = new Date(Date.UTC(2026, 10, 20, 9, 0, 0) + index * TIMELINE_MOCK_STEP_MS)
-    // Valeurs de simulation : champs libres de `normalized_content` autorisés par le contrat.
+    // Valeurs de simulation : champs libres de `normalized_content` autorisÃ©s par le contrat.
     const proofFingerprint = String(line).padStart(2, '0').repeat(32)
 
     return {
@@ -845,7 +847,7 @@ function buildMockObservations(caseId: string): components['schemas']['Observati
       tool_name: toolName,
       tool_execution_id: `exec-${sourceId}`,
       normalized_content: {
-        summary: `${toolName} — fait technique ${line}`,
+        summary: `${toolName} â€” fait technique ${line}`,
         file_name: file,
         event_id: `evt-${String(line).padStart(3, '0')}`,
         line,
@@ -882,26 +884,26 @@ function isTimelineServerError(request: Request, caseId: string): boolean {
 }
 
 /**
- * Handlers MSW simulant les routes réseau de l'application IRYX.
+ * Handlers MSW simulant les routes rÃ©seau de l'application IRYX.
  *
- * Routes d'authentification simulées d'après le contrat cible (Stories F1.2 et F1.4) :
- * - POST /api/v1/auth/login (simulée, contrat cible : auth-contrat-cible.yaml)
- * - POST /api/v1/auth/refresh (simulée, contrat cible : auth-contrat-cible.yaml)
- * - POST /api/v1/auth/logout (simulée, contrat cible : auth-contrat-cible.yaml)
+ * Routes d'authentification simulÃ©es d'aprÃ¨s le contrat cible (Stories F1.2 et F1.4) :
+ * - POST /api/v1/auth/login (simulÃ©e, contrat cible : auth-contrat-cible.yaml)
+ * - POST /api/v1/auth/refresh (simulÃ©e, contrat cible : auth-contrat-cible.yaml)
+ * - POST /api/v1/auth/logout (simulÃ©e, contrat cible : auth-contrat-cible.yaml)
  *
- * Routes protégées simulées d'après le contrat OpenAPI (Stories F1.3, F1.6 et F1.7) :
- * - GET /api/v1/auth/me (simulée, contrat cible : openapi.json)
- * - GET /api/v1/cases (simulée, contrat cible : openapi.json)
- * - POST /api/v1/cases (simulée, contrat cible : openapi.json)
+ * Routes protÃ©gÃ©es simulÃ©es d'aprÃ¨s le contrat OpenAPI (Stories F1.3, F1.6 et F1.7) :
+ * - GET /api/v1/auth/me (simulÃ©e, contrat cible : openapi.json)
+ * - GET /api/v1/cases (simulÃ©e, contrat cible : openapi.json)
+ * - POST /api/v1/cases (simulÃ©e, contrat cible : openapi.json)
  */
 
 /**
- * Simulation de la génération du rapport (Story F5.1, RÈGLE CONTRAT).
+ * Simulation de la gÃ©nÃ©ration du rapport (Story F5.1, RÃˆGLE CONTRAT).
  *
  * Le contrat openapi.json ne contient aucune route de rapport : les routes ci-dessous
- * sont simulées depuis ADR-0004 (formats markdown/json) et ADR-0008 (tâche
- * asynchrone), sans champ inventé au-delà de ces formats. Statut documenté dans
- * docs/frontend/14 : « simulée, contrat cible : à réaligner avec E8 ».
+ * sont simulÃ©es depuis ADR-0004 (formats markdown/json) et ADR-0008 (tÃ¢che
+ * asynchrone), sans champ inventÃ© au-delÃ  de ces formats. Statut documentÃ© dans
+ * docs/frontend/14 : Â« simulÃ©e, contrat cible : Ã  rÃ©aligner avec E8 Â».
  */
 const REPORT_CHAPTERS = [
   'Résumé managérial',
@@ -919,7 +921,7 @@ let mockReportTaskAttempts = 0
 
 function buildMockReportContent(findingsLine: string): string {
   return [
-    '# Rapport d’incident',
+    "# Rapport d'incident",
     ...REPORT_CHAPTERS.map(
       (title) =>
         `## ${title}\n\n${
@@ -932,11 +934,43 @@ function buildMockReportContent(findingsLine: string): string {
 }
 
 export const MOCK_REPORT_CONTENT = buildMockReportContent(
-  'Détails des findings transmis par le back-end.',
+  'DÃ©tails des findings transmis par le back-end.',
 )
 export const MOCK_REPORT_NO_FINDINGS_CONTENT = buildMockReportContent(
   'Aucun finding validé en porte H2.',
 )
+/**
+ * Données simulées findings (Story F4.8, contrat openapi.json).
+ * Route: GET /api/v1/cases/{case_id}/findings - simulée, contrat cible, à réaligner (E6 décision).
+ */
+export const MOCK_FINDINGS: FindingOut[] = [
+  {
+    id: 'finding-001',
+    case_id: 'case-001',
+    title: 'Exécution suspecte de PowerShell encodé',
+    severity: 'high',
+    confidence: 'high',
+    finding_type: 'fact',
+    status: 'proposed',
+    observation_refs: ['obs-001', 'obs-002'],
+    tool_execution_refs: ['exec-001'],
+    created_by: 'user-001',
+    created_at: '2026-11-20T10:00:00Z',
+  },
+  {
+    id: 'finding-002',
+    case_id: 'case-001',
+    title: 'Persistance probable par clé Run',
+    severity: 'medium',
+    confidence: 'medium',
+    finding_type: 'inference',
+    status: 'proposed',
+    observation_refs: ['obs-003'],
+    tool_execution_refs: [],
+    created_by: 'user-001',
+    created_at: '2026-11-20T10:05:00Z',
+  },
+]
 
 function buildMockReport(content: string) {
   return { status: 'validated', format: 'markdown', content } as const
@@ -988,7 +1022,7 @@ export const handlers = [
     return HttpResponse.json({ status: 'healthy' })
   }),
 
-  // POST /api/v1/auth/login (simulée, contrat cible : auth-contrat-cible.yaml)
+  // POST /api/v1/auth/login (simulÃ©e, contrat cible : auth-contrat-cible.yaml)
   http.post('*/api/v1/auth/login', async ({ request }) => {
     try {
       const body = (await request.json()) as Partial<LoginRequest>
@@ -1001,10 +1035,10 @@ export const handlers = [
         )
       }
 
-      // Simulation compte inactif / révoqué (403)
+      // Simulation compte inactif / rÃ©voquÃ© (403)
       if (email === 'bloque@iryx.local') {
         return HttpResponse.json<ErrorResponse>(
-          { detail: 'Compte inactif ou accès révoqué. Contactez votre administrateur.' },
+          { detail: 'Compte inactif ou accÃ¨s rÃ©voquÃ©. Contactez votre administrateur.' },
           { status: 403 },
         )
       }
@@ -1029,7 +1063,7 @@ export const handlers = [
         )
       }
 
-      // Cas nominal (200) : délivrance de l'access token (15 min) et positionnement du cookie refresh (7 j)
+      // Cas nominal (200) : dÃ©livrance de l'access token (15 min) et positionnement du cookie refresh (7 j)
       const tokenResponse: TokenResponse = {
         access_token: 'mock-access-token-bearer-15min',
         token_type: 'bearer',
@@ -1044,16 +1078,19 @@ export const handlers = [
         },
       })
     } catch {
-      return HttpResponse.json<ErrorResponse>({ detail: 'Requête malformée.' }, { status: 400 })
+      return HttpResponse.json<ErrorResponse>({ detail: 'RequÃªte malformÃ©e.' }, { status: 400 })
     }
   }),
 
-  // POST /api/v1/auth/refresh (simulée, contrat cible : auth-contrat-cible.yaml)
+  // POST /api/v1/auth/refresh (simulÃ©e, contrat cible : auth-contrat-cible.yaml)
   http.post('*/api/v1/auth/refresh', async ({ request }) => {
     const origin = request.headers.get('Origin')
     // Simulation rejet anti-CSRF
     if (origin === 'http://malicious-site.local') {
-      return HttpResponse.json<ErrorResponse>({ detail: 'Origine non autorisée.' }, { status: 403 })
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Origine non autorisÃ©e.' },
+        { status: 403 },
+      )
     }
 
     const simHeader = request.headers.get('X-Simulation-Refresh')
@@ -1068,7 +1105,7 @@ export const handlers = [
       cookieHeader?.includes('invalid')
     ) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: 'Session expirée. Veuillez vous reconnecter.' },
+        { detail: 'Session expirÃ©e. Veuillez vous reconnecter.' },
         { status: 401 },
       )
     }
@@ -1082,10 +1119,10 @@ export const handlers = [
     return HttpResponse.json(tokenResponse, { status: 200 })
   }),
 
-  // POST /api/v1/auth/logout (simulée, contrat cible : auth-contrat-cible.yaml)
+  // POST /api/v1/auth/logout (simulÃ©e, contrat cible : auth-contrat-cible.yaml)
   http.post('*/api/v1/auth/logout', async () => {
     const logoutResponse: LogoutResponse = {
-      message: 'Déconnexion réussie.',
+      message: 'DÃ©connexion rÃ©ussie.',
     }
 
     return HttpResponse.json(logoutResponse, {
@@ -1097,7 +1134,7 @@ export const handlers = [
     })
   }),
 
-  // GET /api/v1/auth/me (simulée, contrat cible : openapi.json - Story F1.3)
+  // GET /api/v1/auth/me (simulÃ©e, contrat cible : openapi.json - Story F1.3)
   http.get('*/api/v1/auth/me', ({ request }) => {
     const authHeader = request.headers.get('Authorization')
 
@@ -1136,7 +1173,7 @@ export const handlers = [
     )
   }),
 
-  // GET /api/v1/cases (simulée, contrat cible : openapi.json - Stories F1.3 et F1.6)
+  // GET /api/v1/cases (simulÃ©e, contrat cible : openapi.json - Stories F1.3 et F1.6)
   http.get('*/api/v1/cases', ({ request }) => {
     const authHeader = request.headers.get('Authorization')
 
@@ -1158,12 +1195,12 @@ export const handlers = [
 
     const simHeader = request.headers.get('X-Simulation-Cases')
 
-    // Simulation accès refusé 403 Forbidden (Story F1.6)
+    // Simulation accÃ¨s refusÃ© 403 Forbidden (Story F1.6)
     if (token === 'mock-forbidden-token' || simHeader === 'forbidden') {
       return HttpResponse.json<ErrorResponse>(
         {
           detail:
-            "Accès refusé. Vous n'avez pas accès aux dossiers de cette organisation. Veuillez contacter votre administrateur.",
+            "AccÃ¨s refusÃ©. Vous n'avez pas accÃ¨s aux dossiers de cette organisation. Veuillez contacter votre administrateur.",
         },
         { status: 403 },
       )
@@ -1176,7 +1213,7 @@ export const handlers = [
       simHeader === 'server-error'
     ) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: 'Erreur interne du serveur lors de la récupération des dossiers.' },
+        { detail: 'Erreur interne du serveur lors de la rÃ©cupÃ©ration des dossiers.' },
         { status: 500 },
       )
     }
@@ -1201,8 +1238,8 @@ export const handlers = [
     const hasOffset = url.searchParams.has('offset')
     const hasSearch = url.searchParams.has('search')
 
-    // Règle de compatibilité ascendante stricte avec les tests F1.3 et F1.4
-    // (qui appellent GET /api/v1/cases sans paramètre de pagination et attendent items: [])
+    // RÃ¨gle de compatibilitÃ© ascendante stricte avec les tests F1.3 et F1.4
+    // (qui appellent GET /api/v1/cases sans paramÃ¨tre de pagination et attendent items: [])
     if (!hasLimit && !hasOffset && !hasSearch) {
       return HttpResponse.json(
         {
@@ -1250,9 +1287,9 @@ export const handlers = [
   }),
 
   /**
-   * Création d'un nouveau dossier d'investigation en modale (Story F1.7).
+   * CrÃ©ation d'un nouveau dossier d'investigation en modale (Story F1.7).
    * Route cible : POST /api/v1/cases
-   * Contrat cible : openapi.json (simulée E2)
+   * Contrat cible : openapi.json (simulÃ©e E2)
    */
   http.post('*/api/v1/cases', async ({ request }) => {
     const authHeader = request.headers.get('Authorization')
@@ -1276,12 +1313,12 @@ export const handlers = [
     const simHeader =
       request.headers.get('X-Simulation-Create-Case') || request.headers.get('X-Simulation-Cases')
 
-    // Simulation accès refusé 403 Forbidden (Story F1.7)
+    // Simulation accÃ¨s refusÃ© 403 Forbidden (Story F1.7)
     if (token === 'mock-forbidden-token' || simHeader === 'forbidden') {
       return HttpResponse.json<ErrorResponse>(
         {
           detail:
-            "Vous n'avez pas les autorisations nécessaires pour créer un dossier dans cette organisation.",
+            "Vous n'avez pas les autorisations nÃ©cessaires pour crÃ©er un dossier dans cette organisation.",
         },
         { status: 403 },
       )
@@ -1295,7 +1332,7 @@ export const handlers = [
       simHeader === '500'
     ) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: 'Erreur interne du serveur lors de la création du dossier.' },
+        { detail: 'Erreur interne du serveur lors de la crÃ©ation du dossier.' },
         { status: 500 },
       )
     }
@@ -1304,9 +1341,9 @@ export const handlers = [
     if (simHeader === 'validation-error' || simHeader === '400') {
       return HttpResponse.json(
         {
-          detail: 'Données de dossier invalides.',
+          detail: 'DonnÃ©es de dossier invalides.',
           errors: {
-            title: 'Ce titre de dossier est déjà utilisé dans votre organisation.',
+            title: 'Ce titre de dossier est dÃ©jÃ  utilisÃ© dans votre organisation.',
           },
         },
         { status: 400 },
@@ -1318,7 +1355,7 @@ export const handlers = [
       body = (await request.json()) as Record<string, unknown>
     } catch {
       return HttpResponse.json<ErrorResponse>(
-        { detail: 'Format de corps de requête invalide.' },
+        { detail: 'Format de corps de requÃªte invalide.' },
         { status: 400 },
       )
     }
@@ -1330,7 +1367,7 @@ export const handlers = [
     const affectedSystems =
       typeof body.affected_systems === 'string' ? body.affected_systems.trim() : ''
 
-    // Validation minimale côté serveur (Story F1.7)
+    // Validation minimale cÃ´tÃ© serveur (Story F1.7)
     if (!title) {
       return HttpResponse.json(
         {
@@ -1365,7 +1402,7 @@ export const handlers = [
   /**
    * Liste des sessions d'investigation du dossier (Story F4.1).
    * Route cible : GET /api/v1/cases/{case_id}/investigations
-   * Statut : simulée, contrat cible : openapi.json
+   * Statut : simulÃ©e, contrat cible : openapi.json
    */
   http.get('*/api/v1/cases/:caseId/investigations', ({ params, request }) => {
     const authHeader = request.headers.get('Authorization')
@@ -1381,19 +1418,19 @@ export const handlers = [
 
     if (isPlanForbidden(request, caseId)) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: "Vous n'avez pas accès à ce dossier." },
+        { detail: "Vous n'avez pas accÃ¨s Ã  ce dossier." },
         { status: 403 },
       )
     }
 
     if (isPlanServerError(request, caseId)) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: 'Erreur interne lors de la récupération des investigations.' },
+        { detail: 'Erreur interne lors de la rÃ©cupÃ©ration des investigations.' },
         { status: 500 },
       )
     }
 
-    // Aucune session : le Planner n'a pas encore démarré (scrutation selon Retry-After).
+    // Aucune session : le Planner n'a pas encore dÃ©marrÃ© (scrutation selon Retry-After).
     if (caseId === 'case-plan-pending') {
       return HttpResponse.json([], { headers: { 'Retry-After': '3' } })
     }
@@ -1404,11 +1441,11 @@ export const handlers = [
   }),
 
   /**
-   * Chronologie unifiée des faits techniques (Story F4.6).
+   * Chronologie unifiÃ©e des faits techniques (Story F4.6).
    * Route cible : GET /api/v1/cases/{case_id}/observations
-   * Statut : simulée, contrat cible : openapi.json.
-   * Pagination serveur stricte : limit est plafonné à 100 (DP-01) et les
-   * filtres source_id / start_date / end_date sont appliqués côté serveur.
+   * Statut : simulÃ©e, contrat cible : openapi.json.
+   * Pagination serveur stricte : limit est plafonnÃ© Ã  100 (DP-01) et les
+   * filtres source_id / start_date / end_date sont appliquÃ©s cÃ´tÃ© serveur.
    */
   http.get('*/api/v1/cases/:caseId/observations', ({ params, request }) => {
     const authHeader = request.headers.get('Authorization')
@@ -1422,13 +1459,13 @@ export const handlers = [
     const caseId = String(params.caseId)
     if (isTimelineForbidden(request, caseId)) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: "Vous n'avez pas accès à cette chronologie." },
+        { detail: "Vous n'avez pas accÃ¨s Ã  cette chronologie." },
         { status: 403 },
       )
     }
     if (isTimelineServerError(request, caseId)) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: 'Erreur interne lors de la récupération de la chronologie.' },
+        { detail: 'Erreur interne lors de la rÃ©cupÃ©ration de la chronologie.' },
         { status: 500 },
       )
     }
@@ -1471,17 +1508,17 @@ export const handlers = [
   }),
 
   /**
-   * Détail d'une observation normalisée : panneau « Source » actif (Story F4.7).
+   * DÃ©tail d'une observation normalisÃ©e : panneau Â« Source Â» actif (Story F4.7).
    * Route cible : GET /api/v1/cases/{case_id}/observations/{observation_id}
-   * Statut : simulée, contrat cible : openapi.json.
-   * Scénarios pilotés par l'en-tête X-Simulation-Source :
-   *  - loading : réponse différée pour éprouver le squelette du tiroir ;
-   *  - empty : aucun texte brut complémentaire ;
+   * Statut : simulÃ©e, contrat cible : openapi.json.
+   * ScÃ©narios pilotÃ©s par l'en-tÃªte X-Simulation-Source :
+   *  - loading : rÃ©ponse diffÃ©rÃ©e pour Ã©prouver le squelette du tiroir ;
+   *  - empty : aucun texte brut complÃ©mentaire ;
    *  - truncated : extrait de 501 lignes (DP-04) ;
-   *  - unknown-status : statut libre non répertorié ;
+   *  - unknown-status : statut libre non rÃ©pertoriÃ© ;
    *  - forbidden / error / not-found : 403 / 500 / 404.
-   * Le paramètre `download=full` simule le téléchargement direct DP-04,
-   * demandé uniquement après action explicite (route définitive à réaligner).
+   * Le paramÃ¨tre `download=full` simule le tÃ©lÃ©chargement direct DP-04,
+   * demandÃ© uniquement aprÃ¨s action explicite (route dÃ©finitive Ã  rÃ©aligner).
    */
   http.get('*/api/v1/cases/:caseId/observations/:observationId', async ({ params, request }) => {
     const authHeader = request.headers.get('Authorization')
@@ -1500,13 +1537,13 @@ export const handlers = [
 
     if (simulation === 'forbidden' || isTimelineForbidden(request, caseId)) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: "Vous n'avez pas accès à cette observation." },
+        { detail: "Vous n'avez pas accÃ¨s Ã  cette observation." },
         { status: 403 },
       )
     }
     if (simulation === 'error' || isTimelineServerError(request, caseId)) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: 'Erreur interne lors de la récupération de l’observation.' },
+        { detail: 'Erreur interne lors de la rÃ©cupÃ©ration de lâ€™observation.' },
         { status: 500 },
       )
     }
@@ -1564,12 +1601,12 @@ export const handlers = [
   }),
 
   /**
-   * Plan proposé par le Planner pour une session d'investigation (Story F4.1).
+   * Plan proposÃ© par le Planner pour une session d'investigation (Story F4.1).
    * Route cible : GET /api/v1/cases/{case_id}/investigations/{run_id}/plan
-   * Statut : simulée, contrat cible : openapi.json
-   *  - 404 PLAN_NOT_FOUND : élaboration asynchrone en cours, Retry-After: 3 (ADR-0008) ;
-   *  - état vide : steps [] (écart volontaire à minItems:1 du contrat, à réaligner avec E5) ;
-   *  - scénarios pilotés par l'en-tête X-Simulation-Plan ou l'identifiant du dossier.
+   * Statut : simulÃ©e, contrat cible : openapi.json
+   *  - 404 PLAN_NOT_FOUND : Ã©laboration asynchrone en cours, Retry-After: 3 (ADR-0008) ;
+   *  - Ã©tat vide : steps [] (Ã©cart volontaire Ã  minItems:1 du contrat, Ã  rÃ©aligner avec E5) ;
+   *  - scÃ©narios pilotÃ©s par l'en-tÃªte X-Simulation-Plan ou l'identifiant du dossier.
    */
   http.get('*/api/v1/cases/:caseId/investigations/:runId/plan', ({ params, request }) => {
     const authHeader = request.headers.get('Authorization')
@@ -1587,19 +1624,19 @@ export const handlers = [
 
     if (isPlanForbidden(request, caseId)) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: "Vous n'avez pas accès à ce plan." },
+        { detail: "Vous n'avez pas accÃ¨s Ã  ce plan." },
         { status: 403 },
       )
     }
 
     if (isPlanServerError(request, caseId)) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: 'Échec de l’agent Planner lors de l’élaboration du plan.' },
+        { detail: 'Ã‰chec de lâ€™agent Planner lors de lâ€™Ã©laboration du plan.' },
         { status: 500 },
       )
     }
 
-    // Coupure de transport simulée : déclenche le recul exponentiel puis DP-05.
+    // Coupure de transport simulÃ©e : dÃ©clenche le recul exponentiel puis DP-05.
     if (simulation === 'network-error') {
       return HttpResponse.error()
     }
@@ -1610,7 +1647,7 @@ export const handlers = [
       if (mockPlanAttempts === 1) {
         return HttpResponse.json(
           {
-            detail: 'Le plan est en cours d’élaboration par le Planner.',
+            detail: 'Le plan est en cours dâ€™Ã©laboration par le Planner.',
             code: 'PLAN_NOT_FOUND',
           },
           { status: 404, headers: { 'Retry-After': '3' } },
@@ -1622,7 +1659,7 @@ export const handlers = [
     if (decisionState?.decision === 'reject') {
       return HttpResponse.json(
         {
-          detail: 'Le plan est en cours d’élaboration par le Planner.',
+          detail: 'Le plan est en cours dâ€™Ã©laboration par le Planner.',
           code: 'PLAN_NOT_FOUND',
         },
         { status: 404, headers: { 'Retry-After': '3' } },
@@ -1639,9 +1676,9 @@ export const handlers = [
   /**
    * Arbitrage formel de la porte H1 (Story F4.2).
    * Route cible : POST /api/v1/cases/{case_id}/investigations/{run_id}/gates/h1
-   * Statut : simulée, contrat cible : openapi.json (H1DecisionRequest / H1DecisionResponse).
-   * Le conflit 409 renvoie l'état réel du serveur et n'est pas documenté par le contrat
-   * actuel : scénario marqué « à réaligner » avec l'épic E5.
+   * Statut : simulÃ©e, contrat cible : openapi.json (H1DecisionRequest / H1DecisionResponse).
+   * Le conflit 409 renvoie l'Ã©tat rÃ©el du serveur et n'est pas documentÃ© par le contrat
+   * actuel : scÃ©nario marquÃ© Â« Ã  rÃ©aligner Â» avec l'Ã©pic E5.
    */
   http.post(
     '*/api/v1/cases/:caseId/investigations/:runId/gates/h1',
@@ -1667,7 +1704,7 @@ export const handlers = [
         return HttpResponse.json<ErrorResponse>(
           {
             detail:
-              "Accès refusé. Vous n'avez pas les autorisations nécessaires pour arbitrer la porte H1.",
+              "AccÃ¨s refusÃ©. Vous n'avez pas les autorisations nÃ©cessaires pour arbitrer la porte H1.",
           },
           { status: 403 },
         )
@@ -1684,7 +1721,7 @@ export const handlers = [
         isPlanServerError(request, caseId)
       ) {
         return HttpResponse.json<ErrorResponse>(
-          { detail: 'Erreur interne lors de la transmission de la décision H1.' },
+          { detail: 'Erreur interne lors de la transmission de la dÃ©cision H1.' },
           { status: 500 },
         )
       }
@@ -1694,14 +1731,14 @@ export const handlers = [
         body = (await request.json()) as MockH1DecisionRequest
       } catch {
         return HttpResponse.json<ErrorResponse>(
-          { detail: 'Format de corps de requête invalide.' },
+          { detail: 'Format de corps de requÃªte invalide.' },
           { status: 400 },
         )
       }
 
       if (!['approve', 'modify', 'reject'].includes(body.decision)) {
         return HttpResponse.json<ErrorResponse>(
-          { detail: 'Décision H1 inconnue.' },
+          { detail: 'DÃ©cision H1 inconnue.' },
           { status: 422 },
         )
       }
@@ -1716,12 +1753,12 @@ export const handlers = [
         (!body.modified_plan || !Array.isArray((body.modified_plan as { steps?: unknown }).steps))
       ) {
         return HttpResponse.json<ErrorResponse>(
-          { detail: 'Le plan modifié est obligatoire pour une modification.' },
+          { detail: 'Le plan modifiÃ© est obligatoire pour une modification.' },
           { status: 422 },
         )
       }
 
-      // Conflit : l'état réel du serveur est renvoyé et enregistré pour le prochain GET.
+      // Conflit : l'Ã©tat rÃ©el du serveur est renvoyÃ© et enregistrÃ© pour le prochain GET.
       if (simulation === 'conflict' || caseId === 'case-h1-conflict') {
         const conflictState: MockH1State = {
           decision: 'approve',
@@ -1729,7 +1766,7 @@ export const handlers = [
           status: 'completed',
           current_phase: 'executor',
           validated_plan: {},
-          message: 'Le plan a déjà été validé et la session a changé de phase.',
+          message: 'Le plan a dÃ©jÃ  Ã©tÃ© validÃ© et la session a changÃ© de phase.',
         }
         mockH1States.set(mockH1Key(caseId, runId), conflictState)
         return HttpResponse.json<MockH1DecisionResponse>(
@@ -1759,10 +1796,10 @@ export const handlers = [
         current_phase: isRefused ? 'planner' : 'executor',
         validated_plan: isRefused ? null : {},
         message: isRefused
-          ? 'Plan refusé. Replanification engagée.'
+          ? 'Plan refusÃ©. Replanification engagÃ©e.'
           : body.decision === 'modify'
-            ? 'Plan modifié validé. Session d’exécution lancée.'
-            : 'Plan validé. Session d’exécution lancée.',
+            ? 'Plan modifiÃ© validÃ©. Session dâ€™exÃ©cution lancÃ©e.'
+            : 'Plan validÃ©. Session dâ€™exÃ©cution lancÃ©e.',
       }
       mockH1States.set(mockH1Key(caseId, runId), decisionState)
 
@@ -1783,11 +1820,11 @@ export const handlers = [
   ),
 
   /**
-   * Supervision temps réel de l'orchestration des agents (Story F4.3).
+   * Supervision temps rÃ©el de l'orchestration des agents (Story F4.3).
    * Route cible : GET /api/v1/cases/{case_id}/investigations/{run_id}
-   * Statut : simulée, contrat cible : openapi.json.
-   * `phases` est le seul vecteur contractuel d'état par agent : progression,
-   * messages, diagnostic et journal d'événements restent « à réaligner ».
+   * Statut : simulÃ©e, contrat cible : openapi.json.
+   * `phases` est le seul vecteur contractuel d'Ã©tat par agent : progression,
+   * messages, diagnostic et journal d'Ã©vÃ©nements restent Â« Ã  rÃ©aligner Â».
    */
   http.get('*/api/v1/cases/:caseId/investigations/:runId', ({ params, request }) => {
     const authHeader = request.headers.get('Authorization')
@@ -1802,7 +1839,7 @@ export const handlers = [
     const runId = String(params.runId)
     if (isRunForbidden(request, caseId)) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: "Vous n'avez pas accès à cette session." },
+        { detail: "Vous n'avez pas accÃ¨s Ã  cette session." },
         { status: 403 },
       )
     }
@@ -1825,7 +1862,7 @@ export const handlers = [
   /**
    * Reprise d'une session en pause (Story F4.3).
    * Route cible : POST /api/v1/cases/{case_id}/investigations/{run_id}/resume
-   * Statut : simulée, contrat cible : openapi.json (aucun corps de requête).
+   * Statut : simulÃ©e, contrat cible : openapi.json (aucun corps de requÃªte).
    */
   http.post('*/api/v1/cases/:caseId/investigations/:runId/resume', ({ params, request }) => {
     const authHeader = request.headers.get('Authorization')
@@ -1840,7 +1877,7 @@ export const handlers = [
     const runId = String(params.runId)
     if (isRunForbidden(request, caseId)) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: "Accès refusé. Vous n'avez pas les autorisations nécessaires." },
+        { detail: "AccÃ¨s refusÃ©. Vous n'avez pas les autorisations nÃ©cessaires." },
         { status: 403 },
       )
     }
@@ -1856,7 +1893,7 @@ export const handlers = [
     const current = mockRunStates.get(key) ?? buildMockRunDetail(caseId, runId, null)
     if (current.status !== 'paused') {
       return HttpResponse.json<ErrorResponse>(
-        { detail: 'Seules les sessions en pause peuvent être reprises.' },
+        { detail: 'Seules les sessions en pause peuvent Ãªtre reprises.' },
         { status: 400 },
       )
     }
@@ -1876,7 +1913,7 @@ export const handlers = [
   /**
    * Consultation unitaire d'un dossier d'investigation (Story F2.1).
    * Route cible : GET /api/v1/cases/:caseId
-   * Statut : simulée, contrat cible : openapi.json
+   * Statut : simulÃ©e, contrat cible : openapi.json
    */
   http.get('*/api/v1/cases/:caseId', ({ params, request }) => {
     const authHeader = request.headers.get('Authorization')
@@ -1901,14 +1938,14 @@ export const handlers = [
     const simHeader =
       request.headers.get('X-Simulation-Case') || request.headers.get('X-Simulation-Cases')
 
-    // Simulation accès refusé 403 Forbidden
+    // Simulation accÃ¨s refusÃ© 403 Forbidden
     if (
       token === 'mock-forbidden-token' ||
       simHeader === 'forbidden' ||
       caseId === 'case-forbidden'
     ) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: "Vous n'avez pas accès à ce dossier." },
+        { detail: "Vous n'avez pas accÃ¨s Ã  ce dossier." },
         { status: 403 },
       )
     }
@@ -1922,7 +1959,7 @@ export const handlers = [
       caseId === 'case-500'
     ) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: 'Erreur interne du serveur lors de la récupération du dossier.' },
+        { detail: 'Erreur interne du serveur lors de la rÃ©cupÃ©ration du dossier.' },
         { status: 500 },
       )
     }
@@ -1965,8 +2002,8 @@ export const handlers = [
       affected_systems:
         (found as Record<string, unknown>).affected_systems ??
         (caseId === 'case-001'
-          ? 'Contrôleur de domaine AD, Serveur Exchange, Postes analystes'
-          : 'Contrôleur de domaine AD, Serveur Exchange'),
+          ? 'ContrÃ´leur de domaine AD, Serveur Exchange, Postes analystes'
+          : 'ContrÃ´leur de domaine AD, Serveur Exchange'),
       members: (found as Record<string, unknown>).members ?? MOCK_CASE_MEMBERS,
     }
 
@@ -1974,9 +2011,9 @@ export const handlers = [
   }),
 
   /**
-   * Évolution du statut global d'un dossier d'investigation (Story F2.2).
+   * Ã‰volution du statut global d'un dossier d'investigation (Story F2.2).
    * Route cible : PATCH /api/v1/cases/:caseId/status
-   * Statut : simulée, contrat cible : openapi.json
+   * Statut : simulÃ©e, contrat cible : openapi.json
    */
   http.patch('*/api/v1/cases/:caseId/status', async ({ params, request }) => {
     const authHeader = request.headers.get('Authorization')
@@ -2003,7 +2040,7 @@ export const handlers = [
       request.headers.get('X-Simulation-Update-Status') ||
       request.headers.get('X-Simulation-Case')
 
-    // Simulation accès refusé 403 Forbidden
+    // Simulation accÃ¨s refusÃ© 403 Forbidden
     if (
       token === 'mock-forbidden-token' ||
       token === 'mock-viewer-token' ||
@@ -2013,7 +2050,7 @@ export const handlers = [
       return HttpResponse.json<ErrorResponse>(
         {
           detail:
-            "Accès refusé. Vous n'avez pas les autorisations nécessaires pour modifier le statut de ce dossier.",
+            "AccÃ¨s refusÃ©. Vous n'avez pas les autorisations nÃ©cessaires pour modifier le statut de ce dossier.",
         },
         { status: 403 },
       )
@@ -2027,7 +2064,7 @@ export const handlers = [
       caseId === 'case-status-500'
     ) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: 'Erreur interne du serveur lors de la mise à jour du statut du dossier.' },
+        { detail: 'Erreur interne du serveur lors de la mise Ã  jour du statut du dossier.' },
         { status: 500 },
       )
     }
@@ -2035,7 +2072,7 @@ export const handlers = [
     // Simulation conflit 409 Conflict
     if (simHeader === 'conflict' || simHeader === '409' || caseId === 'case-status-conflict') {
       return HttpResponse.json<ErrorResponse>(
-        { detail: 'Conflit de version ou transition concurrente détectée sur le dossier.' },
+        { detail: 'Conflit de version ou transition concurrente dÃ©tectÃ©e sur le dossier.' },
         { status: 409 },
       )
     }
@@ -2045,7 +2082,7 @@ export const handlers = [
       body = (await request.json()) as Record<string, unknown>
     } catch {
       return HttpResponse.json<ErrorResponse>(
-        { detail: 'Format de corps de requête invalide.' },
+        { detail: 'Format de corps de requÃªte invalide.' },
         { status: 400 },
       )
     }
@@ -2064,7 +2101,7 @@ export const handlers = [
       return HttpResponse.json<ErrorResponse>({ detail: 'Dossier introuvable.' }, { status: 404 })
     }
 
-    // Matrice stricte des transitions autorisées (openapi.json / E2)
+    // Matrice stricte des transitions autorisÃ©es (openapi.json / E2)
     const validTransitions: Record<string, string[]> = {
       open: ['in_progress', 'closed'],
       in_progress: ['review', 'open', 'closed'],
@@ -2075,7 +2112,7 @@ export const handlers = [
     // Simulation rejet de transition 400
     if (simHeader === 'invalid-transition' || simHeader === '400') {
       return HttpResponse.json<ErrorResponse>(
-        { detail: `Transition non autorisée du statut '${found.status}' vers '${newStatus}'.` },
+        { detail: `Transition non autorisÃ©e du statut '${found.status}' vers '${newStatus}'.` },
         { status: 400 },
       )
     }
@@ -2083,7 +2120,7 @@ export const handlers = [
     const allowed = validTransitions[found.status] || []
     if (!allowed.includes(newStatus)) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: `Transition non autorisée du statut '${found.status}' vers '${newStatus}'.` },
+        { detail: `Transition non autorisÃ©e du statut '${found.status}' vers '${newStatus}'.` },
         { status: 400 },
       )
     }
@@ -2097,7 +2134,7 @@ export const handlers = [
       incident_type: (found as Record<string, unknown>).incident_type ?? 'a_decider',
       affected_systems:
         (found as Record<string, unknown>).affected_systems ??
-        'Contrôleur de domaine AD, Serveur Exchange',
+        'ContrÃ´leur de domaine AD, Serveur Exchange',
       members: (found as Record<string, unknown>).members ?? MOCK_CASE_MEMBERS,
     }
 
@@ -2105,9 +2142,9 @@ export const handlers = [
   }),
 
   /**
-   * Mise à jour en ligne d'un dossier d'investigation (Story F2.1).
+   * Mise Ã  jour en ligne d'un dossier d'investigation (Story F2.1).
    * Route cible : PATCH /api/v1/cases/:caseId
-   * Statut : simulée, contrat cible : à réaligner
+   * Statut : simulÃ©e, contrat cible : Ã  rÃ©aligner
    */
   http.patch('*/api/v1/cases/:caseId', async ({ params, request }) => {
     const authHeader = request.headers.get('Authorization')
@@ -2132,14 +2169,14 @@ export const handlers = [
     const simHeader =
       request.headers.get('X-Simulation-Update-Case') || request.headers.get('X-Simulation-Case')
 
-    // Simulation accès refusé 403 Forbidden
+    // Simulation accÃ¨s refusÃ© 403 Forbidden
     if (
       token === 'mock-forbidden-token' ||
       simHeader === 'forbidden' ||
       caseId === 'case-forbidden'
     ) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: "Vous n'avez pas accès à ce dossier." },
+        { detail: "Vous n'avez pas accÃ¨s Ã  ce dossier." },
         { status: 403 },
       )
     }
@@ -2153,7 +2190,7 @@ export const handlers = [
       caseId === 'case-patch-500'
     ) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: 'Erreur interne du serveur lors de la mise à jour du dossier.' },
+        { detail: 'Erreur interne du serveur lors de la mise Ã  jour du dossier.' },
         { status: 500 },
       )
     }
@@ -2161,7 +2198,7 @@ export const handlers = [
     // Simulation erreur de validation serveur 422
     if (simHeader === 'validation-error' || simHeader === '422') {
       return HttpResponse.json<ErrorResponse>(
-        { detail: 'Erreur de validation des données transmises.' },
+        { detail: 'Erreur de validation des donnÃ©es transmises.' },
         { status: 422 },
       )
     }
@@ -2171,7 +2208,7 @@ export const handlers = [
       body = (await request.json()) as Record<string, unknown>
     } catch {
       return HttpResponse.json<ErrorResponse>(
-        { detail: 'Format de corps de requête invalide.' },
+        { detail: 'Format de corps de requÃªte invalide.' },
         { status: 400 },
       )
     }
@@ -2209,8 +2246,8 @@ export const handlers = [
       affected_systems:
         (found as Record<string, unknown>).affected_systems ??
         (caseId === 'case-001'
-          ? 'Contrôleur de domaine AD, Serveur Exchange, Postes analystes'
-          : 'Contrôleur de domaine AD, Serveur Exchange'),
+          ? 'ContrÃ´leur de domaine AD, Serveur Exchange, Postes analystes'
+          : 'ContrÃ´leur de domaine AD, Serveur Exchange'),
       members: (found as Record<string, unknown>).members ?? MOCK_CASE_MEMBERS,
     }
 
@@ -2218,9 +2255,9 @@ export const handlers = [
   }),
 
   /**
-   * Téléversement d'une preuve numérique (Story F3.1).
+   * TÃ©lÃ©versement d'une preuve numÃ©rique (Story F3.1).
    * Route cible : POST /api/v1/cases/:caseId/evidences
-   * Statut : simulée, contrat cible : openapi.json
+   * Statut : simulÃ©e, contrat cible : openapi.json
    */
   http.post('*/api/v1/cases/:caseId/evidences', async ({ params, request }) => {
     const authHeader = request.headers.get('Authorization')
@@ -2244,14 +2281,14 @@ export const handlers = [
     const simHeader =
       request.headers.get('X-Simulation-Evidence') || request.headers.get('X-Simulation-Case')
 
-    // Simulation accès refusé 403 Forbidden
+    // Simulation accÃ¨s refusÃ© 403 Forbidden
     if (
       token === 'mock-forbidden-token' ||
       simHeader === 'forbidden' ||
       caseId === 'case-forbidden'
     ) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: "Vous n'avez pas accès à ce dossier." },
+        { detail: "Vous n'avez pas accÃ¨s Ã  ce dossier." },
         { status: 403 },
       )
     }
@@ -2265,15 +2302,15 @@ export const handlers = [
       caseId === 'case-500'
     ) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: 'Erreur interne du serveur lors du téléversement de la preuve.' },
+        { detail: 'Erreur interne du serveur lors du tÃ©lÃ©versement de la preuve.' },
         { status: 500 },
       )
     }
 
-    // Simulation rejet plafond volumétrique 413 Payload Too Large (C3)
+    // Simulation rejet plafond volumÃ©trique 413 Payload Too Large (C3)
     if (simHeader === 'payload-too-large' || simHeader === '413' || caseId === 'case-upload-413') {
       return HttpResponse.json<ErrorResponse>(
-        { detail: 'Fichier volumineux : dépassement du plafond configuré par le serveur.' },
+        { detail: 'Fichier volumineux : dÃ©passement du plafond configurÃ© par le serveur.' },
         { status: 413 },
       )
     }
@@ -2312,7 +2349,7 @@ export const handlers = [
         }
       }
     } catch {
-      // Ignoré si le parsing multipart échoue en environnement de test
+      // IgnorÃ© si le parsing multipart Ã©choue en environnement de test
     }
 
     const evidenceId = `evi-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
@@ -2352,9 +2389,9 @@ export const handlers = [
   }),
 
   /**
-   * Consultation paginée de l'inventaire des preuves d'un dossier (Story F3.2).
+   * Consultation paginÃ©e de l'inventaire des preuves d'un dossier (Story F3.2).
    * Route cible : GET /api/v1/cases/:caseId/evidences
-   * Statut : simulée, contrat cible : openapi.json
+   * Statut : simulÃ©e, contrat cible : openapi.json
    */
   http.get('*/api/v1/cases/:caseId/evidences', ({ params, request }) => {
     const authHeader = request.headers.get('Authorization')
@@ -2377,7 +2414,7 @@ export const handlers = [
       caseId === 'case-forbidden'
     ) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: "Accès refusé. Vous n'avez pas accès aux preuves de ce dossier." },
+        { detail: "AccÃ¨s refusÃ©. Vous n'avez pas accÃ¨s aux preuves de ce dossier." },
         { status: 403 },
       )
     }
@@ -2388,7 +2425,7 @@ export const handlers = [
       caseId === 'case-error'
     ) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: 'Erreur interne du serveur lors de la récupération des preuves.' },
+        { detail: 'Erreur interne du serveur lors de la rÃ©cupÃ©ration des preuves.' },
         { status: 500 },
       )
     }
@@ -2426,9 +2463,9 @@ export const handlers = [
   }),
 
   /**
-   * Consultation de l'état d'ingestion d'une preuve et scrutation avec Retry-After (Story F3.2).
+   * Consultation de l'Ã©tat d'ingestion d'une preuve et scrutation avec Retry-After (Story F3.2).
    * Route cible : GET /api/v1/cases/:caseId/evidences/:evidenceId/ingestion-status
-   * Statut : simulée, contrat cible : openapi.json
+   * Statut : simulÃ©e, contrat cible : openapi.json
    */
   http.get(
     '*/api/v1/cases/:caseId/evidences/:evidenceId/ingestion-status',
@@ -2454,7 +2491,7 @@ export const handlers = [
         caseId === 'case-forbidden'
       ) {
         return HttpResponse.json<ErrorResponse>(
-          { detail: "Accès refusé lors de la vérification d'ingestion." },
+          { detail: "AccÃ¨s refusÃ© lors de la vÃ©rification d'ingestion." },
           { status: 403 },
         )
       }
@@ -2470,7 +2507,7 @@ export const handlers = [
         )
       }
 
-      // Simulation de statut inconnu (règle docs/frontend/12 section 4)
+      // Simulation de statut inconnu (rÃ¨gle docs/frontend/12 section 4)
       if (evidenceId === 'evi-unknown' || simHeader === 'unknown-status') {
         return HttpResponse.json({
           status: 'unrecognized_state_code',
@@ -2532,7 +2569,7 @@ export const handlers = [
         )
       }
 
-      // Simulation statut completed par défaut (intègre)
+      // Simulation statut completed par dÃ©faut (intÃ¨gre)
       const foundItem = (MOCK_CASE_EVIDENCES[caseId] || []).find((e) => e.id === evidenceId)
       return HttpResponse.json({
         status: 'completed',
@@ -2546,9 +2583,9 @@ export const handlers = [
   ),
 
   /**
-   * Consultation des métadonnées détaillées d'une preuve (Story F3.3).
+   * Consultation des mÃ©tadonnÃ©es dÃ©taillÃ©es d'une preuve (Story F3.3).
    * Route cible : GET /api/v1/cases/:caseId/evidences/:evidenceId
-   * Statut : simulée, contrat cible : openapi.json
+   * Statut : simulÃ©e, contrat cible : openapi.json
    */
   http.get('*/api/v1/cases/:caseId/evidences/:evidenceId', ({ params, request }) => {
     const authHeader = request.headers.get('Authorization')
@@ -2573,7 +2610,7 @@ export const handlers = [
       caseId === 'case-forbidden'
     ) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: "Accès refusé. Vous n'avez pas accès aux détails de cette preuve." },
+        { detail: "AccÃ¨s refusÃ©. Vous n'avez pas accÃ¨s aux dÃ©tails de cette preuve." },
         { status: 403 },
       )
     }
@@ -2585,7 +2622,7 @@ export const handlers = [
       evidenceId === 'evi-error'
     ) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: 'Erreur interne lors de la consultation des détails de la preuve.' },
+        { detail: 'Erreur interne lors de la consultation des dÃ©tails de la preuve.' },
         { status: 500 },
       )
     }
@@ -2604,8 +2641,8 @@ export const handlers = [
 
   /**
    * Rapport courant (Story F5.1).
-   * Route simulée : GET /api/v1/cases/:caseId/report.
-   * Statut : simulée, contrat cible : ADR-0004 / ADR-0008, à réaligner avec E8.
+   * Route simulÃ©e : GET /api/v1/cases/:caseId/report.
+   * Statut : simulÃ©e, contrat cible : ADR-0004 / ADR-0008, Ã  rÃ©aligner avec E8.
    */
   http.get('*/api/v1/cases/:caseId/report', ({ params, request }) => {
     const authHeader = request.headers.get('Authorization')
@@ -2641,6 +2678,12 @@ export const handlers = [
     if (simulation === 'no-findings') {
       return HttpResponse.json(buildMockReport(MOCK_REPORT_NO_FINDINGS_CONTENT))
     }
+    if (simulation === 'unknown-status') {
+      return HttpResponse.json({
+        ...buildMockReport(MOCK_REPORT_CONTENT),
+        status: 'unrecognized_state_code',
+      })
+    }
 
     return HttpResponse.json<ErrorResponse>(
       { detail: 'Aucun rapport finalisé pour ce dossier.' },
@@ -2650,9 +2693,9 @@ export const handlers = [
 
   /**
    * Demande de compilation serveur (Story F5.1, DP-03).
-   * Route simulée : POST /api/v1/cases/:caseId/report/generate.
-   * Aucun chapitre n'est produit ici par le front : seule une tâche ADR-0008
-   * est renvoyée, avec Retry-After: 3.
+   * Route simulÃ©e : POST /api/v1/cases/:caseId/report/generate.
+   * Aucun chapitre n'est produit ici par le front : seule une tÃ¢che ADR-0008
+   * est renvoyÃ©e, avec Retry-After: 3.
    */
   http.post('*/api/v1/cases/:caseId/report/generate', ({ params, request }) => {
     const authHeader = request.headers.get('Authorization')
@@ -2668,14 +2711,14 @@ export const handlers = [
       return HttpResponse.json<ErrorResponse>(
         {
           detail:
-            "Accès refusé. Vous n'avez pas les autorisations nécessaires pour compiler ce rapport.",
+            "AccÃ¨s refusÃ©. Vous n'avez pas les autorisations nÃ©cessaires pour compiler ce rapport.",
         },
         { status: 403 },
       )
     }
     if (isReportServerError(request, caseId)) {
       return HttpResponse.json<ErrorResponse>(
-        { detail: 'Échec de la demande de compilation du rapport.' },
+        { detail: 'Ã‰chec de la demande de compilation du rapport.' },
         { status: 500 },
       )
     }
@@ -2691,10 +2734,10 @@ export const handlers = [
   }),
 
   /**
-   * Suivi de la tâche de compilation (Story F5.1, ADR-0008, DP-05).
-   * Route simulée : GET /api/v1/cases/:caseId/tasks/:taskId.
-   * Le motif d'échec est transmis dans l'enveloppe d'erreur `error_message`
-   * (à réaligner avec E8), sans enrichir le document du rapport.
+   * Suivi de la tÃ¢che de compilation (Story F5.1, ADR-0008, DP-05).
+   * Route simulÃ©e : GET /api/v1/cases/:caseId/tasks/:taskId.
+   * Le motif d'Ã©chec est transmis dans l'enveloppe d'erreur `error_message`
+   * (Ã  rÃ©aligner avec E8), sans enrichir le document du rapport.
    */
   http.get('*/api/v1/cases/:caseId/tasks/:taskId', ({ params, request }) => {
     const authHeader = request.headers.get('Authorization')
@@ -2746,5 +2789,66 @@ export const handlers = [
       buildMockReportTask(caseId, completed ? 'completed' : 'processing', completed ? 1 : 0.5),
       { headers: { 'Retry-After': '3' } },
     )
+  }),
+
+  /**
+   * Liste des findings (Story F4.8, FR-REV-01).
+   * Route contrat : GET /api/v1/cases/{case_id}/findings (openapi.json).
+   * La route de décision H2 n'existe pas dans le contrat : aucune décision
+   * n'est simulée comme acquise. À réaligner (E6).
+   */
+  http.get('*/api/v1/cases/:caseId/findings', ({ params, request }) => {
+    const authHeader = request.headers.get('Authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    const caseId = String(params.caseId)
+    const simulation = request.headers.get('X-Simulation-Findings')
+
+    if (
+      simulation === 'forbidden' ||
+      caseId === 'case-forbidden' ||
+      caseId === 'case-report-forbidden'
+    ) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Accès refusé. Vous n'avez pas accès aux findings de ce dossier." },
+        { status: 403 },
+      )
+    }
+    if (simulation === 'server-error' || caseId === 'case-findings-error') {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Échec de la récupération des findings.' },
+        { status: 500 },
+      )
+    }
+    if (simulation === 'network-error' || caseId === 'case-findings-network-error') {
+      return HttpResponse.error()
+    }
+
+    let items = MOCK_FINDINGS.map((f) => ({ ...f, case_id: caseId }))
+    if (simulation === 'empty' || caseId === 'case-findings-empty') {
+      items = []
+    } else if (simulation === 'has-validated' || caseId === 'case-findings-validated') {
+      items = items.map((f, i) => (i === 0 ? { ...f, status: 'validated' as const } : f))
+    } else if (simulation === 'unknown-status' || caseId === 'case-findings-unknown') {
+      items = items.map((f, i) =>
+        i === 0
+          ? { ...f, status: 'unrecognized_finding_state' as unknown as FindingOut['status'] }
+          : f,
+      )
+    }
+
+    return HttpResponse.json({
+      items,
+      total: items.length,
+      total_items: items.length,
+      limit: 100,
+      offset: 0,
+      has_more: false,
+    })
   }),
 ]

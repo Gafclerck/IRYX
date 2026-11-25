@@ -253,16 +253,14 @@ describe('Story F5.2 - Téléchargement du rapport scellé', () => {
   })
 
   it('désactive le téléchargement et restitue le code brut pour un statut inconnu', async () => {
+    simulation = 'unknown-status'
     renderReportPage()
-    await screen.findByTestId('report-empty-state')
-    taskSimulation = 'unknown-status'
 
-    await user.click(screen.getByTestId('report-generate-button'))
-
-    const unknown = await screen.findByTestId('report-unknown-state')
+    const unknown = await screen.findByTestId('report-unknown-state', {}, { timeout: 3000 })
     expect(within(unknown).getByTestId('report-unknown-label')).toHaveTextContent(
       'État inconnu (unrecognized_state_code)',
     )
     expect(screen.getByTestId('report-download-button')).toBeDisabled()
+    expect(screen.getByTestId('report-generate-button')).toBeDisabled()
   })
 })

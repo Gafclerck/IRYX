@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom'
+﻿import { createBrowserRouter } from 'react-router-dom'
 import { LoginPage } from '../pages/LoginPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
 import { CasesPage } from '../pages/CasesPage'
@@ -8,6 +8,7 @@ import { PlanPage } from '../pages/PlanPage'
 import { RunPage } from '../pages/RunPage'
 import { ResultsPage } from '../pages/ResultsPage'
 import { ReportPage } from '../pages/ReportPage'
+import { ReviewPage } from '../pages/ReviewPage'
 import { AuthGuard } from '../features/auth/components/AuthGuard'
 import { AuthenticatedLayout } from '../components/layout/AuthenticatedLayout'
 
@@ -54,6 +55,10 @@ export const router = createBrowserRouter([
       {
         path: '/cases/:caseId/results',
         element: <ResultsPage />,
+      },
+      {
+        path: '/cases/:caseId/review',
+        element: <ReviewPage />,
       },
       {
         path: '/cases/:caseId/report',
