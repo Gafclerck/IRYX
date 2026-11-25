@@ -17,8 +17,84 @@ def triage_node(state: InvestigationState) -> dict[str, Any]:
 
 
 def planner_node(state: InvestigationState) -> dict[str, Any]:
-    """Planner phase: proposes a bounded investigation plan."""
-    return {"current_phase": "planner"}
+    """Planner phase: proposes a bounded investigation plan (Story 5.3)."""
+    from iryx.core.exceptions import InvalidPlanException
+    from iryx.orchestrator.planner import PlannerAgent
+    from iryx.orchestrator.schemas import InvestigationPlan
+
+    context = dict(state.get("context") or {})
+    llm_client = context.get("llm_client")
+    tool_registry = context.get("tool_registry")
+    db = context.get("db")
+
+    # If plan is already provided in state, validate against InvestigationPlan
+    if state.get("plan") is not None:
+        try:
+            validated = InvestigationPlan.model_validate(state["plan"])
+            return {
+                "current_phase": "gate_h1",
+                "status": state.get("status", "running"),
+                "plan": validated.model_dump(mode="json"),
+            }
+        except Exception as exc:
+            return {
+                "current_phase": "planner",
+                "status": "failed",
+                "plan": None,
+                "errors": [str(exc)],
+            }
+
+    evidences = state.get("evidences") or context.get("evidences")
+    case_id = state.get("case_id")
+    run_id = state.get("run_id")
+
+    agent = PlannerAgent(
+        llm_client=llm_client,
+        tool_registry=tool_registry,
+        db=db,
+    )
+
+    try:
+        result = agent.plan_sync(
+            evidences=evidences,
+            case_id=case_id,
+            run_id=run_id,
+            db=db,
+        )
+    except InvalidPlanException as exc:
+        return {
+            "current_phase": "planner",
+            "status": "failed",
+            "plan": None,
+            "errors": [str(exc)],
+            "context": context,
+        }
+
+    if result.status == "paused" or result.plan is None:
+        notification = (
+            result.notification or "Aucune matière analysable : attente de preuves scellées."
+        )
+        return {
+            "current_phase": "planner",
+            "status": "paused",
+            "plan": None,
+            "context": {**context, "notification": notification},
+        }
+
+    plan_dict = result.plan.model_dump(mode="json")
+    return {
+        "current_phase": "gate_h1",
+        "status": "running",
+        "plan": plan_dict,
+        "context": context,
+    }
+
+
+def route_planner(state: InvestigationState) -> str:
+    """Conditional edge from planner: halt execution if paused or failed, else gate_h1."""
+    if state.get("status") in ("paused", "failed"):
+        return END
+    return "gate_h1"
 
 
 def gate_h1_node(state: InvestigationState) -> dict[str, Any]:
@@ -74,7 +150,14 @@ def build_investigation_graph(checkpointer: Any | None = None) -> CompiledStateG
     # Scaffolding edges
     workflow.add_edge(START, "triage")
     workflow.add_edge("triage", "planner")
-    workflow.add_edge("planner", "gate_h1")
+    workflow.add_conditional_edges(
+        "planner",
+        route_planner,
+        {
+            "gate_h1": "gate_h1",
+            END: END,
+        },
+    )
     workflow.add_edge("gate_h1", "executor")
     workflow.add_edge("executor", "analyst")
     workflow.add_edge("analyst", "verifier")

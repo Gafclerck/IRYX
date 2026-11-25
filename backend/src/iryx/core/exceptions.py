@@ -490,6 +490,20 @@ class InvestigationNotFoundException(NotFoundException):
         self.status_code = status_code
 
 
+class InvalidPlanException(ValidationException):
+    """Raised when an investigation plan violates schema, step bounds, or tool whitelist."""
+
+    def __init__(
+        self,
+        message: str = "Plan d'investigation invalide.",
+        code: str = "INVALID_PLAN",
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+        )
+
+
 def _format_error_response(code: str, message: str) -> dict[str, Any]:
     """Return the standardized error response envelope."""
     return {

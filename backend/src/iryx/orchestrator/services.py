@@ -3,13 +3,16 @@
 import logging
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from iryx.cases.models import Case, CaseStatus
 from iryx.core.exceptions import (
     CaseNotFoundException,
+    InvalidPlanException,
     InvestigationAlreadyRunningException,
     InvestigationNotFoundException,
     ValidationException,
@@ -21,6 +24,7 @@ from iryx.orchestrator.models import (
     PhaseName,
     PhaseStatus,
 )
+from iryx.orchestrator.schemas import InvestigationPlan
 
 logger = logging.getLogger("iryx.orchestrator")
 
@@ -39,9 +43,7 @@ class InvestigationService:
         'running', 'paused') already exists.
         """
         # Row lock on Case (EC-1 / BH-1)
-        case = self.db.scalar(
-            select(Case).where(Case.id == case_id).with_for_update()
-        )
+        case = self.db.scalar(select(Case).where(Case.id == case_id).with_for_update())
         if case is None:
             raise CaseNotFoundException()
 
@@ -55,11 +57,13 @@ class InvestigationService:
         active_run = self.db.scalar(
             select(InvestigationRun).where(
                 InvestigationRun.case_id == case_id,
-                InvestigationRun.status.in_([
-                    InvestigationStatus.PENDING,
-                    InvestigationStatus.RUNNING,
-                    InvestigationStatus.PAUSED,
-                ]),
+                InvestigationRun.status.in_(
+                    [
+                        InvestigationStatus.PENDING,
+                        InvestigationStatus.RUNNING,
+                        InvestigationStatus.PAUSED,
+                    ]
+                ),
             )
         )
         if active_run is not None:
@@ -140,3 +144,77 @@ class InvestigationService:
             .order_by(InvestigationRun.started_at.desc(), InvestigationRun.id.desc())
         )
         return list(self.db.scalars(stmt).all())
+
+    def save_validated_plan(
+        self,
+        case_id: uuid.UUID,
+        run_id: uuid.UUID,
+        plan: InvestigationPlan | dict[str, Any],
+    ) -> InvestigationRun:
+        """Persist the validated investigation plan onto the InvestigationRun entity."""
+        run = self.get_investigation_run(case_id=case_id, run_id=run_id)
+
+        plan_data: dict[str, Any]
+        if isinstance(plan, InvestigationPlan):
+            plan_data = plan.model_dump(mode="json")
+        elif isinstance(plan, dict):
+            try:
+                validated = InvestigationPlan.model_validate(plan)
+                plan_data = validated.model_dump(mode="json")
+            except ValidationError as exc:
+                raise InvalidPlanException(
+                    message=f"Plan d'investigation invalide : {exc}",
+                ) from exc
+        else:
+            raise InvalidPlanException(
+                message="Format de plan d'investigation invalide pour la persistance.",
+            )
+
+        run.validated_plan = plan_data
+        run.updated_at = datetime.now(UTC)
+        self.db.commit()
+        self.db.refresh(run)
+
+        logger.info(
+            "Investigation plan successfully saved to run",
+            extra={
+                "context": {
+                    "case_id": str(case_id),
+                    "run_id": str(run_id),
+                    "steps_count": len(plan_data.get("steps", [])),
+                }
+            },
+        )
+        return run
+
+    def pause_investigation(
+        self,
+        case_id: uuid.UUID,
+        run_id: uuid.UUID,
+        reason: str | None = None,
+    ) -> InvestigationRun:
+        """Pause an investigation run (e.g. waiting for sealed evidence)."""
+        run = self.get_investigation_run(case_id=case_id, run_id=run_id)
+
+        if run.status in (InvestigationStatus.COMPLETED, InvestigationStatus.FAILED):
+            raise ValidationException(
+                message=f"Impossible de suspendre une session avec le statut '{run.status}'.",
+                code="INVALID_STATUS_TRANSITION",
+            )
+
+        run.status = InvestigationStatus.PAUSED
+        run.updated_at = datetime.now(UTC)
+        self.db.commit()
+        self.db.refresh(run)
+
+        logger.info(
+            "Investigation run paused",
+            extra={
+                "context": {
+                    "case_id": str(case_id),
+                    "run_id": str(run_id),
+                    "reason": reason or "attente de preuves scellées",
+                }
+            },
+        )
+        return run

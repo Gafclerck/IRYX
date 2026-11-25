@@ -8,11 +8,20 @@ from iryx.orchestrator.models import (
     PhaseName,
     PhaseStatus,
 )
-from iryx.orchestrator.schemas import InvestigationRunCreate, InvestigationRunOut, PhaseOut
+from iryx.orchestrator.planner import PlannerAgent, PlannerResult
+from iryx.orchestrator.schemas import (
+    InvestigationPlan,
+    InvestigationPlanStep,
+    InvestigationRunCreate,
+    InvestigationRunOut,
+    PhaseOut,
+)
 from iryx.orchestrator.services import InvestigationService
 from iryx.orchestrator.state import InvestigationState
 
 __all__ = [
+    "InvestigationPlan",
+    "InvestigationPlanStep",
     "InvestigationRun",
     "InvestigationRunCreate",
     "InvestigationRunOut",
@@ -23,5 +32,7 @@ __all__ = [
     "PhaseName",
     "PhaseOut",
     "PhaseStatus",
+    "PlannerAgent",
+    "PlannerResult",
     "build_investigation_graph",
 ]
