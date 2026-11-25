@@ -57,6 +57,27 @@ def test_settings_jwt_expire_minutes_must_be_positive() -> None:
     )
 
 
+def test_default_jwt_secret_is_rejected_in_production(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The bundled development JWT key must never be accepted in production."""
+    monkeypatch.delenv("JWT_SECRET_KEY", raising=False)
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(_env_file=None, secret_key="test-key", environment="production")
+
+    assert "JWT_SECRET_KEY" in str(exc_info.value)
+
+
+def test_explicit_jwt_secret_is_accepted_in_production() -> None:
+    """An explicit JWT key allows production startup."""
+    settings = Settings(
+        secret_key="test-key",
+        environment="production",
+        jwt_secret_key="a-dedicated-production-jwt-secret-key",
+    )
+    assert settings.jwt_secret_key == "a-dedicated-production-jwt-secret-key"
+
+
 def test_cors_origins_parsing_variants() -> None:
     """Verify CORS origins field parser handles lists, JSON strings, and comma-separated lists."""
     # List format

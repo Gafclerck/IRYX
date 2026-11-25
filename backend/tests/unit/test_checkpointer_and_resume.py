@@ -53,6 +53,7 @@ from iryx.orchestrator.models import (
     PhaseName,
     PhaseStatus,
 )
+from iryx.orchestrator.schemas import H3Decision, H3DecisionRequest
 from iryx.orchestrator.services import InvestigationService
 from iryx.orchestrator.state import InvestigationState
 from iryx.organizations.services import OrganizationService
@@ -332,7 +333,7 @@ def test_resume_investigation_nominal_from_gate_h3(
     db_session: Session,
     test_setup: dict[str, Any],
 ) -> None:
-    """Verify resuming an investigation from GATE_H3 advances past H2 to reporting."""
+    """Verify resuming from GATE_H3 without an H3 verdict stays paused at the gate."""
     case: Case = test_setup["case"]
     now = datetime.now(UTC)
 
@@ -363,8 +364,70 @@ def test_resume_investigation_nominal_from_gate_h3(
 
     resumed_run = service.resume_investigation(case_id=case.id, run_id=run.id)
     assert resumed_run.id == run.id
-    assert resumed_run.status == InvestigationStatus.RUNNING
-    assert resumed_run.current_phase == PhaseName.REPORTING
+    # No H3 decision was recorded in the checkpointer: the barrier must hold.
+    assert resumed_run.status == InvestigationStatus.PAUSED
+    assert resumed_run.current_phase in (PhaseName.GATE_H3, PhaseName.WAITING_H3)
+
+
+def test_h3_reject_is_persisted_and_local_report_mode_survives_resume(
+    db_session: Session,
+    test_setup: dict[str, Any],
+) -> None:
+    """A rejected H3 verdict is stored in the checkpointer and never re-approved on resume."""
+    case: Case = test_setup["case"]
+    now = datetime.now(UTC)
+
+    run = InvestigationRun(
+        id=uuid.uuid4(),
+        case_id=case.id,
+        status=InvestigationStatus.PAUSED,
+        current_phase=PhaseName.WAITING_H3,
+        validated_plan=sample_plan_dict(),
+        started_at=now,
+        updated_at=now,
+    )
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        Phase(
+            id=uuid.uuid4(),
+            investigation_run_id=run.id,
+            phase_name=PhaseName.GATE_H3,
+            status=PhaseStatus.ACTIVE,
+            started_at=now,
+        )
+    )
+    db_session.commit()
+
+    checkpointer = MemorySaver()
+    service = InvestigationService(db=db_session, checkpointer=checkpointer)
+    response = service.arbitrate_gate_h3(
+        case_id=case.id,
+        run_id=run.id,
+        decision_request=H3DecisionRequest(
+            decision=H3Decision.REJECT,
+            feedback="Gabarit local imposé par le RSSI",
+        ),
+        user_id=uuid.uuid4(),
+    )
+    assert response.decision == H3Decision.REJECT
+
+    config = {"configurable": {"thread_id": str(run.id)}}
+    graph = build_investigation_graph(checkpointer=checkpointer)
+    snapshot = graph.get_state(config)
+    assert snapshot.values["h3_approved"] is False
+    assert snapshot.values["h3_rejected"] is True
+    assert snapshot.values["context"]["local_report_mode"] is True
+    assert snapshot.values["context"]["h3_feedback"] == "Gabarit local imposé par le RSSI"
+
+    resumed = service.resume_investigation(case_id=case.id, run_id=run.id)
+    assert resumed.status == InvestigationStatus.RUNNING
+    assert resumed.current_phase == PhaseName.REPORTING
+
+    final_values = graph.get_state(config).values
+    assert final_values.get("h3_approved") is False
+    assert final_values.get("h3_rejected") is True
+    assert final_values["context"]["local_report_mode"] is True
 
 
 def test_resume_investigation_terminated_completed_raises_400(

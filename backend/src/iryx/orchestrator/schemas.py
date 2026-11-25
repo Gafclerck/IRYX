@@ -235,5 +235,9 @@ class AnonymizedPreviewOut(BaseModel):
     run_id: uuid.UUID
     case_id: uuid.UUID
     anonymized_text: str = Field(..., description="Texte pseudonymisé proposé à l'envoi.")
-    entity_count: int = Field(default=0, description="Nombre d'entités démasquées puis pseudonymisées.")
-    has_entities: bool = Field(default=False, description="Indique si au moins une entité a été anonymisée.")
+    entity_count: int = Field(
+        default=0, description="Nombre d'entités démasquées puis pseudonymisées."
+    )
+    has_entities: bool = Field(
+        default=False, description="Indique si au moins une entité a été anonymisée."
+    )

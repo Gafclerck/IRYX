@@ -5,7 +5,7 @@
 [![LangGraph](https://img.shields.io/badge/Orchestration-LangGraph%200.2+-orange.svg)](https://github.com/langchain-ai/langgraph)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL%2016-336791.svg?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Celery](https://img.shields.io/badge/Async%20Workers-Celery%205.4-37814A.svg?logo=celery&logoColor=white)](https://docs.celeryq.dev/)
-[![Tests](https://img.shields.io/badge/Tests-739%20passed-success.svg)](backend/tests)
+[![Tests](https://img.shields.io/badge/Tests-871%20passed-success.svg)](backend/tests)
 [![Code Style](https://img.shields.io/badge/Code%20Style-Ruff-black.svg)](https://docs.astral.sh/ruff/)
 
 ---
@@ -165,10 +165,10 @@ IRYX/
 │   │   ├── evidence/              # Upload streaming, hachage SHA-256 et tâches Celery
 │   │   ├── gateway/               # Registre d'outils, exécuteur confiné et parsers forensiques
 │   │   │   └── tools/             # Analyseurs EVTX, Registre, Prefetch, Volatility 3, Logs
-│   │   ├── orchestrator/          # Machine d'états LangGraph, checkpointer Postgres, portes H1/H2
+│   │   ├── orchestrator/          # Machine d'états LangGraph, checkpointer Postgres, portes H1/H2/H3
 │   │   ├── organizations/         # Gestion multi-organisations et rôles RBAC
 │   │   └── main.py                # Point d'entrée de l'application FastAPI & middlewares
-│   ├── tests/                     # Suite complète de tests unitaires et d'intégration (739 tests)
+│   ├── tests/                     # Suite complète de tests unitaires et d'intégration (871 tests)
 │   ├── .env.example               # Modèle exhaustif des variables d'environnement
 │   ├── alembic.ini                # Configuration du gestionnaire de migrations Alembic
 │   ├── pyproject.toml             # Déclaration des dépendances et métadonnées du paquet iryx
@@ -281,7 +281,7 @@ celery -A iryx.core.celery_app worker --loglevel=info --pool=threads --concurren
 Le projet applique une politique stricte de qualité de code avec typage intégral et suite de tests exhaustive :
 
 ```bash
-# Exécution de l'intégralité de la suite de tests (739 tests unitaires et d'intégration)
+# Exécution de l'intégralité de la suite de tests (871 tests unitaires et d'intégration)
 pytest backend/tests
 
 # Analyse statique et respect des conventions (Zéro avertissement toléré)

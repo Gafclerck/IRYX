@@ -15,33 +15,12 @@ context:
 warnings: []
 deferred:
   - summary: >-
-      Synchroniser le statut de la story dans sprint-status.yaml
-    evidence: |-
-      La spec passe en in-review mais sprint-status.yaml reste en in-progress ; ce fichier est piloté par le workflow de planification de sprint, pas par build-auto.
-    location: >-
-      _bmad-output/implementation-artifacts/sprint-status.yaml:92
-    severity: low
-  - summary: >-
-      Protéger le magasin et le service contre les accès concurrents
-    evidence: |-
-      Aucun appelant concurrent n'est démontré dans cette story ; deux pseudonymisations simultanées sur la même instance établiraient une éventuelle perte de correspondances.
-    location: >-
-      backend/src/iryx/reporting/pseudonymizer.py:410
-    severity: medium (unverified)
-  - summary: >-
       Prévoir une rotation des clés et un re-chiffrement des jetons
     evidence: |-
       Le contrat gèle une clé dérivée de secret_key et case_id ; aucune exigence de rotation n'est formulée et aucun scénario de rotation n'est démontré.
     location: >-
       backend/src/iryx/reporting/pseudonymizer.py:180
     severity: medium
-  - summary: >-
-      Vérifier l'API Presidio avec la version plancher 2.2.35
-    evidence: |-
-      Les versions installées sont 2.2.366 ; exécuter add_anonymizer et anonymize(merge_entities_with_spaces=...) avec presidio-anonymizer==2.2.35 confirmerait ou infirmerait l'écart signalé.
-    location: >-
-      backend/pyproject.toml:35
-    severity: medium (unverified)
 ---
 
 <intent-contract>
@@ -57,7 +36,7 @@ deferred:
 ## Boundaries & Constraints
 
 **Always:**
-- Utiliser Microsoft Presidio (`presidio-analyzer` et `presidio-anonymizer` >=2.2.35) combiné à des `PatternRecognizer` personnalisés pour les adresses IP, noms d'hôtes et comptes utilisateurs.
+- Utiliser Microsoft Presidio (`presidio-analyzer` et `presidio-anonymizer` >=2.2.366) combiné à des `PatternRecognizer` personnalisés pour les adresses IP, noms d'hôtes et comptes utilisateurs.
 - Remplacement déterministe et stable par dossier : une même valeur au sein d'un même `case_id` reçoit toujours strictement le même pseudonyme (ex: `IP_INTERNAL_1`, `HOST_SERVER_01`, `USER_ACCOUNT_A`).
 - Isolation stricte des tables de correspondances par `case_id` : aucun partage ni interférence de pseudonymes entre dossiers différents.
 - Chiffrement symétrique de la table de correspondances locale à l'aide d'une clé dérivée de `Settings.secret_key` et du `case_id` (via `cryptography.fernet.Fernet`).
@@ -85,7 +64,7 @@ deferred:
 
 ## Code Map
 
-- `backend/pyproject.toml:34-36` -- Dépendances `presidio-analyzer>=2.2.35`, `presidio-anonymizer>=2.2.35`, `cryptography>=42.0.0` déjà déclarées et présentes dans `uv.lock` ; lecture seule, aucune modification requise.
+- `backend/pyproject.toml:34-36` -- Dépendances `presidio-analyzer>=2.2.366`, `presidio-anonymizer>=2.2.366`, `cryptography>=42.0.0` ; plancher relevé après vérification d'incompatibilité de `2.2.35`.
 - `backend/src/iryx/core/config.py:10-30,95-98` -- `Settings.secret_key` obligatoire et `get_settings()` mis en cache ; source unique de la clé de dérivation Fernet.
 - `backend/src/iryx/reporting/schemas.py:20-163` -- `PseudonymizeRequest`, `DetectedEntityInfo`, `PseudonymizeResult` déjà définis en Pydantic v2 ; réutiliser tels quels, valeur d'origine absente des métadonnées.
 - `backend/src/iryx/reporting/__init__.py` -- À créer ; exporte `DeterministicPseudonymizer`, `CasePseudonymStore`, `PseudonymStoreError` et les schémas publics.
@@ -182,10 +161,12 @@ Blocage levé : l'utilisateur a demandé le commit (`a0730b5`), l'arbre est de n
 - `backend/tests/unit/test_pseudonymizer.py` — 25 tests couvrant la matrice I/O, le déterminisme, l'isolation, la validation du jeton, l'idempotence et les garde-fous de sécurité.
 - Spec 8.1 — statut, baseline, tâches, triage de revue et éléments reportés mis à jour.
 
-**Revue** : 22 findings — 0 high, 9 medium, 7 low, 2 false, 4 maybe-false. Correctifs appliqués : 8 entrées `medium` et 3 entrées `low` (11 entrées au total, dont les validations d'entités, de clé et de jeton, l'absence d'effet de bord de `export_token()` et quatre tests de verification-gap). Éléments reportés dans `deferred` : synchronisation de `sprint-status.yaml`, accès concurrents, rotation des clés, vérification de l'API Presidio à la version plancher 2.2.35. Findings rejetés : complexité O(N²) sans besoin démontré, libellé d'AC à ne pas modifier dans la spec, absence d'éviction des tables sans API publiques justifiée, divergence H3 hors périmètre de cette story, et `KeyError` sur `SECRET_KEY` infirmé par `conftest.py:16`.
+**Revue** : 22 findings — 0 high, 9 medium, 7 low, 2 false, 4 maybe-false. Correctifs appliqués : 8 entrées `medium` et 3 entrées `low` (11 entrées au total, dont les validations d'entités, de clé et de jeton, l'absence d'effet de bord de `export_token()` et quatre tests de verification-gap). Findings rejetés : complexité O(N²) sans besoin démontré, libellé d'AC à ne pas modifier dans la spec, absence d'éviction des tables sans API publiques justifiée, divergence H3 hors périmètre de cette story, et `KeyError` sur `SECRET_KEY` infirmé par `conftest.py:16`.
+
+**Résolutions post-audit (2026-11-25)** : la synchronisation de `sprint-status.yaml` est traitée par la passe de réconciliation ; un verrou réentrant protège désormais les mutations de `CasePseudonymStore` avec un test de pseudonymisations concurrentes ; le plancher Presidio est relevé à `2.2.366` après vérification que `2.2.35` ne fournit ni moteur `no_op`, ni `add_anonymizer`, ni `merge_entities_with_spaces`. La rotation des clés reste la seule entrée `deferred` de cette story.
 
 **Recommandation de revue de suivi** : `true` — première passe avec plus de deux entrées `medium` corrigées (8 medium, 3 low). Risque précis non vérifié : les motifs de détection restent heuristiques ; un format d'hôte ou de compte hors conventions `SRV-xxxx` / `admin_xx` pourrait échapper à la pseudonymisation, scénario non couvert par la matrice I/O.
 
 **Vérification** : `uv run pytest tests/unit/test_pseudonymizer.py -q` → 25 passed ; `uv run ruff check src/iryx/reporting tests/unit/test_pseudonymizer.py` → All checks passed ; `uv run pytest -q` (backend complet) → 860 passed. Le diff unifié depuis `8bfe83c` a été relu avant et après correctifs.
 
-**Risques résiduels** : détection heuristique limitée aux formats convenus, étiquettes de pseudonymes normalisées partagées entre dossiers (l'isolation porte sur les tables, pas sur les libellés), confidentialité du jeton liée à `SECRET_KEY` et à son non-transit hors serveur, et accès concurrents/rotation de clé non traités (voir `deferred`).
+**Risques résiduels** : détection heuristique limitée aux formats convenus, étiquettes de pseudonymes normalisées partagées entre dossiers (l'isolation porte sur les tables, pas sur les libellés), confidentialité du jeton liée à `SECRET_KEY` et à son non-transit hors serveur, et rotation de clé non traitée (voir `deferred`).

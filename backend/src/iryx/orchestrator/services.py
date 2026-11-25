@@ -22,7 +22,7 @@ from iryx.core.exceptions import (
     ValidationException,
 )
 from iryx.orchestrator.checkpointer import get_checkpointer
-from iryx.orchestrator.graph import build_investigation_graph
+from iryx.orchestrator.graph import _sanitize_context, build_investigation_graph
 from iryx.orchestrator.models import (
     InvestigationRun,
     InvestigationStatus,
@@ -831,7 +831,7 @@ class InvestigationService:
         decision_request: H3DecisionRequest,
         user_id: uuid.UUID | None = None,
     ) -> H3DecisionResponse:
-        """Arbitrate Human Gate H3: approve the external LLM send or fall back to the local template."""
+        """Arbitrate Human Gate H3: approve the external LLM send or use the local template."""
         # Pessimistic row-level lock on InvestigationRun
         run = self.db.scalar(
             select(InvestigationRun)
@@ -865,6 +865,33 @@ class InvestigationService:
                 code="INVALID_GATE_STATE",
                 status_code=400,
             )
+
+        # The checkpointer is the source of truth for gate decisions (Story 5.6).
+        # Persist the H3 verdict there BEFORE advancing the DB run so that a
+        # resume cannot silently re-approve an external LLM send after a reject.
+        approved = decision_request.decision == H3Decision.APPROVE
+        graph = build_investigation_graph(checkpointer=self.checkpointer)
+        config = {"configurable": {"thread_id": str(run.id)}}
+        snapshot = graph.get_state(config)
+        context = dict((snapshot.values or {}).get("context") or {})
+        context["h3_feedback"] = decision_request.feedback
+        if not approved:
+            context["local_report_mode"] = True
+
+        state_update: dict[str, Any] = {
+            "h3_approved": approved,
+            "h3_rejected": not approved,
+            "current_phase": "gate_h3" if approved else "reporting",
+            "status": "running",
+            "context": _sanitize_context(context),
+        }
+        try:
+            graph.update_state(config, state_update)
+        except Exception as exc:
+            raise ValidationException(
+                message="Impossible d'enregistrer la décision H3 dans le checkpointer.",
+                code="H3_DECISION_PERSISTENCE_FAILED",
+            ) from exc
 
         now = datetime.now(UTC)
         run.updated_at = now
@@ -943,7 +970,7 @@ class InvestigationService:
         )
 
     def get_anonymized_preview(self, case_id: uuid.UUID, run_id: uuid.UUID) -> AnonymizedPreviewOut:
-        """Retourne un aperçu anonymisé de la synthèse détenue par le dossier avant l'envoi (porte H3, FR20)."""
+        """Retourne un aperçu pseudonymisé de la synthèse du dossier avant la porte H3 (FR20)."""
         from iryx.analytics.models import Finding, FindingStatus
         from iryx.reporting.pseudonymizer import DeterministicPseudonymizer
 
@@ -1159,19 +1186,29 @@ class InvestigationService:
                     state_update["status"] = "running"
                     if run.validated_plan is not None:
                         state_update["plan"] = run.validated_plan
-                elif run.current_phase in (PhaseName.GATE_H3, "gate_h3"):
+                elif run.current_phase in (
+                    PhaseName.GATE_H3,
+                    PhaseName.WAITING_H3,
+                    "gate_h3",
+                    "waiting_h3",
+                ):
                     state_update["h1_approved"] = True
                     state_update["h2_approved"] = True
-                    state_update["h3_approved"] = True
                     state_update["current_phase"] = "gate_h3"
                     state_update["status"] = "running"
                     if run.validated_plan is not None:
                         state_update["plan"] = run.validated_plan
                 elif run.current_phase in (PhaseName.REPORTING, "reporting"):
+                    snapshot_values = state_snapshot.values or {}
+                    snapshot_context = snapshot_values.get("context") or {}
+                    h3_decided = bool(snapshot_values.get("h3_approved")) or bool(
+                        snapshot_values.get("h3_rejected")
+                    ) or bool(snapshot_context.get("local_report_mode"))
                     state_update["h1_approved"] = True
                     state_update["h2_approved"] = True
-                    state_update["h3_approved"] = True
-                    state_update["current_phase"] = "reporting"
+                    # Sans verdict H3 enregistré, on repasse par la porte au lieu
+                    # de réapprouver implicitement un envoi vers un LLM externe.
+                    state_update["current_phase"] = "reporting" if h3_decided else "gate_h3"
                     state_update["status"] = "running"
                     if run.validated_plan is not None:
                         state_update["plan"] = run.validated_plan
@@ -1192,16 +1229,19 @@ class InvestigationService:
                 }
                 if run.current_phase in (PhaseName.EXECUTOR, PhaseName.EXECUTION):
                     initial_state["h1_approved"] = True
-                elif run.current_phase in (PhaseName.GATE_H3, "gate_h3"):
+                elif run.current_phase in (
+                    PhaseName.GATE_H3,
+                    PhaseName.WAITING_H3,
+                    "gate_h3",
+                    "waiting_h3",
+                    PhaseName.REPORTING,
+                    "reporting",
+                ):
                     initial_state["h1_approved"] = True
                     initial_state["h2_approved"] = True
-                    initial_state["h3_approved"] = True
                     initial_state["plan"] = run.validated_plan
-                elif run.current_phase in (PhaseName.REPORTING, "reporting"):
-                    initial_state["h1_approved"] = True
-                    initial_state["h2_approved"] = True
-                    initial_state["h3_approved"] = True
-                    initial_state["plan"] = run.validated_plan
+                    # Aucun verdict H3 dans le checkpointer : le graphe doit
+                    # s'arrêter à la porte et attendre l'arbitrage humain.
 
                 result = graph.invoke(initial_state, config=config)
         finally:

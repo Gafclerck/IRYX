@@ -504,8 +504,28 @@ def gate_h3_node(state: InvestigationState) -> dict[str, Any]:
 
 
 def reporting_node(state: InvestigationState) -> dict[str, Any]:
-    """Reporting phase: synthesis and generation of sealed incident report."""
-    return {"current_phase": "reporting"}
+    """Reporting phase, guarded by Human Gate H3 (Story 8.2, FR20).
+
+    External LLM drafting is only reachable after an explicit ``h3_approved``.
+    A rejected H3 decision allows the deterministic local template only.
+    Any other entry (including a direct edge traversal) is sent back to the
+    H3 waiting state so no synthesis can leave the platform unauthorised.
+    """
+    context = dict(state.get("context") or {})
+
+    if not state.get("h3_approved") and not (
+        state.get("h3_rejected") or context.get("local_report_mode")
+    ):
+        return {"current_phase": "waiting_h3", "status": "paused"}
+
+    if state.get("h3_rejected"):
+        context["local_report_mode"] = True
+
+    return {
+        "current_phase": "reporting",
+        "status": "running",
+        "context": _sanitize_context(context),
+    }
 
 
 def build_investigation_graph(checkpointer: Any | None = None) -> CompiledStateGraph:

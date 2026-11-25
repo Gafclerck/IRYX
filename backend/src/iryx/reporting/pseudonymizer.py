@@ -14,8 +14,10 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import inspect
 import json
 import re
+import threading
 import uuid
 from collections.abc import Callable
 from typing import Any
@@ -23,7 +25,8 @@ from typing import Any
 from cryptography.fernet import Fernet, InvalidToken
 from presidio_analyzer import AnalyzerEngine, Pattern, PatternRecognizer, RecognizerRegistry
 from presidio_analyzer.nlp_engine import NlpEngineProvider
-from presidio_anonymizer import AnonymizerEngine, OperatorConfig
+from presidio_anonymizer import AnonymizerEngine
+from presidio_anonymizer.entities import OperatorConfig
 from presidio_anonymizer.operators import Operator, OperatorType
 
 from iryx.core.config import get_settings
@@ -45,6 +48,14 @@ SUPPORTED_ENTITY_TYPES: tuple[str, ...] = (
     "HOSTNAME",
     "USER_ACCOUNT",
     "EMAIL_ADDRESS",
+)
+
+# Presidio 2.2.35 (version plancher) n'expose ni ``add_anonymizer`` ni le paramètre
+# ``merge_entities_with_spaces``. Les détecter une fois permet de rester compatible
+# avec le plancher comme avec les versions récentes sans dupliquer le code.
+_HAS_ADD_ANONYMIZER = hasattr(AnonymizerEngine, "add_anonymizer")
+_ANONYMIZE_SUPPORTS_MERGE_SPACES = (
+    "merge_entities_with_spaces" in inspect.signature(AnonymizerEngine.anonymize).parameters
 )
 
 # --- Règles de détection déterministes ----------------------------------------------
@@ -180,6 +191,10 @@ class CasePseudonymStore:
             raise ValueError("La clé secrète de pseudonymisation ne peut pas être vide.")
         self._key = self.derive_key(self.case_id, resolved_key)
         self._fernet = Fernet(self._key)
+        # Le jeton canonique est muté par une séquence déchiffrer→modifier→chiffrer.
+        # Un verrou réentrant garantit qu'un accès concurrent sur le même dossier
+        # ne puisse pas écraser une correspondance venant d'être attribuée.
+        self._lock = threading.RLock()
         self._token: bytes | None = None
         if token is not None:
             self.import_token(token)
@@ -199,29 +214,34 @@ class CasePseudonymStore:
     @property
     def has_mappings(self) -> bool:
         """Indique si au moins un pseudonyme a été attribué."""
-        return any(self._read_state().values())
+        with self._lock:
+            return any(self._read_state().values())
 
     def export_token(self) -> str:
         """Exporte l'état canonique chiffré sous forme de jeton Fernet ASCII."""
-        if self._token is None:
-            return self._encrypt_state({}).decode("ascii")
-        return self._token.decode("ascii")
+        with self._lock:
+            if self._token is None:
+                return self._encrypt_state({}).decode("ascii")
+            return self._token.decode("ascii")
 
     def import_token(self, token: str | bytes) -> None:
         """Importe et valide un jeton chiffré, ou lève PseudonymStoreError."""
-        try:
-            raw = token.encode("ascii") if isinstance(token, str) else bytes(token)
-            self._fernet.decrypt(raw)
-        except (InvalidToken, TypeError, ValueError, UnicodeEncodeError):
-            raise PseudonymStoreError("Jeton de pseudonymisation invalide ou corrompu.") from None
+        with self._lock:
+            try:
+                raw = token.encode("ascii") if isinstance(token, str) else bytes(token)
+                self._fernet.decrypt(raw)
+            except (InvalidToken, TypeError, ValueError, UnicodeEncodeError):
+                raise PseudonymStoreError(
+                    "Jeton de pseudonymisation invalide ou corrompu."
+                ) from None
 
-        previous = self._token
-        self._token = raw
-        try:
-            self._read_state()
-        except PseudonymStoreError:
-            self._token = previous
-            raise
+            previous = self._token
+            self._token = raw
+            try:
+                self._read_state()
+            except PseudonymStoreError:
+                self._token = previous
+                raise
 
     def get_pseudonym(self, entity_type: str, original_value: str) -> str:
         """Retourne le pseudonyme stable d'une valeur, en l'attribuant à la première utilisation."""
@@ -230,34 +250,37 @@ class CasePseudonymStore:
         if not isinstance(original_value, str) or not original_value:
             raise PseudonymStoreError("Valeur d'entité invalide.")
 
-        mappings = self._read_state()
-        bucket = mappings.setdefault(entity_type, {})
-        existing = bucket.get(original_value)
-        if existing is not None:
-            return existing
+        with self._lock:
+            mappings = self._read_state()
+            bucket = mappings.setdefault(entity_type, {})
+            existing = bucket.get(original_value)
+            if existing is not None:
+                return existing
 
-        counters = _recompute_counters(mappings)
-        index = counters.get(entity_type, 0) + 1
-        used = set(bucket.values())
-        pseudonym = _format_pseudonym(entity_type, index)
-        while pseudonym in used:
-            index += 1
+            counters = _recompute_counters(mappings)
+            index = counters.get(entity_type, 0) + 1
+            used = set(bucket.values())
             pseudonym = _format_pseudonym(entity_type, index)
-        bucket[original_value] = pseudonym
-        self._write_state(mappings)
-        return pseudonym
+            while pseudonym in used:
+                index += 1
+                pseudonym = _format_pseudonym(entity_type, index)
+            bucket[original_value] = pseudonym
+            self._write_state(mappings)
+            return pseudonym
 
     def get_original(self, pseudonym: str) -> str | None:
         """Retourne la valeur d'origine d'un pseudonyme, si elle existe dans ce dossier."""
-        for bucket in self._read_state().values():
-            for original, assigned in bucket.items():
-                if assigned == pseudonym:
-                    return original
-        return None
+        with self._lock:
+            for bucket in self._read_state().values():
+                for original, assigned in bucket.items():
+                    if assigned == pseudonym:
+                        return original
+            return None
 
     def depseudonymize(self, text: str) -> str:
         """Restaure les valeurs d'origine à partir des pseudonymes présents dans le texte."""
-        mappings = self._read_state()
+        with self._lock:
+            mappings = self._read_state()
         pairs = [
             (pseudonym, original)
             for bucket in mappings.values()
@@ -419,7 +442,8 @@ class DeterministicPseudonymizer:
         self._stores: dict[str, CasePseudonymStore] = {}
         self._analyzer = _build_analyzer()
         self._anonymizer = AnonymizerEngine()
-        self._anonymizer.add_anonymizer(_PseudonymizingOperator)
+        if _HAS_ADD_ANONYMIZER:
+            self._anonymizer.add_anonymizer(_PseudonymizingOperator)
 
     def get_store(self, case_id: str | uuid.UUID) -> CasePseudonymStore:
         """Retourne (ou crée paresseusement) le magasin chiffré dédié à un dossier."""
@@ -537,12 +561,14 @@ class DeterministicPseudonymizer:
             entity_type: OperatorConfig("pseudonymize", {"resolver": resolver})
             for entity_type in SUPPORTED_ENTITY_TYPES
         }
-        anonymized = self._anonymizer.anonymize(
-            text=text,
-            analyzer_results=selected,
-            operators=operators,
-            merge_entities_with_spaces=False,
-        )
+        anonymize_kwargs: dict[str, Any] = {
+            "text": text,
+            "analyzer_results": selected,
+            "operators": operators,
+        }
+        if _ANONYMIZE_SUPPORTS_MERGE_SPACES:
+            anonymize_kwargs["merge_entities_with_spaces"] = False
+        anonymized = self._anonymizer.anonymize(**anonymize_kwargs)
 
         return PseudonymizeResult(
             case_id=normalized_case_id,

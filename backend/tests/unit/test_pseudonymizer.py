@@ -7,6 +7,7 @@ ainsi que les garanties de chiffrement, d'isolation et de non-divulgation.
 import json
 import os
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from cryptography.fernet import Fernet
@@ -316,3 +317,19 @@ class TestEncryptedCasePseudonymStore:
 
         with pytest.raises(PseudonymStoreError, match="dupliqué"):
             CasePseudonymStore(case_id, secret_key=SECRET_KEY, token=token)
+
+    def test_concurrent_pseudonymizations_do_not_lose_mappings(self) -> None:
+        """Des attributions simultanées conservent toutes les correspondances du dossier."""
+        case_id = "case-concurrent"
+        store = CasePseudonymStore(case_id, secret_key=SECRET_KEY)
+        values = [f"10.0.0.{index}" for index in range(1, 9)]
+
+        with ThreadPoolExecutor(max_workers=len(values)) as executor:
+            assigned = list(
+                executor.map(lambda value: store.get_pseudonym("IP_ADDRESS", value), values)
+            )
+
+        assert len(set(assigned)) == len(values)
+        restored = CasePseudonymStore(case_id, secret_key=SECRET_KEY, token=store.export_token())
+        for value, pseudonym in zip(values, assigned, strict=True):
+            assert restored.get_pseudonym("IP_ADDRESS", value) == pseudonym

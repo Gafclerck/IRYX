@@ -160,7 +160,16 @@ def test_node_functions_return_expected_updates() -> None:
     assert h3_rejected_res["current_phase"] == "reporting"
     assert h3_rejected_res["status"] == "running"
     assert h3_rejected_res["context"]["local_report_mode"] is True
-    assert reporting_node(state_without_evidence) == {"current_phase": "reporting"}
+
+    # Reporting is unreachable without a recorded H3 verdict (FR20 barrier).
+    assert reporting_node(state_without_evidence) == {
+        "current_phase": "waiting_h3",
+        "status": "paused",
+    }
+    assert reporting_node({"h3_approved": True})["current_phase"] == "reporting"
+    rejected_report = reporting_node({"h3_rejected": True})
+    assert rejected_report["current_phase"] == "reporting"
+    assert rejected_report["context"]["local_report_mode"] is True
 
 
 def test_planner_node_with_pre_set_plan() -> None:
@@ -600,7 +609,7 @@ def test_graph_suspends_automatically_at_gate_h1() -> None:
 
 
 def test_graph_execution_flow_with_approved_plan() -> None:
-    """Verify execution flows through executor to reporting when h1_approved is True."""
+    """Verify execution flows to reporting when H1, H2 and H3 are all approved."""
     graph = build_investigation_graph()
     initial_state: InvestigationState = {
         "case_id": "test-case-123",
@@ -608,6 +617,7 @@ def test_graph_execution_flow_with_approved_plan() -> None:
         "plan": _create_sample_pre_set_plan(),
         "h1_approved": True,
         "h2_approved": True,
+        "h3_approved": True,
         "iteration_count": 0,
         "error_count": 0,
     }
@@ -756,6 +766,7 @@ def test_graph_compilation_with_checkpointer() -> None:
         "plan": _create_sample_pre_set_plan(),
         "h1_approved": True,
         "h2_approved": True,
+        "h3_approved": True,
         "iteration_count": 0,
         "error_count": 0,
     }

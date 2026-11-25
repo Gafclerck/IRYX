@@ -84,6 +84,18 @@ class Settings(BaseSettings):
         return v
 
     @model_validator(mode="after")
+    def reject_default_jwt_secret_in_production(self) -> "Settings":
+        """Refuse the bundled development JWT key when running in production."""
+        default_jwt_secret = "change-me-in-production-use-a-strong-jwt-secret-key"
+        environment = self.environment.strip().lower()
+        if environment in {"production", "prod"} and self.jwt_secret_key == default_jwt_secret:
+            raise ValueError(
+                "JWT_SECRET_KEY must be explicitly set in production: the default "
+                "development key is not allowed."
+            )
+        return self
+
+    @model_validator(mode="after")
     def set_default_staging_path(self) -> "Settings":
         """Default evidence_staging_path to {evidence_storage_path}/staging if not set."""
         if not self.evidence_staging_path:

@@ -29,7 +29,7 @@ Implémenter la pseudonymisation déterministe des entités sensibles via Micros
 - **D-05 / D-06 / D-07 (PostgreSQL 16, SQLAlchemy 2.x, Alembic)** : Modèles relationnels `Report` et `AuditEvent` avec migration Alembic et fonction/trigger PostgreSQL d'interdiction formelle des modifications / suppressions.
 - **D-09 / D-10 (LangGraph & Client LLM unifié)** : Nœuds de graphe pour la porte H3 et l'agent Rapporteur, utilisant le client LLM paramétré avec réessais Tenacity.
 - **D-14 (Hashlib SHA-256)** : Calcul de l'empreinte cryptographique des rapports générés et du payload des événements d'audit.
-- **D-19 (Microsoft Presidio)** : Intégration de `presidio-analyzer` et `presidio-anonymizer` (>=2.2.35) avec recognizers regex adaptés aux artefacts forensiques.
+- **D-19 (Microsoft Presidio)** : Intégration de `presidio-analyzer` et `presidio-anonymizer` (>=2.2.366, version plancher validée) avec recognizers regex adaptés aux artefacts forensiques.
 - **D-23 (Logging structuré)** : Traçabilité des actions sans secrets (zéro token, clé d'API ou mot de passe dans les logs et événements d'audit).
 
 ## Cross-Story Dependencies

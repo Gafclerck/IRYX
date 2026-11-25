@@ -1801,6 +1801,203 @@
         }
       }
     },
+    "/api/v1/cases/{case_id}/investigations/{run_id}/gates/h2": {
+      "post": {
+        "tags": [
+          "Orchestrator"
+        ],
+        "summary": "Arbitrage de la porte de validation humaine H2",
+        "description": "Permet à un analyste ou enquêteur de valider ('proceed') ou rejeter ('reject') l'ensemble des constats formulés à la porte H2. La décision 'proceed' exige que tous les constats soient préalablement arbitrés. Réservé aux rôles ADMIN, INVESTIGATOR et ANALYST (interdit aux VIEWERS).",
+        "operationId": "arbitrate_gate_h2_api_v1_cases__case_id__investigations__run_id__gates_h2_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/H2DecisionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/H2DecisionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases/{case_id}/investigations/{run_id}/gates/h3": {
+      "post": {
+        "tags": [
+          "Orchestrator"
+        ],
+        "summary": "Arbitrage de la porte de validation humaine H3",
+        "description": "Permet à un analyste ou enquêteur d'approuver ('approve') ou de refuser ('reject') l'envoi de la synthèse pseudonymisée vers un LLM externe à la porte H3. L'approbation débloque l'étape de rédaction assistée par LLM externe vers le nœud reporting ; le refus active le gabarit déterministe local sans appel LLM. Réservé aux rôles ADMIN, INVESTIGATOR et ANALYST (interdit aux VIEWERS).",
+        "operationId": "arbitrate_gate_h3_api_v1_cases__case_id__investigations__run_id__gates_h3_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/H3DecisionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/H3DecisionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases/{case_id}/investigations/{run_id}/anonymized-preview": {
+      "get": {
+        "tags": [
+          "Orchestrator"
+        ],
+        "summary": "Aperçu anonymisé de la synthèse avant envoi (porte H3)",
+        "description": "Retourne la version intégrale pseudonymisée de la synthèse du dossier avant tout appel vers un LLM externe, afin de la vérifier à la porte H3.",
+        "operationId": "get_anonymized_preview_api_v1_cases__case_id__investigations__run_id__anonymized_preview_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnonymizedPreviewOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/cases/{case_id}/investigations/{run_id}/resume": {
       "post": {
         "tags": [
@@ -2241,6 +2438,350 @@
         }
       }
     },
+    "/api/v1/cases/{case_id}/findings/{finding_id}/review": {
+      "post": {
+        "tags": [
+          "Findings"
+        ],
+        "summary": "Revue humaine d'un constat d'investigation (Gate H2)",
+        "description": "Permet à un analyste SOC/DFIR de valider ou rejeter un constat d'investigation en ajustant optionnellement sa sévérité et son niveau de confiance. Exige un rôle opérationnel ('admin', 'investigator', 'analyst').",
+        "operationId": "review_finding_api_v1_cases__case_id__findings__finding_id__review_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "finding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Finding Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FindingReview"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases/{case_id}/timeline": {
+      "get": {
+        "tags": [
+          "Findings",
+          "Timeline"
+        ],
+        "summary": "Consultation paginée et filtrage de la Timeline d'enquête (NFR-PERF-07)",
+        "description": "Retourne la liste paginée et filtrée des événements chronologiques de la timeline d'un dossier. Projection dynamique purement calculée (Invariant 2) ordonnée par timestamp_utc ASC, id ASC.",
+        "operationId": "get_timeline_api_v1_cases__case_id__timeline_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Nombre maximum d'événements par page (défaut 50, borné entre 1 et 100).",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "Nombre maximum d'événements par page (défaut 50, borné entre 1 et 100)."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Index de départ pour la pagination (>= 0).",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Index de départ pour la pagination (>= 0)."
+          },
+          {
+            "name": "start_time",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtre temporel de début (format ISO-8601 UTC).",
+              "title": "Start Time"
+            },
+            "description": "Filtre temporel de début (format ISO-8601 UTC)."
+          },
+          {
+            "name": "end_time",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtre temporel de fin (format ISO-8601 UTC).",
+              "title": "End Time"
+            },
+            "description": "Filtre temporel de fin (format ISO-8601 UTC)."
+          },
+          {
+            "name": "tool_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtrer par nom de l'outil extracteur.",
+              "title": "Tool Name"
+            },
+            "description": "Filtrer par nom de l'outil extracteur."
+          },
+          {
+            "name": "evidence_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtrer par identifiant de la preuve source.",
+              "title": "Evidence Id"
+            },
+            "description": "Filtrer par identifiant de la preuve source."
+          },
+          {
+            "name": "is_correlated",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtrer uniquement les événements corrélés (True/False).",
+              "title": "Is Correlated"
+            },
+            "description": "Filtrer uniquement les événements corrélés (True/False)."
+          },
+          {
+            "name": "correlated_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Alias pour is_correlated=True.",
+              "title": "Correlated Only"
+            },
+            "description": "Alias pour is_correlated=True."
+          },
+          {
+            "name": "correlation_marker",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtrer par marqueur visuel de corrélation (ex: 'corr-{finding_id}').",
+              "title": "Correlation Marker"
+            },
+            "description": "Filtrer par marqueur visuel de corrélation (ex: 'corr-{finding_id}')."
+          },
+          {
+            "name": "finding_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtrer les événements associés à un constat spécifique.",
+              "title": "Finding Id"
+            },
+            "description": "Filtrer les événements associés à un constat spécifique."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimelineListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases/{case_id}/timeline/correlations": {
+      "get": {
+        "tags": [
+          "Findings",
+          "Timeline"
+        ],
+        "summary": "Consultation des groupes de corrélations multi-sources d'une enquête",
+        "description": "Retourne la liste structurée des groupes de corrélation multi-sources identifiés à partir des Findings validés superposés aux observations sources (Invariant 2, projection pure).",
+        "operationId": "get_timeline_correlations_api_v1_cases__case_id__timeline_correlations_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimelineCorrelationsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": [
@@ -2265,6 +2806,45 @@
   },
   "components": {
     "schemas": {
+      "AnonymizedPreviewOut": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Run Id"
+          },
+          "case_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Case Id"
+          },
+          "anonymized_text": {
+            "type": "string",
+            "title": "Anonymized Text",
+            "description": "Texte pseudonymisé proposé à l'envoi."
+          },
+          "entity_count": {
+            "type": "integer",
+            "title": "Entity Count",
+            "description": "Nombre d'entités démasquées puis pseudonymisées.",
+            "default": 0
+          },
+          "has_entities": {
+            "type": "boolean",
+            "title": "Has Entities",
+            "description": "Indique si au moins une entité a été anonymisée.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "case_id",
+          "anonymized_text"
+        ],
+        "title": "AnonymizedPreviewOut",
+        "description": "Aperçu anonymisé de la synthèse soumise à l'envoi externe (porte H3, FR20)."
+      },
       "Body_upload_evidence_api_v1_cases__case_id__evidences_post": {
         "properties": {
           "file": {
@@ -2441,6 +3021,153 @@
         ],
         "title": "CaseStatusUpdate",
         "description": "Schema for updating the operational lifecycle status of a case."
+      },
+      "CorrelationGroupOut": {
+        "properties": {
+          "correlation_marker": {
+            "type": "string",
+            "title": "Correlation Marker",
+            "description": "Marqueur visuel de corrélation partagé (ex: 'corr-{finding_id}')."
+          },
+          "correlation_id": {
+            "type": "string",
+            "title": "Correlation Id",
+            "description": "Identifiant unique de corrélation."
+          },
+          "finding_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Finding Id",
+            "description": "Identifiant unique du constat validé fédérateur."
+          },
+          "finding_title": {
+            "type": "string",
+            "title": "Finding Title",
+            "description": "Intitulé du constat validé."
+          },
+          "finding": {
+            "$ref": "#/components/schemas/TimelineFindingRef",
+            "description": "Référence complète au constat validé."
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/TimelineEventOut"
+            },
+            "type": "array",
+            "title": "Events",
+            "description": "Événements horodatés participant à la corrélation multi-sources."
+          },
+          "undated_events": {
+            "items": {
+              "$ref": "#/components/schemas/UndatedFactOut"
+            },
+            "type": "array",
+            "title": "Undated Events",
+            "description": "Faits non horodatés associés au constat."
+          },
+          "tools": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tools",
+            "description": "Outils forensiques distincts impliqués dans la corrélation."
+          },
+          "sources": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Sources",
+            "description": "Identifiants des preuves scellées sources distinctes."
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Evidence Ids",
+            "description": "Alias de sources pour compatibilité des clients."
+          },
+          "total_events": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Events",
+            "description": "Nombre total d'événements horodatés corrélés.",
+            "default": 0
+          },
+          "events_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Events Count",
+            "description": "Alias de total_events.",
+            "default": 0
+          },
+          "total_undated": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Undated",
+            "description": "Nombre total de faits non horodatés associés au constat.",
+            "default": 0
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time",
+            "description": "Horodatage UTC du premier événement du groupe."
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time",
+            "description": "Horodatage UTC du dernier événement du groupe."
+          },
+          "time_span_seconds": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Time Span Seconds",
+            "description": "Durée temporelle en secondes couverte par le groupe.",
+            "default": 0.0
+          },
+          "is_multi_tool": {
+            "type": "boolean",
+            "title": "Is Multi Tool",
+            "description": "Indique si le groupe associe au moins deux outils distincts.",
+            "default": false
+          },
+          "is_multi_source": {
+            "type": "boolean",
+            "title": "Is Multi Source",
+            "description": "Indique si le groupe associe au moins deux preuves/sources distinctes.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "correlation_marker",
+          "correlation_id",
+          "finding_id",
+          "finding_title",
+          "finding"
+        ],
+        "title": "CorrelationGroupOut",
+        "description": "Group of timeline events correlated across multiple sources or tools.\n\nFormed by a validated finding linking observations from distinct tools or sources."
       },
       "EvidenceIngestionStatusResponse": {
         "properties": {
@@ -2827,6 +3554,47 @@
         "title": "FindingOut",
         "description": "Public representation of an investigation finding."
       },
+      "FindingReview": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "validate",
+              "reject"
+            ],
+            "title": "Action",
+            "description": "Décision de revue humaine : 'validate' ou 'reject'."
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FindingSeverity"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ajustement optionnel du niveau de sévérité."
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FindingConfidence"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ajustement optionnel du niveau de confiance."
+          }
+        },
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "title": "FindingReview",
+        "description": "Schema for analyst human-in-the-loop review at Gate H2."
+      },
       "FindingSeverity": {
         "type": "string",
         "enum": [
@@ -3078,6 +3846,184 @@
         ],
         "title": "H1DecisionResponse",
         "description": "Response returned after Human Gate H1 arbitration."
+      },
+      "H2Decision": {
+        "type": "string",
+        "enum": [
+          "proceed",
+          "reject"
+        ],
+        "title": "H2Decision",
+        "description": "Arbitration decisions for Human Gate H2."
+      },
+      "H2DecisionRequest": {
+        "properties": {
+          "decision": {
+            "$ref": "#/components/schemas/H2Decision",
+            "description": "Arbitration decision: 'proceed' or 'reject'."
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback",
+            "description": "Analyst feedback or observations."
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision"
+        ],
+        "title": "H2DecisionRequest",
+        "description": "Payload submitted by analyst to arbitrate Human Gate H2."
+      },
+      "H2DecisionResponse": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Run Id"
+          },
+          "case_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Case Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/InvestigationStatus"
+          },
+          "current_phase": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PhaseName"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Current Phase"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/H2Decision"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "phases": {
+            "items": {
+              "$ref": "#/components/schemas/PhaseOut"
+            },
+            "type": "array",
+            "title": "Phases"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "case_id",
+          "status",
+          "current_phase",
+          "decision",
+          "message"
+        ],
+        "title": "H2DecisionResponse",
+        "description": "Response returned after Human Gate H2 arbitration."
+      },
+      "H3Decision": {
+        "type": "string",
+        "enum": [
+          "approve",
+          "reject"
+        ],
+        "title": "H3Decision",
+        "description": "Arbitration decisions for Human Gate H3."
+      },
+      "H3DecisionRequest": {
+        "properties": {
+          "decision": {
+            "$ref": "#/components/schemas/H3Decision",
+            "description": "Arbitration decision: 'approve' or 'reject' (mode hors-ligne)."
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback",
+            "description": "Analyst feedback or observations."
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision"
+        ],
+        "title": "H3DecisionRequest",
+        "description": "Payload submitted by analyst to arbitrate Human Gate H3."
+      },
+      "H3DecisionResponse": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Run Id"
+          },
+          "case_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Case Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/InvestigationStatus"
+          },
+          "current_phase": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PhaseName"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Current Phase"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/H3Decision"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "phases": {
+            "items": {
+              "$ref": "#/components/schemas/PhaseOut"
+            },
+            "type": "array",
+            "title": "Phases"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "case_id",
+          "status",
+          "current_phase",
+          "decision",
+          "message"
+        ],
+        "title": "H3DecisionResponse",
+        "description": "Response returned after Human Gate H3 arbitration."
       },
       "HTTPValidationError": {
         "properties": {
@@ -3691,8 +4637,10 @@
           "verifier",
           "verification",
           "gate_h2",
+          "waiting_h2",
           "pseudonymization",
           "gate_h3",
+          "waiting_h3",
           "reporting"
         ],
         "title": "PhaseName",
@@ -3763,6 +4711,294 @@
         ],
         "title": "PhaseStatus",
         "description": "Lifecycle statuses for a phase execution."
+      },
+      "TimelineCorrelationsResponse": {
+        "properties": {
+          "case_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Case Id",
+            "description": "Identifiant du dossier d'investigation."
+          },
+          "correlations": {
+            "items": {
+              "$ref": "#/components/schemas/CorrelationGroupOut"
+            },
+            "type": "array",
+            "title": "Correlations",
+            "description": "Liste structurée des groupes de corrélations multi-sources."
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/CorrelationGroupOut"
+            },
+            "type": "array",
+            "title": "Groups",
+            "description": "Alias de correlations pour compatibilité."
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CorrelationGroupOut"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Alias standardisé de collection pour clients API."
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total",
+            "description": "Nombre total de groupes de corrélation.",
+            "default": 0
+          },
+          "total_groups": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Groups",
+            "description": "Alias de total.",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "case_id"
+        ],
+        "title": "TimelineCorrelationsResponse",
+        "description": "Response containing structured multi-source correlation groups for a case."
+      },
+      "TimelineEventOut": {
+        "properties": {
+          "observation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Observation Id",
+            "description": "Identifiant unique de l'observation source."
+          },
+          "tool_name": {
+            "type": "string",
+            "title": "Tool Name",
+            "description": "Nom de l'outil générateur de l'observation."
+          },
+          "tool_execution_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Execution Id",
+            "description": "Identifiant de l'exécution d'outil source."
+          },
+          "evidence_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Id",
+            "description": "Identifiant de la preuve scellée source."
+          },
+          "evidence_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Name",
+            "description": "Nom original du fichier de preuve scellé."
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "description": "Résumé textuel synthétique du fait technique."
+          },
+          "source_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Location",
+            "description": "Emplacement de l'artefact source."
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details",
+            "description": "Contenu technique normalisé intégral (normalized_content)."
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/TimelineFindingRef"
+            },
+            "type": "array",
+            "title": "Findings",
+            "description": "Findings validés superposés à cet événement source."
+          },
+          "correlation_marker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Marker",
+            "description": "Marqueur visuel de corrélation partagé (ex: 'corr-{finding_id}')."
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id",
+            "description": "Identifiant unique de corrélation (alias de correlation_marker)."
+          },
+          "correlation_markers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Correlation Markers",
+            "description": "Liste de tous les marqueurs visuels de corrélation associés."
+          },
+          "is_correlated": {
+            "type": "boolean",
+            "title": "Is Correlated",
+            "description": "Indicateur d'appartenance à un groupe de corrélation multi-sources.",
+            "default": false
+          },
+          "timestamp_utc": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp Utc",
+            "description": "Horodatage UTC strict de l'événement."
+          }
+        },
+        "type": "object",
+        "required": [
+          "observation_id",
+          "tool_name",
+          "summary",
+          "timestamp_utc"
+        ],
+        "title": "TimelineEventOut",
+        "description": "Public representation of a dated timeline event ordered in UTC."
+      },
+      "TimelineFindingRef": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "Identifiant unique du constat validé."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Intitulé concis du constat."
+          },
+          "severity": {
+            "$ref": "#/components/schemas/FindingSeverity",
+            "description": "Niveau de sévérité du constat."
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/FindingConfidence",
+            "description": "Niveau de confiance du constat.",
+            "default": "medium"
+          },
+          "finding_type": {
+            "$ref": "#/components/schemas/FindingType",
+            "description": "Type de constat ('fact', 'inference', 'hypothesis').",
+            "default": "fact"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "severity"
+        ],
+        "title": "TimelineFindingRef",
+        "description": "Reference summary of a validated finding superimposed onto timeline events."
+      },
+      "TimelineListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TimelineEventOut"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Événements chronologiques de la timeline pour la page courante."
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/TimelineEventOut"
+            },
+            "type": "array",
+            "title": "Events",
+            "description": "Alias d'items pour compatibilité et flexibilité des clients d'API."
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total",
+            "description": "Nombre total d'événements correspondant aux filtres.",
+            "default": 0
+          },
+          "total_items": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Items",
+            "description": "Alias standardisé de total.",
+            "default": 0
+          },
+          "limit": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "description": "Nombre d'éléments par page."
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Offset",
+            "description": "Décalage pour pagination."
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "description": "Vrai si des événements supplémentaires existent."
+          }
+        },
+        "type": "object",
+        "required": [
+          "limit",
+          "offset",
+          "has_more"
+        ],
+        "title": "TimelineListResponse",
+        "description": "Paginated collection of chronological timeline events (Story 7.2, NFR-PERF-07)."
       },
       "TokenResponse": {
         "properties": {
@@ -3960,6 +5196,149 @@
         ],
         "title": "ToolMetadataResponse",
         "description": "Metadata response describing a registered forensic tool."
+      },
+      "UndatedFactOut": {
+        "properties": {
+          "observation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Observation Id",
+            "description": "Identifiant unique de l'observation source."
+          },
+          "tool_name": {
+            "type": "string",
+            "title": "Tool Name",
+            "description": "Nom de l'outil générateur de l'observation."
+          },
+          "tool_execution_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Execution Id",
+            "description": "Identifiant de l'exécution d'outil source."
+          },
+          "evidence_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Id",
+            "description": "Identifiant de la preuve scellée source."
+          },
+          "evidence_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Name",
+            "description": "Nom original du fichier de preuve scellé."
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "description": "Résumé textuel synthétique du fait technique."
+          },
+          "source_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Location",
+            "description": "Emplacement de l'artefact source."
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details",
+            "description": "Contenu technique normalisé intégral (normalized_content)."
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/TimelineFindingRef"
+            },
+            "type": "array",
+            "title": "Findings",
+            "description": "Findings validés superposés à cet événement source."
+          },
+          "correlation_marker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Marker",
+            "description": "Marqueur visuel de corrélation partagé (ex: 'corr-{finding_id}')."
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id",
+            "description": "Identifiant unique de corrélation (alias de correlation_marker)."
+          },
+          "correlation_markers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Correlation Markers",
+            "description": "Liste de tous les marqueurs visuels de corrélation associés."
+          },
+          "is_correlated": {
+            "type": "boolean",
+            "title": "Is Correlated",
+            "description": "Indicateur d'appartenance à un groupe de corrélation multi-sources.",
+            "default": false
+          },
+          "timestamp_utc": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp Utc",
+            "description": "Horodatage nul pour les faits non horodatés."
+          }
+        },
+        "type": "object",
+        "required": [
+          "observation_id",
+          "tool_name",
+          "summary"
+        ],
+        "title": "UndatedFactOut",
+        "description": "Public representation of an undated technical fact."
       },
       "UserResponse": {
         "properties": {

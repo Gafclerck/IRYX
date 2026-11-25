@@ -26,7 +26,7 @@ phases:
       epics_and_stories: epics.md
       sprint_status: sprint-status.yaml
   implementation:
-    status: not-started
+    status: in-progress
     artifacts:
       sprint_tracking: sprint-status.yaml
       code_review: null

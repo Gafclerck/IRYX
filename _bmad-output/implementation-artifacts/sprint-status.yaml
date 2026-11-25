@@ -29,68 +29,68 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 11-23-2026 17:18
-last_updated: 11-25-2026 11:15
+last_updated: 11-25-2026 18:45
 project: IRYX
 project_key: NOKEY
 story_location: D:\MY_PROEJCT\IRYX\_bmad-output\implementation-artifacts
 tracking_system: file-system
 development_status:
-  epic-1: in-progress
+  epic-1: done
   1-1-initialisation-du-socle-applicatif-fastapi-configuration-pyd: done
   1-2-infrastructure-de-base-de-données-postgresql-16-sessions-sql: done
   1-3-modèle-utilisateur-user-hachage-sécurisé-argon2-et-migration: done
-  1-4-service-d-authentification-jwt-et-endpoint-de-connexion-api: review
+  1-4-service-d-authentification-jwt-et-endpoint-de-connexion-api: done
   epic-1-retrospective: optional
 
-  epic-2: in-progress
-  2-1-modèles-organization-et-membership-migration-alembic-et-sché: review
-  2-2-api-de-gestion-des-organisations-et-attribution-des-rôles-rb: review
-  2-3-modèle-case-migration-alembic-et-gestion-du-cycle-de-vie-des: review
+  epic-2: done
+  2-1-modèles-organization-et-membership-migration-alembic-et-sché: done
+  2-2-api-de-gestion-des-organisations-et-attribution-des-rôles-rb: done
+  2-3-modèle-case-migration-alembic-et-gestion-du-cycle-de-vie-des: done
   2-4-dépendance-de-sécurité-verify_case_access-et-isolation-stric: done
   epic-2-retrospective: optional
 
-  epic-3: in-progress
+  epic-3: done
   3-1-modèles-evidence-et-ingestionrun-migrations-alembic-et-confi: done
   3-2-endpoint-de-téléversement-de-preuves-et-protection-contre-l: done
-  3-3-tâche-celery-d-ingestion-scellement-sha-256-détection-filety: review
+  3-3-tâche-celery-d-ingestion-scellement-sha-256-détection-filety: done
   3-4-consultation-de-l-état-d-ingestion-par-polling-rest-et-consu: done
   epic-3-retrospective: optional
 
-  epic-4: in-progress
-  4-1-registre-de-la-gateway-forensique-modèle-toolexecution-et-cl: review
-  4-2-analyseur-de-logs-texte-et-csv-avec-normalisation-des-horoda: review
-  4-3-analyseur-de-journaux-d-événements-windows-evtx-python-evtx: review
-  4-4-analyseur-de-ruches-de-registre-windows-regipy-fr13: review
-  4-5-analyseur-d-artefacts-d-exécution-windows-prefetch-dissect-f: review
-  4-6-analyseur-de-mémoire-vive-volatility-3-avec-symboles-isf-hor: review
-  4-7-troncature-contextuelle-résumé-des-résultats-d-outils-et-end: review
+  epic-4: done
+  4-1-registre-de-la-gateway-forensique-modèle-toolexecution-et-cl: done
+  4-2-analyseur-de-logs-texte-et-csv-avec-normalisation-des-horoda: done
+  4-3-analyseur-de-journaux-d-événements-windows-evtx-python-evtx: done
+  4-4-analyseur-de-ruches-de-registre-windows-regipy-fr13: done
+  4-5-analyseur-d-artefacts-d-exécution-windows-prefetch-dissect-f: done
+  4-6-analyseur-de-mémoire-vive-volatility-3-avec-symboles-isf-hor: done
+  4-7-troncature-contextuelle-résumé-des-résultats-d-outils-et-end: done
   epic-4-retrospective: optional
 
-  epic-5: in-progress
+  epic-5: done
   5-1-client-llm-unifié-openai-avec-réessais-tenacity-et-prompts-s: done
-  5-2-modèles-investigationrun-et-phase-schémas-et-initialisation: review
-  5-3-agent-planner-et-proposition-de-plan-d-investigation-borné-f: review
+  5-2-modèles-investigationrun-et-phase-schémas-et-initialisation: done
+  5-3-agent-planner-et-proposition-de-plan-d-investigation-borné-f: done
   5-4-porte-humaine-h1-validation-du-plan-d-action-et-api-d-arbitr: done
   5-5-agent-executor-procédural-et-dispatch-sécurisé-vers-la-gatew: done
   5-6-persistance-transactionnelle-d-état-checkpointer-postgresql: done
   epic-5-retrospective: optional
 
-  epic-6: in-progress
-  6-1-modèle-finding-schémas-pydantic-et-migration-alembic: review
-  6-2-agent-analyst-et-formulation-structurée-des-constats-d-enquê: review
-  6-3-composant-verifier-déterministe-formel-sans-appel-llm-fr23-n: review
-  6-4-porte-humaine-h2-validation-des-findings-et-api-de-revue-fr1: review
+  epic-6: done
+  6-1-modèle-finding-schémas-pydantic-et-migration-alembic: done
+  6-2-agent-analyst-et-formulation-structurée-des-constats-d-enquê: done
+  6-3-composant-verifier-déterministe-formel-sans-appel-llm-fr23-n: done
+  6-4-porte-humaine-h2-validation-des-findings-et-api-de-revue-fr1: done
   epic-6-retrospective: optional
 
-  epic-7: in-progress
-  7-1-service-de-reconstruction-et-de-corrélation-de-la-chronologi: review
+  epic-7: done
+  7-1-service-de-reconstruction-et-de-corrélation-de-la-chronologi: done
   7-2-api-de-consultation-paginée-et-filtrage-de-la-timeline-d-enq: done
   7-3-moteur-de-corrélation-multi-sources-et-mise-en-correspondanc: done
   epic-7-retrospective: optional
 
   epic-8: in-progress
-  8-1-module-de-pseudonymisation-déterministe-microsoft-presidio-f: in-progress
-  8-2-porte-humaine-h3-autorisation-d-envoi-llm-externe-et-prévisu: backlog
+  8-1-module-de-pseudonymisation-déterministe-microsoft-presidio-f: done
+  8-2-porte-humaine-h3-autorisation-d-envoi-llm-externe-et-prévisu: done
   8-3-modèle-report-agent-rapporteur-génération-et-scellement-sha: backlog
   8-4-endpoints-de-consultation-et-téléchargement-des-rapports-sce: backlog
   8-5-service-d-audit-immuable-en-ajout-seul-auditevent-et-déclenc: backlog
