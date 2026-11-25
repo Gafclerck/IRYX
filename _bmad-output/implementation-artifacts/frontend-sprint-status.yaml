@@ -1,3 +1,4 @@
+# Décisions C1, C2, C4 et identité : décidées, voir docs/frontend/15-decisions-ouvertes.md
 # Porte de préparation passée le 2026-11-25 : checklist manuelle, sans bmad-sprint-planning.
 # Suivi tenu à la main, bmad-sprint-planning non utilisé (chemin de sortie figé sur sprint-status.yaml du back).
 #
@@ -16,7 +17,7 @@ development_status:
   F1.3: fait, contrat simulé, à réaligner
   F1.4: fait, contrat simulé, à réaligner
   F1.5: fait, contrat simulé, à réaligner
-  F1.6: à faire
+  F1.6: fait, contrat simulé, à réaligner
   F1.7: à faire
 
   epic-f2: à faire

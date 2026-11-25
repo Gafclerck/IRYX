@@ -36,14 +36,14 @@ Les trois routes d'authentification ci-dessous sont interceptées et simulées p
 | `POST /api/v1/auth/refresh` | Renouvellement silencieux du jeton d'accès via cookie httpOnly | simulée, contrat cible : auth-contrat-cible.yaml |
 | `POST /api/v1/auth/logout` | Déconnexion explicite et suppression du cookie httpOnly (Max-Age=0) | simulée, contrat cible : auth-contrat-cible.yaml |
 
-### 2.2 Référentiel des routes protégées simulées (Story F1.3 et F1.5)
+### 2.2 Référentiel des routes protégées simulées (Stories F1.3, F1.5 et F1.6)
 
-Les routes protégées ci-dessous sont interceptées et simulées par Mock Service Worker (MSW) dans `frontend/src/test/mocks/handlers.ts` pour tester l'injection de l'en-tête `Authorization: Bearer <token>` et la détection d'expiration (HTTP 401) :
+Les routes protégées ci-dessous sont interceptées et simulées par Mock Service Worker (MSW) dans `frontend/src/test/mocks/handlers.ts` pour tester l'injection de l'en-tête `Authorization: Bearer <token>`, la détection d'expiration (HTTP 401), ainsi que la pagination et la recherche :
 
 | Méthode et route HTTP | Description opérationnelle | Mention de statut |
 |---|---|---|
 | `GET /api/v1/auth/me` | Profil utilisateur connecté (schéma UserResponse préliminaire sans nom ni organisation), requiert l'en-tête Authorization: Bearer en mémoire | simulée, contrat cible : openapi.json (à réaligner pour identité F1.5) |
-| `GET /api/v1/cases` | Liste globale des dossiers accessibles, requiert l'en-tête Authorization: Bearer | simulée, contrat cible : openapi.json |
+| `GET /api/v1/cases` | Consultation paginée et recherche des dossiers (Story F1.6), avec paramètres limit, offset, search, requiert l'en-tête Authorization: Bearer | simulée, contrat cible : openapi.json |
 
 #### Règle documentée pour les requêtes sans jeton (Story F1.3)
 Lorsqu'aucun jeton d'accès n'est présent en mémoire vive volatile (état initial ou purge), la requête vers un endpoint protégé est transmise sans en-tête `Authorization`. Le serveur récepteur ou l'intercepteur de simulation MSW renvoie alors un code HTTP 401, déclenchant le signal interne « jeton expiré ou absent ». Emplacement réservé pour la politique d'inactivité de l'analyste : à décider (C4).
@@ -70,6 +70,32 @@ Conformément à la spécification de la story F1.5 :
    - Utilisateur : « **Utilisateur** »
    - Organisation : « **Organisation** »
 4. **Mention de statut** : **à réaligner**. Un contrat de profil enrichi (route `/api/v1/auth/me` complétée avec nom et organisation, ou route dédiée `/api/v1/users/me`) devra être formalisé côté back-end lors de l'intégration de l'Épic E1/E2.
+
+### 2.5 Simulation de la consultation paginée et recherche des dossiers (Story F1.6)
+
+Conformément à la spécification de la story F1.6 et au contrat cible de l'Épic E2 (`docs/contrat/openapi.json`) :
+1. **Route interceptée** : `GET /api/v1/cases`
+   - Statut : **simulée, contrat cible** (`openapi.json`).
+   - Requiert l'en-tête `Authorization: Bearer <token>` en mémoire vive volatile.
+2. **Paramètres de requête pris en charge** :
+   - `limit` (entier, pagination serveur, par défaut 10, point d'architecture à décider).
+   - `offset` (entier, index de début de pagination calculé côté client par `(page - 1) * limit`).
+   - `search` (chaîne de caractères pour le filtrage insensible à la casse sur le titre et la description).
+3. **Structure de la réponse (`CaseListResponse`)** :
+   - `items` : tableau d'objets `CaseItem` (conforme au schéma cible `CaseOut` avec `id`, `organization_id`, `title`, `description`, `status`, `created_by`, `created_at`, `updated_at`, et le décompte `evidence_count`).
+   - `total` / `total_items` : nombre total d'éléments correspondant au filtre de recherche.
+   - `limit` : taille de page appliquée.
+   - `offset` : index de départ.
+   - `has_more` : booléen indiquant la présence d'une page ultérieure.
+4. **Scénarios d'erreur et cas d'usage simulés** :
+   - Code HTTP 401 : jeton d'accès absent ou expiré (déclenche le renouvellement silencieux F1.4 ou l'éviction vers `/login`).
+   - Code HTTP 403 Forbidden : simulation via jeton `mock-forbidden-token` ou en-tête `X-Simulation-Cases: forbidden` pour tester l'état d'accès refusé.
+   - Code HTTP 500 Erreur serveur : simulation via jeton `mock-server-error-token` ou en-tête `X-Simulation-Cases: server-error` pour tester la bannière d'alerte et l'action « Réessayer ».
+   - Liste vide : simulation via en-tête `X-Simulation-Cases: empty` ou terme de recherche sans correspondance pour valider l'état vide (« Aucun dossier. Créez le premier. »).
+5. **Règles d'architecture respectées** :
+   - Aucune liste complète n'est chargée côté client : pagination stricte transmise au serveur.
+   - Durée de pause de frappe (debounce) et taille de page par défaut : à décider.
+   - Palette stricte appliquée sans couleur en dur dans les composants.
 
 
 
