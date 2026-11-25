@@ -319,6 +319,23 @@ Conformément à la story F4.3, à l'ADR-0008, à DP-05, aux écrans `docs/front
 
 ---
 
+### 2.15 Simulation de la chronologie unifiée des faits techniques (Story F4.6)
+
+Conformément à la story F4.6, à DP-01, aux écrans `docs/frontend/11` et `12` et au contrat cible de l'épic E7 (`docs/contrat/openapi.json`) :
+
+1. **Routes interceptées** :
+   - `GET /api/v1/cases/{case_id}/observations` : **simulée, contrat cible : openapi.json**.
+   - `GET /api/v1/cases/{case_id}/observations/{observation_id}` : **simulée, contrat cible : openapi.json**. Route préparée pour le panneau « Source » (F4.7) ; la chronologie F4.6 ne l'appelle pas et l'action reste désactivée avec la mention « à réaligner (F4.7) ».
+   - Requièrent l'en-tête `Authorization: Bearer` conservé en mémoire vive volatile (Story F1.3).
+2. **Pagination serveur stricte (DP-01)** : `limit=100` et `offset=(page - 1) * 100` sont transmis au serveur ; un seul bloc est conservé et rendu à la fois, sans accumulation ni filtrage client sur un bloc partiel. Le bouton « Charger les 100 suivants » déclenche la tranche suivante ; `has_more` du contrat pilote sa disponibilité. Aucune autre taille de bloc n'est inventée.
+3. **Filtres transmis au serveur** : `source_id`, `start_date` et `end_date` sont dérivés de la saisie UTC ; aucun filtre n'est appliqué côté client. Les filtres sont maintenus lors des changements de bloc. Les libellés de typologie (EVTX, logs, Prefetch, Registre, RAM) ne sont pas présents dans le contrat : l'identifiant de source contractuel est utilisé et le détail de typologie reste « à décider ».
+4. **Fidélité au contrat et absence d'invention** : les lignes utilisent `ObservationRead` (`timestamp_utc`, `normalized_content`, `source_location`, `tool_name`, `source_id`) et `ObservationListResponse` (`items`, `total`, `total_items`, `limit`, `offset`, `has_more`). Les dates UTC sont affichées en police mono ; chaque ligne porte une date/heure UTC, un résumé court et la source technique associée sous forme de puce cliquable désactivée. Le panneau « Source » est seulement un emplacement réservé à F4.7.
+5. **États simulés et affichés** : chargement par squelettes linéaires, vide (« Aucun événement chronologique. » et « Aucun événement chronologique ne correspond aux critères sélectionnés. ») avec réinitialisation des filtres, erreur serveur/réseau avec « Réessayer », accès refusé 403 avec masquage de la liste et retour aux dossiers, nominal, résultats partiels signalés par une phase `failed` du contrat, et statut inconnu restitué sous la forme « État inconnu (code_brut) » sans bloquer la consultation. F4.5 est sautée : seul l'onglet « Chronologie » est rendu.
+6. **Scénarios simulés par MSW** : dossier `case-001` (nominal, plusieurs blocs complets), `case-timeline-empty` (liste vide), `case-timeline-error` (500), `case-timeline-forbidden` (403), `case-results-partial` (phase `failed`), `case-timeline-unknown` (statut non répertorié), ou en-têtes `X-Simulation-Timeline: empty|forbidden|server-error|partial-failure|unknown-status`. Le détail d'observation est simulé pour le contrat cible sans être appelé par la chronologie F4.6.
+7. **Périmètre exclu** : aucun panneau d'inspection de source (F4.7), aucun onglet Artefacts ou hypothèses (F4.5 sautée), aucune écriture dans `localStorage` ni `sessionStorage` ; palette stricte (`ink`, `deep`, `teal`, `cyan`, `mist`) sans couleur en dur.
+
+---
+
 ## 3. Inventaire des stories d'intégration dépendantes du contrat
 
 Les stories front-end qui nécessitent la publication du contrat OpenAPI pour leur implémentation réelle sont classées par épic ci-dessous :
@@ -349,9 +366,9 @@ Les stories front-end qui nécessitent la publication du contrat OpenAPI pour le
 - Story F4.2 : Envoi de la décision d'arbitrage de l'analyste franchissant la porte H1 (validation ou rejet motivé).
 - Story F4.3 : Consultation par scrutation régulière de l'état d'avancement des agents et du flux d'activité.
 - Story F4.4 : Transmission des ordres de contrôle de session (mise en pause, reprise, annulation).
-- Story F4.5 : Récupération des observations consolidées et affichage de la chronologie UTC.
-- Story F4.6 : Extraction du détail d'une observation brute pour le panneau d'inspection de la source.
-- Story F4.7 : Enregistrement des décisions unitaires d'arbitrage sur les findings en porte H2.
+- Story F4.5 : Cadre de navigation multi-vues des résultats (story sautée, hors périmètre).
+- Story F4.6 : Chronologie unifiée des faits techniques avec pagination serveur par blocs de 100 (DP-01).
+- Story F4.7 : Panneau latéral d'inspection de la source d'un événement forensique (à réaligner, non implémenté).
 - Story F4.8 : Récupération de la synthèse pseudonymisée et enregistrement de l'autorisation explicite en porte H3.
 
 ### 3.5 Épic F5 : Restitution, rapports d'incident et clôture
@@ -382,7 +399,7 @@ Pour chaque lot fonctionnel, le remplacement de la simulation par la connectivit
 | F1 : Socle, connexion et dossiers | E1 (Auth), E2 (Cases) | Brouillon openapi.json (routes auth en attente) | Simulation active (auth-contrat-cible.yaml) |
 | F2 : Contexte du dossier | E2 (Cases) | Brouillon openapi.json (PATCH à réaligner) | Simulation active (openapi.json + à réaligner) |
 | F3 : Registre des preuves | E3 (Evidence, Ingestion) | Brouillon openapi.json | Simulation active (POST, GET et GET détail openapi.json) |
-| F4 : Plan, agents, résultats, revues | E4, E5, E6, E7 | Brouillon openapi.json (plan, arbitrage H1 et supervision simulés ; agent, progression, messages, journal, pause/annulation/relance et 409 H1 à réaligner) | Simulation active pour F4.1 (GET investigations et GET plan), F4.2 (POST gates/h1) et F4.3 (GET détail session et POST resume) ; reste en attente pour F4.4 à F4.8 |
+| F4 : Plan, agents, résultats, revues | E4, E5, E6, E7 | Brouillon openapi.json (plan, arbitrage H1, supervision et chronologie simulés ; agent, progression, messages, journal, pause/annulation/relance, 409 H1 et panneau source à réaligner) | Simulation active pour F4.1 (GET investigations et GET plan), F4.2 (POST gates/h1), F4.3 (GET détail session et POST resume) et F4.6 (GET observations et GET détail observation) ; reste en attente pour F4.4, F4.5 (sautée) et F4.7 à F4.9 |
 | F5 : Rapports et clôture | E8 (Reports), E9 (Déploiement) | En attente | En attente de contrat / Simulation planifiée |
 
 ---

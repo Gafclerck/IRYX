@@ -7,6 +7,7 @@ import type {
 } from '../../api/auth-types'
 import type { EvidenceRead } from '../../features/evidence/types'
 import type { components } from '../../api/schema'
+import { TIMELINE_PAGE_SIZE } from '../../features/results/constants'
 
 /**
  * Données simulées d'investigation pour le contrat cible E2 (Story F1.6 et F2.1).
@@ -740,8 +741,30 @@ function buildMockPlan(steps = MOCK_PLAN_STEPS): components['schemas']['Investig
 
 function buildMockInvestigationRun(caseId: string, simulation: string | null) {
   const decisionState = readMockH1State(caseId, MOCK_PLAN_RUN_ID)
-  const isUnknown = caseId === 'case-plan-unknown' || simulation === 'unknown-status'
+  const isUnknown =
+    caseId === 'case-plan-unknown' ||
+    caseId === 'case-timeline-unknown' ||
+    simulation === 'unknown-status'
   const isValidated = caseId === 'case-plan-validated' || simulation === 'validated'
+  const isPartial =
+    caseId === 'case-results-partial' ||
+    caseId === 'case-timeline-partial' ||
+    simulation === 'partial-failure'
+
+  // Le contrat signale un résultat partiel par une phase `failed` : aucun champ
+  // supplémentaire n'est inventé pour déclencher le bandeau de la chronologie.
+  const phases: readonly components['schemas']['PhaseOut'][] | undefined = isPartial
+    ? [
+        mockRunPhase(
+          MOCK_PLAN_RUN_ID,
+          'executor',
+          'failed',
+          '2026-11-20T09:00:00Z',
+          '2026-11-20T09:04:00Z',
+        ),
+        mockRunPhase(MOCK_PLAN_RUN_ID, 'analyst', 'active', '2026-11-20T09:04:00Z'),
+      ]
+    : undefined
 
   return {
     id: MOCK_PLAN_RUN_ID,
@@ -764,6 +787,7 @@ function buildMockInvestigationRun(caseId: string, simulation: string | null) {
     error_count: 0,
     started_at: '2026-11-20T09:00:00Z',
     updated_at: '2026-11-20T09:05:00Z',
+    ...(phases ? { phases: [...phases] } : {}),
   }
 }
 
@@ -788,6 +812,67 @@ function isPlanServerError(request: Request, caseId: string): boolean {
     simulation === 'server-error' ||
     caseId === 'case-error' ||
     caseId === 'case-plan-error'
+  )
+}
+
+/**
+ * Données simulées de la chronologie unifiée (Story F4.6).
+ * Chaque objet respecte `ObservationRead` de openapi.json. Le volume simulé
+ * couvre plusieurs blocs complets (DP-01), y compris après filtrage par source,
+ * pour éprouver la pagination serveur sans accumulation côté client.
+ */
+const TIMELINE_MOCK_TOOLS = ['Analyseur EVTX', 'regipy', 'Volatility 3', 'Prefetch'] as const
+const TIMELINE_MOCK_FILES = ['Security.evtx', 'auth.log', 'memory_dump.raw', 'NTUSER.DAT'] as const
+const TIMELINE_MOCK_EVENT_COUNT =
+  TIMELINE_PAGE_SIZE * TIMELINE_MOCK_FILES.length + TIMELINE_MOCK_FILES.length
+const TIMELINE_MOCK_STEP_MS = 3000
+
+function buildMockObservations(caseId: string): components['schemas']['ObservationRead'][] {
+  return Array.from({ length: TIMELINE_MOCK_EVENT_COUNT }, (_, index) => {
+    const file = TIMELINE_MOCK_FILES[index % TIMELINE_MOCK_FILES.length] ?? TIMELINE_MOCK_FILES[0]
+    const toolName =
+      TIMELINE_MOCK_TOOLS[index % TIMELINE_MOCK_TOOLS.length] ?? TIMELINE_MOCK_TOOLS[0]
+    const line = index + 1
+    const sourceId = `evi-00${(index % 4) + 1}`
+    const timestamp = new Date(Date.UTC(2026, 10, 20, 9, 0, 0) + index * TIMELINE_MOCK_STEP_MS)
+
+    return {
+      id: `${caseId}-obs-${String(line).padStart(3, '0')}`,
+      case_id: caseId,
+      source_id: sourceId,
+      tool_name: toolName,
+      tool_execution_id: `exec-${sourceId}`,
+      normalized_content: {
+        summary: `${toolName} — fait technique ${line}`,
+        file_name: file,
+        event_id: `evt-${String(line).padStart(3, '0')}`,
+        line,
+      },
+      timestamp_utc: timestamp.toISOString(),
+      source_location: `${file}:${line}`,
+      created_at: timestamp.toISOString(),
+    }
+  })
+}
+
+function isTimelineForbidden(request: Request, caseId: string): boolean {
+  const authHeader = request.headers.get('Authorization')
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.replace('Bearer ', '').trim() : ''
+  return (
+    token === 'mock-forbidden-token' ||
+    request.headers.get('X-Simulation-Timeline') === 'forbidden' ||
+    caseId === 'case-forbidden' ||
+    caseId === 'case-timeline-forbidden'
+  )
+}
+
+function isTimelineServerError(request: Request, caseId: string): boolean {
+  const authHeader = request.headers.get('Authorization')
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.replace('Bearer ', '').trim() : ''
+  return (
+    token === 'mock-server-error-token' ||
+    request.headers.get('X-Simulation-Timeline') === 'server-error' ||
+    caseId === 'case-timeline-error'
   )
 }
 
@@ -1226,6 +1311,115 @@ export const handlers = [
     return HttpResponse.json([buildMockInvestigationRun(caseId, simulation)], {
       headers: { 'Retry-After': '3' },
     })
+  }),
+
+  /**
+   * Chronologie unifiée des faits techniques (Story F4.6).
+   * Route cible : GET /api/v1/cases/{case_id}/observations
+   * Statut : simulée, contrat cible : openapi.json.
+   * Pagination serveur stricte : limit est plafonné à 100 (DP-01) et les
+   * filtres source_id / start_date / end_date sont appliqués côté serveur.
+   */
+  http.get('*/api/v1/cases/:caseId/observations', ({ params, request }) => {
+    const authHeader = request.headers.get('Authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    const caseId = String(params.caseId)
+    if (isTimelineForbidden(request, caseId)) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Vous n'avez pas accès à cette chronologie." },
+        { status: 403 },
+      )
+    }
+    if (isTimelineServerError(request, caseId)) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Erreur interne lors de la récupération de la chronologie.' },
+        { status: 500 },
+      )
+    }
+
+    const url = new URL(request.url)
+    const requestedLimit = Number(url.searchParams.get('limit') ?? '50')
+    const safeLimit = Number.isFinite(requestedLimit) ? requestedLimit : 50
+    const limit = Math.min(Math.max(safeLimit, 1), TIMELINE_PAGE_SIZE)
+    const requestedOffset = Number(url.searchParams.get('offset') ?? '0')
+    const offset = Number.isFinite(requestedOffset) ? Math.max(requestedOffset, 0) : 0
+    const sourceId = url.searchParams.get('source_id')
+    const startDate = url.searchParams.get('start_date')
+    const endDate = url.searchParams.get('end_date')
+    const parsedStart = startDate ? Date.parse(startDate) : NaN
+    const parsedEnd = endDate ? Date.parse(endDate) : NaN
+    const simulation = request.headers.get('X-Simulation-Timeline')
+
+    let items = buildMockObservations(caseId)
+    if (simulation === 'empty' || caseId === 'case-timeline-empty') {
+      items = []
+    } else {
+      if (sourceId) items = items.filter((item) => item.source_id === sourceId)
+      if (Number.isFinite(parsedStart)) {
+        items = items.filter((item) => Date.parse(item.timestamp_utc ?? '') >= parsedStart)
+      }
+      if (Number.isFinite(parsedEnd)) {
+        items = items.filter((item) => Date.parse(item.timestamp_utc ?? '') <= parsedEnd)
+      }
+    }
+
+    const pagedItems = items.slice(offset, offset + limit)
+    return HttpResponse.json({
+      items: pagedItems,
+      total: items.length,
+      total_items: items.length,
+      limit,
+      offset,
+      has_more: offset + pagedItems.length < items.length,
+    })
+  }),
+
+  /**
+   * Détail d'une observation normalisée (route réservée au panneau Source, F4.7).
+   * Route cible : GET /api/v1/cases/{case_id}/observations/{observation_id}
+   * Statut : simulée, contrat cible : openapi.json.
+   * La chronologie F4.6 ne l'appelle pas : l'emplacement du panneau est seulement
+   * prévu et l'action reste désactivée avec la mention « à réaligner (F4.7) ».
+   */
+  http.get('*/api/v1/cases/:caseId/observations/:observationId', ({ params, request }) => {
+    const authHeader = request.headers.get('Authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    const caseId = String(params.caseId)
+    const observationId = String(params.observationId)
+    if (isTimelineForbidden(request, caseId)) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Vous n'avez pas accès à cette observation." },
+        { status: 403 },
+      )
+    }
+    if (isTimelineServerError(request, caseId)) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Erreur interne lors de la récupération de l’observation.' },
+        { status: 500 },
+      )
+    }
+
+    const observation = buildMockObservations(caseId).find((item) => item.id === observationId)
+    if (!observation) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Observation introuvable pour ce dossier.' },
+        { status: 404 },
+      )
+    }
+
+    return HttpResponse.json(observation)
   }),
 
   /**
