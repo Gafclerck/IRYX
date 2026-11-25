@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
   ArrowLeft,
@@ -12,7 +12,13 @@ import {
 import { useCaseDetail } from '../features/cases/hooks/useCaseDetail'
 import { useSessionUser } from '../features/auth/hooks/useSessionUser'
 import { CaseSidebar } from '../features/cases/components/CaseSidebar'
-import { EvidenceDropZone, EvidenceUploadList, useEvidenceUpload } from '../features/evidence'
+import {
+  EvidenceDropZone,
+  EvidenceUploadList,
+  EvidenceTable,
+  useEvidenceUpload,
+  useEvidence,
+} from '../features/evidence'
 
 /**
  * Page d'acquisition et de téléversement de preuves avec progression en streaming (Story F3.1).
@@ -51,6 +57,34 @@ export function EvidencePage() {
 
   const isForbidden = error?.status === 403
   const isNotFound = error?.status === 404
+
+  const {
+    evidences,
+    total: evidenceTotal,
+    isLoading: isEvidenceLoading,
+    isFetching: isEvidenceFetching,
+    isError: isEvidenceError,
+    error: evidenceError,
+    isForbidden: isEvidenceForbidden,
+    isNetworkCutoff,
+    hasIntegrityEvidence,
+    refetch: refetchEvidences,
+    retryConnection,
+  } = useEvidence({
+    caseId: safeCaseId,
+    enabled: Boolean(safeCaseId && !isLoading && !isForbidden && !isNotFound),
+  })
+
+  // Synchronisation automatique de l'inventaire après succès de téléversement (F3.1 -> F3.2)
+  const prevSuccessCountRef = useRef(0)
+  const currentSuccessCount = uploadItems.filter((item) => item.status === 'success').length
+
+  useEffect(() => {
+    if (currentSuccessCount > prevSuccessCountRef.current) {
+      refetchEvidences()
+      prevSuccessCountRef.current = currentSuccessCount
+    }
+  }, [currentSuccessCount, refetchEvidences])
 
   // Rôle lecture seule (ex. profil viewer)
   const isReadOnly =
@@ -294,6 +328,27 @@ export function EvidencePage() {
                   items={uploadItems}
                   onCancel={cancelUpload}
                   onRetry={retryUpload}
+                />
+              </section>
+
+              {/* Inventaire des preuves et suivi d'ingestion (Story F3.2) */}
+              <section aria-labelledby="evidence-inventory-heading" className="space-y-2 pt-2">
+                <h2 id="evidence-inventory-heading" className="sr-only">
+                  Inventaire des preuves scellées
+                </h2>
+                <EvidenceTable
+                  caseId={safeCaseId}
+                  evidences={evidences}
+                  total={evidenceTotal}
+                  isLoading={isEvidenceLoading}
+                  isFetching={isEvidenceFetching}
+                  isError={isEvidenceError}
+                  error={evidenceError}
+                  isForbidden={isEvidenceForbidden}
+                  isNetworkCutoff={isNetworkCutoff}
+                  hasIntegrityEvidence={hasIntegrityEvidence}
+                  onRefetch={refetchEvidences}
+                  onRetryConnection={retryConnection}
                 />
               </section>
             </div>

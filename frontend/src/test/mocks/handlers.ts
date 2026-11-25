@@ -5,6 +5,7 @@ import type {
   LogoutResponse,
   ErrorResponse,
 } from '../../api/auth-types'
+import type { EvidenceRead } from '../../features/evidence/types'
 
 /**
  * Données simulées d'investigation pour le contrat cible E2 (Story F1.6 et F2.1).
@@ -311,6 +312,69 @@ export function resetMockCases() {
   MOCK_CASES.length = 0
   MOCK_CASES.push(...INITIAL_MOCK_CASES)
 }
+
+/**
+ * Données simulées d'inventaire des preuves pour le contrat cible E3 (Story F3.2).
+ */
+export const INITIAL_MOCK_CASE_EVIDENCES: Record<string, EvidenceRead[]> = {
+  'case-001': [
+    {
+      id: 'evi-001',
+      case_id: 'case-001',
+      original_name: 'Security.evtx',
+      file_size: 15482880,
+      sha256: 'a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789abcdef0',
+      detected_type: 'application/x-ms-evtx',
+      imported_by: 'analyste@iryx.local',
+      created_at: '2026-11-20T08:30:00Z',
+    },
+    {
+      id: 'evi-002',
+      case_id: 'case-001',
+      original_name: 'memory_dump.raw',
+      file_size: 4294967296,
+      sha256: 'f0e1d2c3b4a5968778695a4b3c2d1e0f0123456789abcdef0123456789abcdef',
+      detected_type: 'application/octet-stream',
+      imported_by: 'analyste@iryx.local',
+      created_at: '2026-11-20T08:45:00Z',
+    },
+    {
+      id: 'evi-003',
+      case_id: 'case-001',
+      original_name: 'auth.log',
+      file_size: 204800,
+      sha256: null,
+      detected_type: 'text/plain',
+      imported_by: 'analyste@iryx.local',
+      created_at: '2026-11-20T09:00:00Z',
+    },
+    {
+      id: 'evi-004',
+      case_id: 'case-001',
+      original_name: 'corrupted_artifact.bin',
+      file_size: 1048576,
+      sha256: null,
+      detected_type: 'application/octet-stream',
+      imported_by: 'analyste@iryx.local',
+      created_at: '2026-11-20T09:15:00Z',
+    },
+  ],
+}
+
+export const MOCK_CASE_EVIDENCES: Record<string, EvidenceRead[]> = JSON.parse(
+  JSON.stringify(INITIAL_MOCK_CASE_EVIDENCES),
+)
+
+export function resetMockEvidences() {
+  Object.keys(MOCK_CASE_EVIDENCES).forEach((key) => {
+    delete MOCK_CASE_EVIDENCES[key]
+  })
+  Object.assign(
+    MOCK_CASE_EVIDENCES,
+    JSON.parse(JSON.stringify(INITIAL_MOCK_CASE_EVIDENCES)),
+  )
+}
+
 
 /**
  * Handlers MSW simulant les routes réseau de l'application IRYX.
@@ -1127,11 +1191,18 @@ export const handlers = [
       return HttpResponse.json<ErrorResponse>({ detail: 'Dossier introuvable.' }, { status: 404 })
     }
 
+    let originalName = 'artefact.raw'
+    let fileSize = 1024
+    let detectedType = 'application/octet-stream'
+
     try {
       const formData = await request.formData()
       const file = formData.get('file')
       if (file && typeof file === 'object' && 'name' in file) {
-        const fileSize = (file as File).size
+        const fileObj = file as File
+        originalName = fileObj.name || originalName
+        fileSize = fileObj.size
+        detectedType = fileObj.type || detectedType
         if (fileSize === 0) {
           return HttpResponse.json<ErrorResponse>(
             { detail: 'Le fichier de preuve est vide (0 octet).' },
@@ -1150,6 +1221,21 @@ export const handlers = [
       found.evidence_count = (found.evidence_count || 0) + 1
     }
 
+    const newEvidence: EvidenceRead = {
+      id: evidenceId,
+      case_id: caseId,
+      original_name: originalName,
+      file_size: fileSize,
+      sha256: null,
+      detected_type: detectedType,
+      imported_by: 'analyste@iryx.local',
+      created_at: new Date().toISOString(),
+    }
+    if (!MOCK_CASE_EVIDENCES[caseId]) {
+      MOCK_CASE_EVIDENCES[caseId] = []
+    }
+    MOCK_CASE_EVIDENCES[caseId].unshift(newEvidence)
+
     return HttpResponse.json(
       {
         evidence_id: evidenceId,
@@ -1163,4 +1249,202 @@ export const handlers = [
       },
     )
   }),
+
+  /**
+   * Consultation paginée de l'inventaire des preuves d'un dossier (Story F3.2).
+   * Route cible : GET /api/v1/cases/:caseId/evidences
+   * Statut : simulée, contrat cible : openapi.json
+   */
+  http.get('*/api/v1/cases/:caseId/evidences', ({ params, request }) => {
+    const authHeader = request.headers.get('Authorization')
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Jeton d'accès expiré ou absent." },
+        { status: 401 },
+      )
+    }
+
+    const token = authHeader.replace('Bearer ', '').trim()
+    const caseId = String(params.caseId)
+    const simHeader =
+      request.headers.get('X-Simulation-Evidence') || request.headers.get('X-Simulation-Case')
+
+    if (
+      token === 'mock-forbidden-token' ||
+      simHeader === 'forbidden' ||
+      caseId === 'case-forbidden'
+    ) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: "Accès refusé. Vous n'avez pas accès aux preuves de ce dossier." },
+        { status: 403 },
+      )
+    }
+
+    if (
+      token === 'mock-server-error-token' ||
+      simHeader === 'server-error' ||
+      caseId === 'case-error'
+    ) {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Erreur interne du serveur lors de la récupération des preuves.' },
+        { status: 500 },
+      )
+    }
+
+    if (caseId === 'case-not-found') {
+      return HttpResponse.json<ErrorResponse>(
+        { detail: 'Dossier introuvable.' },
+        { status: 404 },
+      )
+    }
+
+    if (caseId === 'case-empty' || simHeader === 'empty') {
+      return HttpResponse.json({
+        items: [],
+        total: 0,
+        total_items: 0,
+        limit: 50,
+        offset: 0,
+        has_more: false,
+      })
+    }
+
+    const url = new URL(request.url)
+    const limit = parseInt(url.searchParams.get('limit') || '50', 10)
+    const offset = parseInt(url.searchParams.get('offset') || '0', 10)
+
+    const allItems = MOCK_CASE_EVIDENCES[caseId] || []
+    const paginatedItems = allItems.slice(offset, offset + limit)
+
+    return HttpResponse.json({
+      items: paginatedItems,
+      total: allItems.length,
+      total_items: allItems.length,
+      limit,
+      offset,
+      has_more: offset + paginatedItems.length < allItems.length,
+    })
+  }),
+
+  /**
+   * Consultation de l'état d'ingestion d'une preuve et scrutation avec Retry-After (Story F3.2).
+   * Route cible : GET /api/v1/cases/:caseId/evidences/:evidenceId/ingestion-status
+   * Statut : simulée, contrat cible : openapi.json
+   */
+  http.get(
+    '*/api/v1/cases/:caseId/evidences/:evidenceId/ingestion-status',
+    ({ params, request }) => {
+      const authHeader = request.headers.get('Authorization')
+
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return HttpResponse.json<ErrorResponse>(
+          { detail: "Jeton d'accès expiré ou absent." },
+          { status: 401 },
+        )
+      }
+
+      const token = authHeader.replace('Bearer ', '').trim()
+      const caseId = String(params.caseId)
+      const evidenceId = String(params.evidenceId)
+      const simHeader =
+        request.headers.get('X-Simulation-Evidence') || request.headers.get('X-Simulation-Status')
+
+      if (
+        token === 'mock-forbidden-token' ||
+        simHeader === 'forbidden' ||
+        caseId === 'case-forbidden'
+      ) {
+        return HttpResponse.json<ErrorResponse>(
+          { detail: "Accès refusé lors de la vérification d'ingestion." },
+          { status: 403 },
+        )
+      }
+
+      if (
+        token === 'mock-server-error-token' ||
+        simHeader === 'server-error' ||
+        evidenceId === 'evi-error'
+      ) {
+        return HttpResponse.json<ErrorResponse>(
+          { detail: "Erreur interne lors de la consultation d'ingestion." },
+          { status: 500 },
+        )
+      }
+
+      // Simulation de statut inconnu (règle docs/frontend/12 section 4)
+      if (evidenceId === 'evi-unknown' || simHeader === 'unknown-status') {
+        return HttpResponse.json({
+          status: 'unrecognized_state_code',
+          progress: 0,
+          error_message: null,
+          sha256: null,
+          detected_type: 'application/octet-stream',
+        })
+      }
+
+      // Simulation statut failed
+      if (evidenceId === 'evi-004' || evidenceId === 'evi-failed' || simHeader === 'failed') {
+        return HttpResponse.json({
+          status: 'failed',
+          progress: 10,
+          error_message: 'Format binaire invalide ou corruption de fichier.',
+          sha256: null,
+          detected_type: 'application/octet-stream',
+        })
+      }
+
+      // Simulation statut pending
+      if (evidenceId === 'evi-pending' || simHeader === 'pending') {
+        return HttpResponse.json(
+          {
+            status: 'pending',
+            progress: 0,
+            error_message: null,
+            sha256: null,
+            detected_type: 'application/x-ms-evtx',
+          },
+          {
+            headers: {
+              'Retry-After': '3',
+            },
+          },
+        )
+      }
+
+      // Simulation statut processing
+      if (
+        evidenceId === 'evi-003' ||
+        evidenceId === 'evi-processing' ||
+        simHeader === 'processing'
+      ) {
+        return HttpResponse.json(
+          {
+            status: 'processing',
+            progress: 45,
+            error_message: null,
+            sha256: null,
+            detected_type: 'text/plain',
+          },
+          {
+            headers: {
+              'Retry-After': '3',
+            },
+          },
+        )
+      }
+
+      // Simulation statut completed par défaut (intègre)
+      const foundItem = (MOCK_CASE_EVIDENCES[caseId] || []).find((e) => e.id === evidenceId)
+      return HttpResponse.json({
+        status: 'completed',
+        progress: 100,
+        error_message: null,
+        sha256:
+          foundItem?.sha256 ||
+          'a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789abcdef0',
+        detected_type: foundItem?.detected_type || 'application/x-ms-evtx',
+      })
+    },
+  ),
 ]

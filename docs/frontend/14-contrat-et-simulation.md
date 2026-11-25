@@ -36,9 +36,9 @@ Les trois routes d'authentification ci-dessous sont interceptées et simulées p
 | `POST /api/v1/auth/refresh` | Renouvellement silencieux du jeton d'accès via cookie httpOnly | simulée, contrat cible : auth-contrat-cible.yaml |
 | `POST /api/v1/auth/logout` | Déconnexion explicite et suppression du cookie httpOnly (Max-Age=0) | simulée, contrat cible : auth-contrat-cible.yaml |
 
-### 2.2 Référentiel des routes protégées simulées (Stories F1.3, F1.5, F1.6, F1.7, F2.1, F2.2 et F3.1)
+### 2.2 Référentiel des routes protégées simulées (Stories F1.3, F1.5, F1.6, F1.7, F2.1, F2.2, F3.1 et F3.2)
 
-Les routes protégées ci-dessous sont interceptées et simulées par Mock Service Worker (MSW) dans `frontend/src/test/mocks/handlers.ts` pour tester l'injection de l'en-tête `Authorization: Bearer <token>`, la détection d'expiration (HTTP 401), la pagination, la recherche, la création en modale, la consultation et l'édition du contexte, l'évolution du statut du dossier, ainsi que le téléversement de preuves numériques avec suivi de progression :
+Les routes protégées ci-dessous sont interceptées et simulées par Mock Service Worker (MSW) dans `frontend/src/test/mocks/handlers.ts` pour tester l'injection de l'en-tête `Authorization: Bearer <token>`, la détection d'expiration (HTTP 401), la pagination, la recherche, la création en modale, la consultation et l'édition du contexte, l'évolution du statut du dossier, ainsi que le téléversement et l'inventaire de preuves numériques avec suivi de progression et de l'état d'ingestion :
 
 | Méthode et route HTTP | Description opérationnelle | Mention de statut |
 |---|---|---|
@@ -49,6 +49,8 @@ Les routes protégées ci-dessous sont interceptées et simulées par Mock Servi
 | `PATCH /api/v1/cases/{case_id}` | Mise à jour en ligne du titre et de la description d'un dossier (Story F2.1), validation Zod avant envoi, requiert l'en-tête Authorization: Bearer | simulée, contrat cible : à réaligner |
 | `PATCH /api/v1/cases/{case_id}/status` | Évolution du statut global du dossier selon la matrice de transition stricte (Story F2.2), validation Zod avant envoi, requiert l'en-tête Authorization: Bearer | simulée, contrat cible : openapi.json |
 | `POST /api/v1/cases/{case_id}/evidences` | Dépôt et téléversement de preuves numériques avec progression (Story F3.1), flux multipart, requiert l'en-tête Authorization: Bearer | simulée, contrat cible : openapi.json |
+| `GET /api/v1/cases/{case_id}/evidences` | Consultation paginée de l'inventaire des preuves d'un dossier (Story F3.2), avec pagination limit et offset, requiert l'en-tête Authorization: Bearer | simulée, contrat cible : openapi.json |
+| `GET /api/v1/cases/{case_id}/evidences/{evidence_id}/ingestion-status` | Consultation de l'état d'ingestion d'une preuve et scrutation avec Retry-After (Story F3.2), requiert l'en-tête Authorization: Bearer | simulée, contrat cible : openapi.json |
 
 #### Règle documentée pour les requêtes sans jeton (Story F1.3)
 Lorsqu'aucun jeton d'accès n'est présent en mémoire vive volatile (état initial ou purge), la requête vers un endpoint protégé est transmise sans en-tête `Authorization`. Le serveur récepteur ou l'intercepteur de simulation MSW renvoie alors un code HTTP 401, déclenchant le signal interne « jeton expiré ou absent ». Emplacement réservé pour la politique d'inactivité de l'analyste : à décider (C4).
@@ -188,6 +190,32 @@ Conformément à la spécification de la story F3.1 et au contrat cible de l'Ép
    - Code HTTP 400 Bad Request : simulation via fichier vide (0 octet) ou en-tête `X-Simulation-Evidence: empty-file`.
    - Code HTTP 500 Server Error : simulation via `case-upload-500` ou en-tête `X-Simulation-Evidence: server-error` pour tester l'état « ÉCHEC DE TRANSFERT » et le bouton « Réessayer ».
 
+### 2.10 Simulation de l'inventaire des preuves et du suivi d'ingestion par scrutation (Story F3.2)
+
+Conformément à la spécification de la story F3.2, à l'ADR-0008, aux conventions `12-parcours-et-etats.md` et au contrat cible de l'Épic E3 (`docs/contrat/openapi.json`) :
+
+1. **Routes interceptées** :
+   - `GET /api/v1/cases/{case_id}/evidences` : **simulée, contrat cible : openapi.json**.
+   - `GET /api/v1/cases/{case_id}/evidences/{evidence_id}/ingestion-status` : **simulée, contrat cible : openapi.json**.
+   - Requiert l'en-tête standard `Authorization: Bearer <token>` conservé en mémoire vive volatile (Story F1.3).
+2. **Cadence de scrutation et en-tête Retry-After (ADR-0008)** :
+   - Pour toute preuve en cours de traitement (`pending` ou `processing`), la réponse émet l'en-tête HTTP normalisé `Retry-After: 3` (3 secondes).
+   - En l'absence d'en-tête ou lors d'erreurs réseau temporaires, le front applique un recul exponentiel plafonné.
+3. **Machine d'états d'ingestion (docs/frontend/12 & docs/03)** :
+   - `pending` (en attente) : badge « EN ATTENTE », scrutation active.
+   - `processing` (en cours) : badge « EN COURS » avec pourcentage de progression, scrutation active.
+   - `completed` (terminée) : badge « INTÈGRE » avec scellement SHA-256 confirmé, arrêt de la scrutation pour cette preuve.
+   - `failed` (en échec) : badge « ÉCHEC » avec motif de rejet, arrêt de la scrutation.
+   - Robustesse face aux états inconnus : affichage sous la forme « État inconnu (code_brut) » sans blocage de l'interface, exclusion de l'élément pour l'analyse.
+4. **Décision DP-05 (panne réseau prolongée)** :
+   - Arrêt automatique de la scrutation après 3 échecs consécutifs (« délai de coupure réseau prolongée : à décider ») et affichage du bandeau de rupture avec bouton « Réessayer la connexion ».
+5. **Scénarios simulés par MSW** :
+   - Code HTTP 401 Unauthorized : absence ou invalidité du jeton Bearer (interruption immédiate de la scrutation).
+   - Code HTTP 403 Forbidden : simulation via dossier `case-forbidden`, jeton `mock-forbidden-token` ou en-tête `X-Simulation-Evidence: forbidden` (interruption immédiate du cycle de scrutation).
+   - Code HTTP 500 Server Error : simulation via `case-error`, `mock-server-error-token` ou `X-Simulation-Evidence: server-error` (incrément du compteur de coupure DP-05 et bouton « Réessayer »).
+   - État vide : simulation via dossier `case-empty` ou en-tête `X-Simulation-Evidence: empty` (tableau vide avec message « Aucune preuve déposée pour ce dossier » et bouton « Lancer l'analyse » désactivé).
+   - Statut inconnu robuste : simulation via `evi-unknown` ou en-tête `X-Simulation-Evidence: unknown-status` (restitution de « État inconnu (unrecognized_state_code) »).
+
 ---
 
 ## 3. Inventaire des stories d'intégration dépendantes du contrat
@@ -252,7 +280,7 @@ Pour chaque lot fonctionnel, le remplacement de la simulation par la connectivit
 |---|---|---|---|
 | F1 : Socle, connexion et dossiers | E1 (Auth), E2 (Cases) | Brouillon openapi.json (routes auth en attente) | Simulation active (auth-contrat-cible.yaml) |
 | F2 : Contexte du dossier | E2 (Cases) | Brouillon openapi.json (PATCH à réaligner) | Simulation active (openapi.json + à réaligner) |
-| F3 : Registre des preuves | E3 (Evidence, Ingestion) | Brouillon openapi.json | Simulation active (POST openapi.json) |
+| F3 : Registre des preuves | E3 (Evidence, Ingestion) | Brouillon openapi.json | Simulation active (POST et GET openapi.json) |
 | F4 : Plan, agents, résultats, revues | E4, E5, E6, E7 | En attente | En attente de contrat / Simulation planifiée |
 | F5 : Rapports et clôture | E8 (Reports), E9 (Déploiement) | En attente | En attente de contrat / Simulation planifiée |
 
