@@ -506,6 +506,22 @@ class ReportGenerationFailedException(IryxException):
         )
 
 
+class ReportNotFoundException(NotFoundException):
+    """Raised when a sealed report is absent, foreign, or not validated (HTTP 404)."""
+
+    def __init__(
+        self,
+        message: str = (
+            "Le rapport demandé n'existe pas ou n'appartient pas à ce dossier."
+        ),
+        code: str = "REPORT_NOT_FOUND",
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+        )
+
+
 class InvestigationAlreadyRunningException(ConflictException):
     """Raised when an investigation run is already active on a case (HTTP 409)."""
 

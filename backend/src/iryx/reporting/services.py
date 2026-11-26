@@ -1,4 +1,4 @@
-"""Report generation, versioning and access-control services (Story 8.3)."""
+"""Report generation, versioning and access-control services (Stories 8.3 and 8.4)."""
 
 import contextlib
 import logging
@@ -19,6 +19,7 @@ from iryx.core.exceptions import (
     CaseNotFoundException,
     InsufficientPermissionsException,
     ReportGenerationFailedException,
+    ReportNotFoundException,
     ValidationException,
 )
 from iryx.evidence.models import Evidence
@@ -43,6 +44,20 @@ def _safe_uuid(value: Any, label: str = "identifiant") -> uuid.UUID:
         raise ValidationException(
             message=f"{label} invalide.",
             code="INVALID_UUID",
+            status_code=422,
+        ) from exc
+
+
+def _safe_report_format(value: ReportFormat | str | None) -> ReportFormat | None:
+    """Parse a report format strictly and raise a typed validation error otherwise."""
+    if value is None:
+        return None
+    try:
+        return ReportFormat(str(value))
+    except ValueError as exc:
+        raise ValidationException(
+            message="format invalide.",
+            code="INVALID_REPORT_FORMAT",
             status_code=422,
         ) from exc
 
@@ -481,6 +496,17 @@ class ReportService:
                 f"Échec de génération du rapport : {type(exc).__name__}."
             ) from exc
 
+    @staticmethod
+    def _validated_filters(case_id: uuid.UUID, format: ReportFormat | None) -> list[Any]:
+        """Return the shared predicates exposing only validated reports of one case."""
+        filters: list[Any] = [
+            Report.case_id == case_id,
+            Report.status == ReportStatus.VALIDATED.value,
+        ]
+        if format is not None:
+            filters.append(Report.format == format.value)
+        return filters
+
     def list_reports(
         self,
         case_id: uuid.UUID | str,
@@ -488,26 +514,29 @@ class ReportService:
         user_id: uuid.UUID | str | None = None,
         internal: bool = False,
         format: ReportFormat | str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[Report]:
-        """List sealed reports strictly scoped to an authorized case."""
+        """List validated reports strictly scoped to an authorized case."""
+        # Read paths never honour the generation bypass, even if a caller asks for it.
+        del internal
         try:
+            if limit is not None and limit < 1:
+                raise ValidationException(message="limit invalide.")
+            if offset < 0:
+                raise ValidationException(message="offset invalide.")
             parsed_case_id = _safe_uuid(case_id, "case_id")
             parsed_user_id = _safe_uuid(user_id, "user_id") if user_id is not None else None
-            self._authorize(parsed_case_id, parsed_user_id, internal=internal)
-            stmt = select(Report).where(Report.case_id == parsed_case_id)
-            if format is not None:
-                try:
-                    parsed_format = ReportFormat(str(format))
-                except ValueError as exc:
-                    raise ValidationException(
-                        message="format invalide.",
-                        code="INVALID_REPORT_FORMAT",
-                        status_code=422,
-                    ) from exc
-                stmt = stmt.where(Report.format == parsed_format.value)
-            return list(
-                self.db.scalars(stmt.order_by(Report.version, Report.format)).all()
+            parsed_format = _safe_report_format(format)
+            self._authorize(parsed_case_id, parsed_user_id, internal=False)
+            stmt = (
+                select(Report)
+                .where(*self._validated_filters(parsed_case_id, parsed_format))
+                .order_by(Report.version, Report.format, Report.id)
             )
+            if limit is not None:
+                stmt = stmt.limit(limit)
+            return list(self.db.scalars(stmt.offset(offset)).all())
         except (InsufficientPermissionsException, ValidationException):
             raise
         except Exception as exc:
@@ -518,6 +547,79 @@ class ReportService:
             )
             raise ReportGenerationFailedException(
                 f"Échec de lecture des rapports : {type(exc).__name__}."
+            ) from exc
+
+    def count_reports(
+        self,
+        case_id: uuid.UUID | str,
+        *,
+        user_id: uuid.UUID | str | None = None,
+        internal: bool = False,
+        format: ReportFormat | str | None = None,
+    ) -> int:
+        """Count validated reports strictly scoped to an authorized case."""
+        del internal
+        try:
+            parsed_case_id = _safe_uuid(case_id, "case_id")
+            parsed_user_id = _safe_uuid(user_id, "user_id") if user_id is not None else None
+            parsed_format = _safe_report_format(format)
+            self._authorize(parsed_case_id, parsed_user_id, internal=False)
+            stmt = (
+                select(func.count())
+                .select_from(Report)
+                .where(*self._validated_filters(parsed_case_id, parsed_format))
+            )
+            return int(self.db.scalar(stmt) or 0)
+        except (InsufficientPermissionsException, ValidationException):
+            raise
+        except Exception as exc:
+            logger.error(
+                "Report counting failed: %s",
+                type(exc).__name__,
+                extra={"context": {"case_id": str(case_id)}},
+            )
+            raise ReportGenerationFailedException(
+                f"Échec du comptage des rapports : {type(exc).__name__}."
+            ) from exc
+
+    def get_report(
+        self,
+        case_id: uuid.UUID | str,
+        report_id: uuid.UUID | str,
+        *,
+        user_id: uuid.UUID | str | None = None,
+        internal: bool = False,
+    ) -> Report:
+        """Return one validated report scoped to both the authorized case and the user."""
+        del internal
+        try:
+            parsed_case_id = _safe_uuid(case_id, "case_id")
+            parsed_report_id = _safe_uuid(report_id, "report_id")
+            parsed_user_id = _safe_uuid(user_id, "user_id") if user_id is not None else None
+            self._authorize(parsed_case_id, parsed_user_id, internal=False)
+            report = self.db.scalar(
+                select(Report).where(
+                    *self._validated_filters(parsed_case_id, None),
+                    Report.id == parsed_report_id,
+                )
+            )
+            if report is None:
+                raise ReportNotFoundException()
+            return report
+        except (
+            InsufficientPermissionsException,
+            ValidationException,
+            ReportNotFoundException,
+        ):
+            raise
+        except Exception as exc:
+            logger.error(
+                "Report reading failed: %s",
+                type(exc).__name__,
+                extra={"context": {"case_id": str(case_id)}},
+            )
+            raise ReportGenerationFailedException(
+                f"Échec de lecture du rapport : {type(exc).__name__}."
             ) from exc
 
     def update_report(

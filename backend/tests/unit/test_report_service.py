@@ -26,6 +26,7 @@ from iryx.cases.models import Case
 from iryx.core.exceptions import (
     InsufficientPermissionsException,
     ReportGenerationFailedException,
+    ReportNotFoundException,
     ValidationException,
 )
 from iryx.evidence.models import Evidence
@@ -209,6 +210,26 @@ def _reports_for(db_session: Session, case_id: uuid.UUID) -> list[Report]:
         db_session.scalars(
             select(Report).where(Report.case_id == case_id).order_by(Report.format)
         ).all()
+    )
+
+
+def _make_report(
+    case_id: uuid.UUID,
+    report_format: ReportFormat,
+    report_status: ReportStatus,
+    version: int,
+    content: str,
+) -> Report:
+    """Build an arbitrary persisted report row for read-path tests."""
+    return Report(
+        case_id=case_id,
+        format=report_format.value,
+        status=report_status.value,
+        version=version,
+        content=content,
+        sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        generation_id=str(uuid.uuid4()),
+        created_at=datetime(2026, 11, 26, 10, version, tzinfo=UTC),
     )
 
 
@@ -1231,3 +1252,248 @@ def test_update_report_accepts_pseudonymized_validated_title(
     )
     assert updated.content == body
     assert updated.sha256 == hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+# =========================================================================
+# Story 8.4 — consultation and download read paths
+# =========================================================================
+
+
+def test_get_report_returns_case_scoped_validated_row(
+    db_session: Session,
+    setup: dict[str, Any],
+) -> None:
+    """Verify a member reads the exact sealed row previously persisted for their case."""
+    service = ReportService(db_session)
+    generated = service.generate_report(case_id=setup["case"].id, internal=True)
+    report = next(row for row in generated if row.format == ReportFormat.MARKDOWN.value)
+
+    found = service.get_report(
+        case_id=setup["case"].id,
+        report_id=report.id,
+        user_id=setup["user"].id,
+    )
+
+    assert found.id == report.id
+    assert found.content == report.content
+    assert found.sha256 == report.sha256
+    assert found.status == ReportStatus.VALIDATED.value
+
+
+@pytest.mark.parametrize("selector", ["missing", "foreign", "draft", "exported"])
+def test_get_report_unavailable_rows_raise_not_found(
+    db_session: Session,
+    setup: dict[str, Any],
+    selector: str,
+) -> None:
+    """Verify absent, foreign and non-validated rows all raise the same typed 404."""
+    service = ReportService(db_session)
+    service.generate_report(case_id=setup["case"].id, internal=True)
+    draft = _make_report(
+        setup["case"].id, ReportFormat.MARKDOWN, ReportStatus.DRAFT, 2, "brouillon"
+    )
+    exported = _make_report(
+        setup["case"].id, ReportFormat.JSON, ReportStatus.EXPORTED, 2, "{}"
+    )
+    foreign = _make_report(
+        setup["other_case"].id,
+        ReportFormat.MARKDOWN,
+        ReportStatus.VALIDATED,
+        1,
+        "secret",
+    )
+    db_session.add_all([draft, exported, foreign])
+    db_session.commit()
+    targets = {"foreign": foreign, "draft": draft, "exported": exported}
+    report_id = uuid.uuid4() if selector == "missing" else targets[selector].id
+
+    with pytest.raises(ReportNotFoundException) as exc_info:
+        service.get_report(
+            case_id=setup["case"].id,
+            report_id=report_id,
+            user_id=setup["user"].id,
+        )
+    assert exc_info.value.code == "REPORT_NOT_FOUND"
+    assert exc_info.value.status_code == 404
+
+
+def test_list_reports_only_validated_and_paginated(
+    db_session: Session,
+    setup: dict[str, Any],
+) -> None:
+    """Verify listing and counting exclude non-validated rows and honor pagination."""
+    service = ReportService(db_session)
+    service.generate_report(case_id=setup["case"].id, internal=True)
+    db_session.add_all(
+        [
+            _make_report(
+                setup["case"].id,
+                ReportFormat.MARKDOWN,
+                ReportStatus.DRAFT,
+                2,
+                "brouillon",
+            ),
+            _make_report(
+                setup["case"].id,
+                ReportFormat.JSON,
+                ReportStatus.EXPORTED,
+                2,
+                "{}",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    rows = service.list_reports(case_id=setup["case"].id, user_id=setup["user"].id)
+    assert [row.format for row in rows] == [
+        ReportFormat.JSON.value,
+        ReportFormat.MARKDOWN.value,
+    ]
+    assert all(row.status == ReportStatus.VALIDATED.value for row in rows)
+
+    page = service.list_reports(
+        case_id=setup["case"].id,
+        user_id=setup["user"].id,
+        limit=1,
+        offset=1,
+    )
+    assert [row.id for row in page] == [rows[1].id]
+    assert service.count_reports(case_id=setup["case"].id, user_id=setup["user"].id) == 2
+    assert (
+        service.count_reports(
+            case_id=setup["case"].id,
+            user_id=setup["user"].id,
+            format=ReportFormat.MARKDOWN,
+        )
+        == 1
+    )
+
+
+def test_list_reports_applies_offset_without_a_limit(
+    db_session: Session,
+    setup: dict[str, Any],
+) -> None:
+    """Verify offset is honored even when no explicit limit is supplied."""
+    service = ReportService(db_session)
+    service.generate_report(case_id=setup["case"].id, internal=True)
+    rows = service.list_reports(case_id=setup["case"].id, user_id=setup["user"].id)
+
+    page = service.list_reports(
+        case_id=setup["case"].id,
+        user_id=setup["user"].id,
+        offset=1,
+    )
+
+    assert len(rows) == 2
+    assert [row.id for row in page] == [rows[1].id]
+
+
+@pytest.mark.parametrize(("limit", "offset"), [(0, 0), (1, -1)])
+def test_list_reports_rejects_invalid_pagination(
+    db_session: Session,
+    setup: dict[str, Any],
+    limit: int,
+    offset: int,
+) -> None:
+    """Verify limit < 1 and offset < 0 are rejected as typed validation errors."""
+    service = ReportService(db_session)
+
+    with pytest.raises(ValidationException) as exc_info:
+        service.list_reports(
+            case_id=setup["case"].id,
+            user_id=setup["user"].id,
+            limit=limit,
+            offset=offset,
+        )
+
+    assert exc_info.value.status_code == 422
+    assert exc_info.value.code == "VALIDATION_ERROR"
+
+
+def test_read_methods_require_a_user_even_when_internal_is_requested(
+    db_session: Session,
+    setup: dict[str, Any],
+) -> None:
+    """Verify the read paths ignore the internal bypass and reject anonymous calls."""
+    service = ReportService(db_session)
+    generated = service.generate_report(case_id=setup["case"].id, internal=True)
+    report_id = generated[0].id
+
+    with pytest.raises(InsufficientPermissionsException):
+        service.get_report(
+            case_id=setup["case"].id, report_id=report_id, internal=True
+        )
+    with pytest.raises(InsufficientPermissionsException):
+        service.list_reports(case_id=setup["case"].id, internal=True)
+    with pytest.raises(InsufficientPermissionsException):
+        service.count_reports(case_id=setup["case"].id, internal=True)
+
+
+def test_get_report_rejects_outsider_foreign_case_and_malformed_ids(
+    db_session: Session,
+    setup: dict[str, Any],
+) -> None:
+    """Verify read authorization and UUID validation are both enforced."""
+    service = ReportService(db_session)
+    generated = service.generate_report(case_id=setup["case"].id, internal=True)
+    report_id = generated[0].id
+
+    with pytest.raises(InsufficientPermissionsException):
+        service.get_report(
+            case_id=setup["case"].id,
+            report_id=report_id,
+            user_id=setup["outsider"].id,
+        )
+    with pytest.raises(InsufficientPermissionsException):
+        service.get_report(
+            case_id=setup["other_case"].id,
+            report_id=report_id,
+            user_id=setup["user"].id,
+        )
+    with pytest.raises(ValidationException) as invalid_case:
+        service.get_report(
+            case_id="not-a-uuid", report_id=report_id, user_id=setup["user"].id
+        )
+    assert invalid_case.value.code == "INVALID_UUID"
+    with pytest.raises(ValidationException) as invalid_report:
+        service.get_report(
+            case_id=setup["case"].id,
+            report_id="not-a-uuid",
+            user_id=setup["user"].id,
+        )
+    assert invalid_report.value.code == "INVALID_UUID"
+
+
+def test_report_read_paths_never_commit_or_write_audit(
+    db_session: Session,
+    setup: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify consultation and download are strictly read-only operations."""
+    service = ReportService(db_session)
+    generated = service.generate_report(case_id=setup["case"].id, internal=True)
+    report = generated[0]
+    before = (report.content, report.sha256, report.status, report.version)
+
+    def _forbidden_commit() -> None:
+        raise AssertionError("Un commit a été tenté pendant une lecture.")
+
+    def _forbidden_flush(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("Un flush a été tenté pendant une lecture.")
+
+    monkeypatch.setattr(db_session, "commit", _forbidden_commit)
+    monkeypatch.setattr(db_session, "flush", _forbidden_flush)
+
+    found = service.get_report(
+        case_id=setup["case"].id,
+        report_id=report.id,
+        user_id=setup["user"].id,
+    )
+    rows = service.list_reports(case_id=setup["case"].id, user_id=setup["user"].id)
+    total = service.count_reports(case_id=setup["case"].id, user_id=setup["user"].id)
+
+    assert found.id == report.id
+    assert len(rows) == 2
+    assert total == 2
+    assert (report.content, report.sha256, report.status, report.version) == before
+    assert db_session.scalar(select(AuditEvent)) is None

@@ -27,6 +27,7 @@ __all__ = [
     "PseudonymizeResult",
     "ReportContent",
     "ReportFormat",
+    "ReportListResponse",
     "ReportOut",
     "ReportSection",
     "ReportStatus",
@@ -216,6 +217,29 @@ class ReportOut(BaseModel):
         """Reject unknown format or status values explicitly."""
         enum_type = ReportFormat if info.field_name == "format" else ReportStatus
         return enum_type(value)
+
+
+class ReportListResponse(BaseModel):
+    """Paginated collection of sealed reports for one investigation case."""
+
+    items: list[ReportOut]
+    total: int = Field(..., ge=0)
+    total_items: int = Field(default=0, ge=0)
+    limit: int = Field(..., ge=1, le=100)
+    offset: int = Field(..., ge=0)
+    has_more: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_total_items(cls, data: Any) -> Any:
+        """Ensure total_items mirrors total when the caller omits it."""
+        if isinstance(data, dict) and data.get("total_items") is None and "total" in data:
+            updated = dict(data)
+            updated["total_items"] = updated["total"]
+            return updated
+        return data
 
 
 class PseudonymizeRequest(BaseModel):

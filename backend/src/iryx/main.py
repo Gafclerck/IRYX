@@ -18,6 +18,7 @@ from iryx.evidence.router import router as evidence_router
 from iryx.gateway.router import router as gateway_router
 from iryx.orchestrator.router import router as orchestrator_router
 from iryx.organizations.router import router as organizations_router
+from iryx.reporting.router import router as reporting_router
 
 logger = logging.getLogger("iryx.main")
 
@@ -90,6 +91,7 @@ def create_app() -> FastAPI:
     application.include_router(gateway_router)
     application.include_router(orchestrator_router)
     application.include_router(analytics_router)
+    application.include_router(reporting_router)
 
     # Thin Health Check Endpoint (D-03)
     @application.get(
