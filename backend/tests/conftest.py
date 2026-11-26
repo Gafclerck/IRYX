@@ -36,11 +36,13 @@ iryx.core.security.password_hash = _fast_hasher
 def _shared_engine():
     """Session-scoped in-memory SQLite engine with all IRYX tables created once."""
     import iryx.analytics.models  # noqa: F401
+    import iryx.audit.models  # noqa: F401
     import iryx.auth.models  # noqa: F401
     import iryx.cases.models  # noqa: F401
     import iryx.evidence.models  # noqa: F401
     import iryx.gateway.models  # noqa: F401
     import iryx.orchestrator.models  # noqa: F401
+    import iryx.reporting.models  # noqa: F401
 
     engine = create_engine(
         "sqlite:///:memory:",

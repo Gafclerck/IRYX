@@ -1,8 +1,12 @@
 """Tests for Alembic migration configuration and audit of create_all prohibition."""
 
 import configparser
+import io
 from pathlib import Path
+from typing import Any
 
+import alembic.context as alembic_context
+import pytest
 from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
@@ -95,3 +99,25 @@ def test_alembic_offline_upgrade_execution():
 
     # Execute upgrade head in offline mode (sql=True)
     command.upgrade(cfg, "head", sql=True)
+
+
+def test_alembic_target_metadata_includes_story_8_3_tables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify env.py binds ORM metadata containing reports and audit_events."""
+    backend_dir = Path(__file__).resolve().parent.parent.parent
+    cfg = Config(str(backend_dir / "alembic.ini"))
+    cfg.set_main_option("script_location", str(backend_dir / "migrations"))
+    cfg.output_buffer = io.StringIO()
+    captured: dict[str, Any] = {}
+    original_configure = alembic_context.configure
+
+    def _spy_configure(*args: Any, **kwargs: Any) -> Any:
+        captured["metadata"] = kwargs.get("target_metadata")
+        return original_configure(*args, **kwargs)
+
+    monkeypatch.setattr(alembic_context, "configure", _spy_configure)
+    command.upgrade(cfg, "head", sql=True)
+
+    metadata = captured["metadata"]
+    assert {"reports", "audit_events"}.issubset(set(metadata.tables))

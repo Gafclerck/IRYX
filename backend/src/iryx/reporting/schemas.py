@@ -6,15 +6,216 @@ the entity type, the confidence score and the assigned pseudonym are public.
 """
 
 import uuid
+from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 __all__ = [
+    "CANONICAL_SECTION_KEYS",
+    "CANONICAL_SECTION_TITLES",
     "DetectedEntityInfo",
     "PseudonymizeRequest",
     "PseudonymizeResult",
+    "ReportContent",
+    "ReportFormat",
+    "ReportOut",
+    "ReportSection",
+    "ReportStatus",
 ]
+
+
+class ReportFormat(StrEnum):
+    """Supported sealed report serialization formats."""
+
+    MARKDOWN = "markdown"
+    JSON = "json"
+
+
+class ReportStatus(StrEnum):
+    """Lifecycle states of a sealed report row."""
+
+    DRAFT = "draft"
+    VALIDATED = "validated"
+    EXPORTED = "exported"
+
+
+CANONICAL_SECTION_TITLES: tuple[str, ...] = (
+    "Résumé managérial",
+    "Périmètre",
+    "Méthodologie",
+    "Chaîne des preuves",
+    "Observations",
+    "Constats validés",
+    "Chronologie",
+    "Limites",
+)
+
+CANONICAL_SECTION_KEYS: tuple[str, ...] = (
+    "resume_managerial",
+    "perimetre",
+    "methodologie",
+    "chaine_des_preuves",
+    "observations",
+    "constats_valides",
+    "chronologie",
+    "limites",
+)
+
+_SECTION_ALIASES: dict[str, tuple[str, str]] = {
+    "resume_managerial": ("Résumé managérial", "resume_managerial"),
+    "résumé managérial": ("Résumé managérial", "resume_managerial"),
+    "résumé": ("Résumé managérial", "resume_managerial"),
+    "summary": ("Résumé managérial", "resume_managerial"),
+    "perimetre": ("Périmètre", "perimetre"),
+    "périmètre": ("Périmètre", "perimetre"),
+    "scope": ("Périmètre", "perimetre"),
+    "methodologie": ("Méthodologie", "methodologie"),
+    "méthodologie": ("Méthodologie", "methodologie"),
+    "methodology": ("Méthodologie", "methodologie"),
+    "chaine_des_preuves": ("Chaîne des preuves", "chaine_des_preuves"),
+    "chaîne des preuves": ("Chaîne des preuves", "chaine_des_preuves"),
+    "chaine des preuves": ("Chaîne des preuves", "chaine_des_preuves"),
+    "chain_of_custody": ("Chaîne des preuves", "chaine_des_preuves"),
+    "observations": ("Observations", "observations"),
+    "constats_valides": ("Constats validés", "constats_valides"),
+    "constats validés": ("Constats validés", "constats_valides"),
+    "findings": ("Constats validés", "constats_valides"),
+    "chronologie": ("Chronologie", "chronologie"),
+    "timeline": ("Chronologie", "chronologie"),
+    "limites": ("Limites", "limites"),
+    "limits": ("Limites", "limites"),
+}
+
+
+def _normalize_section_label(value: str) -> str:
+    """Normalize a section label for alias matching."""
+    return " ".join(value.strip().lower().replace("_", " ").split())
+
+
+class ReportSection(BaseModel):
+    """One canonical section of a sealed incident report."""
+
+    key: str = Field(..., min_length=1, description="Identifiant stable de la section.")
+    title: str = Field(..., min_length=1, description="Titre canonique affiché dans le rapport.")
+    content: str = Field(default="", description="Corps de la section.")
+    order: int = Field(default=0, description="Ordre de rendu déterministe.")
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_canonical_section(cls, data: Any) -> Any:
+        """Resolve known section aliases to the canonical key/title pair."""
+        if not isinstance(data, dict):
+            return data
+        updated = dict(data)
+        raw_key = str(updated.get("key") or "").strip()
+        raw_title = str(updated.get("title") or "").strip()
+        label = raw_title or raw_key
+        canonical = _SECTION_ALIASES.get(_normalize_section_label(label))
+        key_canonical = _SECTION_ALIASES.get(_normalize_section_label(raw_key)) if raw_key else None
+        title_canonical = (
+            _SECTION_ALIASES.get(_normalize_section_label(raw_title)) if raw_title else None
+        )
+        if (
+            key_canonical is not None
+            and title_canonical is not None
+            and key_canonical != title_canonical
+        ):
+            raise ValueError("Le titre de section ne correspond pas à sa clé canonique.")
+        if canonical is not None:
+            updated["title"], updated["key"] = canonical
+        elif not updated.get("key") and updated.get("title"):
+            updated["key"] = _normalize_section_label(raw_title).replace(" ", "_")
+        elif not updated.get("title") and updated.get("key"):
+            updated["title"] = raw_key.replace("_", " ").capitalize()
+        return updated
+
+
+class ReportContent(BaseModel):
+    """Canonical, serializable structure compiled into Markdown and JSON."""
+
+    case_id: uuid.UUID
+    sections: list[ReportSection] = Field(..., min_length=8, max_length=8)
+    generation_id: uuid.UUID | None = None
+    run_id: uuid.UUID | None = None
+    version: int = Field(default=1, ge=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("case_id", "generation_id", "run_id", mode="before")
+    @classmethod
+    def coerce_uuid(cls, value: Any) -> Any:
+        """Accept UUID instances or their canonical string representation."""
+        if value is None or isinstance(value, uuid.UUID):
+            return value
+        if isinstance(value, str):
+            return uuid.UUID(value)
+        return value
+
+    @field_validator("created_at", mode="before")
+    @classmethod
+    def normalize_created_at(cls, value: Any) -> Any:
+        """Normalize naive datetimes to UTC for deterministic serialization."""
+        if isinstance(value, datetime) and value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value
+
+    @model_validator(mode="after")
+    def validate_canonical_sections(self) -> "ReportContent":
+        """Require each canonical key/title pair exactly once."""
+        keys = [section.key for section in self.sections]
+        titles = [section.title for section in self.sections]
+        if set(keys) != set(CANONICAL_SECTION_KEYS) or len(set(keys)) != 8:
+            raise ValueError("Le rapport doit contenir exactement les huit sections canoniques.")
+        if len(set(titles)) != 8:
+            raise ValueError("Les titres de sections doivent être uniques.")
+        expected = set(zip(CANONICAL_SECTION_KEYS, CANONICAL_SECTION_TITLES, strict=True))
+        if {(section.key, section.title) for section in self.sections} != expected:
+            raise ValueError("Chaque section doit utiliser la paire clé/titre canonique.")
+        return self
+
+
+class ReportOut(BaseModel):
+    """Public representation of a persisted report row."""
+
+    id: uuid.UUID
+    case_id: uuid.UUID
+    generation_id: uuid.UUID
+    format: ReportFormat
+    version: int
+    status: ReportStatus
+    sha256: str = Field(..., min_length=64, max_length=64)
+    content: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+    @field_validator("generation_id", mode="before")
+    @classmethod
+    def coerce_generation_id(cls, value: Any) -> Any:
+        """Accept the canonical string representation stored in the database."""
+        if isinstance(value, str):
+            return uuid.UUID(value)
+        return value
+
+    @field_validator("format", "status", mode="before")
+    @classmethod
+    def validate_enum_value(cls, value: Any, info: ValidationInfo) -> Any:
+        """Reject unknown format or status values explicitly."""
+        enum_type = ReportFormat if info.field_name == "format" else ReportStatus
+        return enum_type(value)
 
 
 class PseudonymizeRequest(BaseModel):

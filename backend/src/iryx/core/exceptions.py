@@ -491,6 +491,21 @@ class LLMServiceUnavailableException(IryxException):
         )
 
 
+class ReportGenerationFailedException(IryxException):
+    """Raised when an incident report cannot be compiled or sealed (HTTP 500)."""
+
+    def __init__(
+        self,
+        message: str = "La génération du rapport d'incident a échoué.",
+        code: str = "REPORT_GENERATION_FAILED",
+    ) -> None:
+        super().__init__(
+            message=message,
+            code=code,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
 class InvestigationAlreadyRunningException(ConflictException):
     """Raised when an investigation run is already active on a case (HTTP 409)."""
 

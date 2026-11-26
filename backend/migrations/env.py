@@ -11,11 +11,13 @@ if backend_src not in sys.path:
     sys.path.insert(0, backend_src)
 
 import iryx.analytics.models  # noqa: F401, E402
+import iryx.audit.models  # noqa: F401, E402
 import iryx.auth.models  # noqa: F401, E402
 import iryx.cases.models  # noqa: F401, E402
 import iryx.evidence.models  # noqa: F401, E402
 import iryx.gateway.models  # noqa: F401, E402
 import iryx.orchestrator.models  # noqa: F401, E402
+import iryx.reporting.models  # noqa: F401, E402
 from iryx.core.config import get_settings  # noqa: E402
 from iryx.db.base import Base  # noqa: E402
 

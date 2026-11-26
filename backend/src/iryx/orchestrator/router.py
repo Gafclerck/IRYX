@@ -247,12 +247,17 @@ def arbitrate_gate_h3(
 def get_anonymized_preview(
     case_id: uuid.UUID,
     run_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
     _case: Annotated[Case, Depends(verify_case_access)],
     db: Annotated[Session, Depends(get_db)],
 ) -> AnonymizedPreviewOut:
     """Retrieve the anonymized preview of the investigation synthesis for the run."""
     service = InvestigationService(db)
-    return service.get_anonymized_preview(case_id=case_id, run_id=run_id)
+    return service.get_anonymized_preview(
+        case_id=case_id,
+        run_id=run_id,
+        user_id=current_user.id,
+    )
 
 
 @router.post(
@@ -270,6 +275,7 @@ def get_anonymized_preview(
 def resume_investigation(
     case_id: uuid.UUID,
     run_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
     _case: Annotated[
         Case,
         Depends(
@@ -285,4 +291,8 @@ def resume_investigation(
 ) -> InvestigationRunOut:
     """Resume an investigation run from its last checkpoint."""
     service = InvestigationService(db=db, checkpointer=checkpointer)
-    return service.resume_investigation(case_id=case_id, run_id=run_id)
+    return service.resume_investigation(
+        case_id=case_id,
+        run_id=run_id,
+        user_id=current_user.id,
+    )

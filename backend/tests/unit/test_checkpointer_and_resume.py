@@ -19,15 +19,22 @@ Validates:
   - Fallback reconstruction when checkpointer snapshot is not yet written
 """
 
+import hashlib
+import json
+import re
 import uuid
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 from langgraph.checkpoint.memory import MemorySaver
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from iryx.ai.schemas import LLMRole
+from iryx.analytics.models import Finding, FindingSeverity, FindingStatus
 from iryx.auth.models import MembershipRole, User
 from iryx.auth.schemas import UserCreate
 from iryx.auth.services import UserService
@@ -36,16 +43,18 @@ from iryx.cases.services import CaseService
 from iryx.core.exceptions import (
     CannotResumeTerminatedSessionException,
     InvestigationNotFoundException,
+    ReportGenerationFailedException,
 )
 from iryx.core.security import create_access_token
 from iryx.main import app
 from iryx.orchestrator.checkpointer import (
     get_checkpointer,
+    get_checkpointer_dependency,
     get_memory_saver,
     normalize_postgres_url,
     reset_memory_saver,
 )
-from iryx.orchestrator.graph import build_investigation_graph
+from iryx.orchestrator.graph import build_investigation_graph, get_runtime_context
 from iryx.orchestrator.models import (
     InvestigationRun,
     InvestigationStatus,
@@ -53,10 +62,18 @@ from iryx.orchestrator.models import (
     PhaseName,
     PhaseStatus,
 )
-from iryx.orchestrator.schemas import H3Decision, H3DecisionRequest
-from iryx.orchestrator.services import InvestigationService
+from iryx.orchestrator.schemas import (
+    AnonymizedPreviewOut,
+    H3Decision,
+    H3DecisionRequest,
+    InvestigationRunOut,
+)
+from iryx.orchestrator.services import InvestigationService, set_runtime_context
 from iryx.orchestrator.state import InvestigationState
 from iryx.organizations.services import OrganizationService
+from iryx.reporting.models import Report
+from iryx.reporting.pseudonymizer import DeterministicPseudonymizer
+from iryx.reporting.schemas import CANONICAL_SECTION_KEYS
 
 
 def auth_header(user: User) -> dict[str, str]:
@@ -763,3 +780,614 @@ def test_api_resume_unknown_case_returns_404(
         headers=auth_header(admin),
     )
     assert response.status_code == 404
+
+
+# ============================================================================
+# Story 8.3 — H3 pseudonym continuity across preview, arbitration and resume
+# ============================================================================
+
+
+class _RecordingRapporteurClient:
+    """LLM double recording the approved external drafting prompt."""
+
+    def __init__(self) -> None:
+        self.role = "rapporteur"
+        self.calls: list[list[dict[str, Any]]] = []
+        self.response = json.dumps(
+            {key: "Texte factuel." for key in CANONICAL_SECTION_KEYS}, ensure_ascii=False
+        )
+
+    def for_role(self, role: Any) -> "_RecordingRapporteurClient":
+        """Record the requested role and return this client."""
+        self.requested_role = role
+        return self
+
+    async def complete(self, messages: list[dict[str, Any]], temperature: float = 0.0) -> dict:
+        """Capture the external prompt."""
+        self.calls.append(messages)
+        return {"content": self.response}
+
+
+def _h3_run(db_session: Session, case: Case, phase: PhaseName) -> InvestigationRun:
+    """Create a paused investigation run ready for H3 arbitration."""
+    now = datetime.now(UTC)
+    run = InvestigationRun(
+        id=uuid.uuid4(),
+        case_id=case.id,
+        status=InvestigationStatus.PAUSED,
+        current_phase=phase,
+        validated_plan=sample_plan_dict(),
+        started_at=now,
+        updated_at=now,
+    )
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        Phase(
+            id=uuid.uuid4(),
+            investigation_run_id=run.id,
+            phase_name=PhaseName.GATE_H3,
+            status=PhaseStatus.ACTIVE,
+            started_at=now,
+        )
+    )
+    db_session.commit()
+    return run
+
+
+def test_preview_token_is_restored_and_reused_after_approved_resume(
+    db_session: Session,
+    test_setup: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify the H3 preview pseudonym survives arbitration and resume unchanged."""
+    case: Case = test_setup["case"]
+    admin: User = test_setup["admin"]
+    db_session.add(
+        Finding(
+            case_id=case.id,
+            title="Connexion suspecte depuis 198.51.100.27",
+            severity=FindingSeverity.HIGH,
+            status=FindingStatus.VALIDATED,
+        )
+    )
+    run = _h3_run(db_session, case, PhaseName.WAITING_H3)
+    checkpointer = MemorySaver()
+    service = InvestigationService(db=db_session, checkpointer=checkpointer)
+    config = {"configurable": {"thread_id": str(run.id)}}
+
+    preview = service.get_anonymized_preview(case.id, run.id, user_id=admin.id)
+    assert preview.has_entities
+    pseudonym = re.search(r"IP_INTERNAL_\d+", preview.anonymized_text)
+    assert pseudonym is not None
+
+    seeded = build_investigation_graph(checkpointer=checkpointer).get_state(config).values
+    assert seeded["current_phase"] == "gate_h3"
+    assert seeded["status"] == "running"
+    assert "h1_approved" not in seeded
+    assert "h2_approved" not in seeded
+    assert seeded["context"]["pseudonymization_case_id"] == str(case.id)
+
+    service.arbitrate_gate_h3(
+        case_id=case.id,
+        run_id=run.id,
+        decision_request=H3DecisionRequest(
+            decision=H3Decision.APPROVE,
+            feedback="Rédaction externe autorisée",
+        ),
+        user_id=admin.id,
+    )
+    approved_state = build_investigation_graph(checkpointer=checkpointer).get_state(config).values
+    assert approved_state["h3_approved"] is True
+    assert "local_report_mode" not in approved_state["context"]
+
+    client = _RecordingRapporteurClient()
+    requested_roles: list[LLMRole] = []
+
+    def _factory(role: LLMRole) -> _RecordingRapporteurClient:
+        requested_roles.append(role)
+        return client
+
+    monkeypatch.setattr("iryx.orchestrator.graph.get_llm_client", _factory)
+    set_runtime_context({})
+    try:
+        resumed = service.resume_investigation(
+            case_id=case.id,
+            run_id=run.id,
+            user_id=admin.id,
+        )
+    finally:
+        set_runtime_context({})
+
+    assert requested_roles == [LLMRole.RAPPORTEUR]
+    assert resumed.current_phase == PhaseName.REPORTING
+    assert len(client.calls) == 1
+    assert pseudonym.group(0) in client.calls[0][1]["content"]
+    reports = list(
+        db_session.scalars(select(Report).where(Report.case_id == case.id))
+    )
+    assert len(reports) == 2
+    assert all(pseudonym.group(0) in report.content for report in reports)
+
+
+def test_corrupt_token_is_ignored_when_resume_never_reaches_reporting(
+    db_session: Session,
+    test_setup: dict[str, Any],
+) -> None:
+    """Verify a stale corrupt token does not block a resume that stops before reporting."""
+    case: Case = test_setup["case"]
+    run = _h3_run(db_session, case, PhaseName.WAITING_H3)
+    checkpointer = MemorySaver()
+    graph = build_investigation_graph(checkpointer=checkpointer)
+    config = {"configurable": {"thread_id": str(run.id)}}
+    graph.update_state(
+        config,
+        {
+            "context": {
+                "pseudonymization_token": "corrupted-token",
+                "pseudonymization_case_id": str(case.id),
+            }
+        },
+    )
+
+    service = InvestigationService(db=db_session, checkpointer=checkpointer)
+    resumed = service.resume_investigation(case_id=case.id, run_id=run.id)
+
+    assert resumed.id == run.id
+    assert resumed.current_phase in (PhaseName.GATE_H3, PhaseName.WAITING_H3)
+
+
+def test_corrupt_token_fails_typed_when_resume_reaches_reporting(
+    db_session: Session,
+    test_setup: dict[str, Any],
+) -> None:
+    """Verify a corrupt token aborts an approved reporting resume with the typed error."""
+    case: Case = test_setup["case"]
+    run = _h3_run(db_session, case, PhaseName.WAITING_H3)
+    checkpointer = MemorySaver()
+    graph = build_investigation_graph(checkpointer=checkpointer)
+    config = {"configurable": {"thread_id": str(run.id)}}
+    graph.update_state(
+        config,
+        {
+            "h3_approved": True,
+            "current_phase": "gate_h3",
+            "context": {
+                "pseudonymization_token": "corrupted-token",
+                "pseudonymization_case_id": str(case.id),
+            },
+        },
+    )
+
+    service = InvestigationService(db=db_session, checkpointer=checkpointer)
+    with pytest.raises(ReportGenerationFailedException):
+        service.resume_investigation(case_id=case.id, run_id=run.id)
+    assert (
+        list(db_session.scalars(select(Report).where(Report.case_id == case.id))) == []
+    )
+
+
+def test_failed_checkpointer_token_write_aborts_resume_without_report(
+    db_session: Session,
+    test_setup: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify a failed pseudonym-token checkpoint write raises the typed error."""
+    case: Case = test_setup["case"]
+    run = _h3_run(db_session, case, PhaseName.WAITING_H3)
+    pseudonymizer = DeterministicPseudonymizer()
+    pseudonymizer.pseudonymize("Connexion 198.51.100.27", case_id=str(case.id))
+    token = pseudonymizer.export_token(case.id)
+
+    class _FailingGraph:
+        def get_state(self, config: dict[str, Any]) -> SimpleNamespace:
+            return SimpleNamespace(
+                values={
+                    "current_phase": "gate_h3",
+                    "h3_approved": True,
+                    "context": {
+                        "pseudonymization_token": token,
+                        "pseudonymization_case_id": str(case.id),
+                    },
+                }
+            )
+
+        def update_state(self, config: dict[str, Any], update: dict[str, Any]) -> None:
+            raise RuntimeError("checkpointer indisponible")
+
+    monkeypatch.setattr(
+        "iryx.orchestrator.services.build_investigation_graph",
+        lambda checkpointer=None: _FailingGraph(),
+    )
+
+    service = InvestigationService(db=db_session, checkpointer=MemorySaver())
+    with pytest.raises(ReportGenerationFailedException, match="checkpointer"):
+        service.resume_investigation(case_id=case.id, run_id=run.id)
+    assert (
+        list(db_session.scalars(select(Report).where(Report.case_id == case.id))) == []
+    )
+
+
+def test_pseudonym_token_from_another_case_is_rejected(
+    db_session: Session,
+    test_setup: dict[str, Any],
+) -> None:
+    """Verify a token bound to another case cannot be restored for this case."""
+    case: Case = test_setup["case"]
+    foreign_case_id = uuid.uuid4()
+    foreign = DeterministicPseudonymizer()
+    foreign.pseudonymize("Connexion externe", case_id=str(foreign_case_id))
+    token = foreign.export_token(foreign_case_id)
+
+    service = InvestigationService(db=db_session, checkpointer=MemorySaver())
+    with pytest.raises(ReportGenerationFailedException, match="pseudonymisation"):
+        service._restore_report_pseudonymizer(
+            case.id, {"pseudonymization_token": token}
+        )
+
+
+def test_reject_then_approve_clears_local_report_mode(
+    db_session: Session,
+    test_setup: dict[str, Any],
+) -> None:
+    """Verify a later approval removes the local flag left by a rejection."""
+    case: Case = test_setup["case"]
+    admin: User = test_setup["admin"]
+    run = _h3_run(db_session, case, PhaseName.WAITING_H3)
+    service = InvestigationService(db=db_session, checkpointer=MemorySaver())
+    config = {"configurable": {"thread_id": str(run.id)}}
+    graph = build_investigation_graph(checkpointer=service.checkpointer)
+
+    service.arbitrate_gate_h3(
+        case_id=case.id,
+        run_id=run.id,
+        decision_request=H3DecisionRequest(decision=H3Decision.REJECT),
+        user_id=admin.id,
+    )
+    rejected = graph.get_state(config).values
+    assert rejected["context"]["local_report_mode"] is True
+
+    run.status = InvestigationStatus.PAUSED
+    run.current_phase = PhaseName.WAITING_H3
+    db_session.commit()
+    service.arbitrate_gate_h3(
+        case_id=case.id,
+        run_id=run.id,
+        decision_request=H3DecisionRequest(decision=H3Decision.APPROVE),
+        user_id=admin.id,
+    )
+    approved = graph.get_state(config).values
+    assert approved["h3_approved"] is True
+    assert "local_report_mode" not in approved["context"]
+
+
+def test_compiled_resume_propagates_typed_generation_failure(
+    db_session: Session,
+    test_setup: dict[str, Any],
+) -> None:
+    """Verify the compiled graph/resume path surfaces a typed drafting failure."""
+    case: Case = test_setup["case"]
+    db_session.add(
+        Finding(
+            case_id=case.id,
+            title="Connexion suspecte depuis 198.51.100.27",
+            severity=FindingSeverity.HIGH,
+            status=FindingStatus.VALIDATED,
+        )
+    )
+    run = _h3_run(db_session, case, PhaseName.WAITING_H3)
+    pseudonymizer = DeterministicPseudonymizer()
+    pseudonymizer.pseudonymize("Connexion 198.51.100.27", case_id=str(case.id))
+    token = pseudonymizer.export_token(case.id)
+    checkpointer = MemorySaver()
+    graph = build_investigation_graph(checkpointer=checkpointer)
+    graph.update_state(
+        {"configurable": {"thread_id": str(run.id)}},
+        {
+            "case_id": str(case.id),
+            "run_id": str(run.id),
+            "h3_approved": True,
+            "current_phase": "gate_h3",
+            "context": {
+                "pseudonymization_token": token,
+                "pseudonymization_case_id": str(case.id),
+            },
+        },
+    )
+
+    service = InvestigationService(db=db_session, checkpointer=checkpointer)
+    with pytest.raises(ReportGenerationFailedException) as exc_info:
+        service.resume_investigation(case_id=case.id, run_id=run.id)
+    assert exc_info.value.code == "REPORT_GENERATION_FAILED"
+    assert exc_info.value.status_code == 500
+    assert (
+        list(db_session.scalars(select(Report).where(Report.case_id == case.id))) == []
+    )
+
+
+def test_approved_resume_resolves_rapporteur_client_from_factory(
+    db_session: Session,
+    test_setup: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify approved production drafting needs no manually injected LLM client."""
+    case: Case = test_setup["case"]
+    admin: User = test_setup["admin"]
+    db_session.add(
+        Finding(
+            case_id=case.id,
+            title="Connexion suspecte depuis 198.51.100.27",
+            severity=FindingSeverity.HIGH,
+            status=FindingStatus.VALIDATED,
+        )
+    )
+    run = _h3_run(db_session, case, PhaseName.WAITING_H3)
+    checkpointer = MemorySaver()
+    service = InvestigationService(db=db_session, checkpointer=checkpointer)
+
+    service.get_anonymized_preview(case.id, run.id, user_id=admin.id)
+    service.arbitrate_gate_h3(
+        case_id=case.id,
+        run_id=run.id,
+        decision_request=H3DecisionRequest(decision=H3Decision.APPROVE),
+        user_id=admin.id,
+    )
+
+    client = _RecordingRapporteurClient()
+    requested_roles: list[LLMRole] = []
+
+    def _factory(role: LLMRole) -> _RecordingRapporteurClient:
+        requested_roles.append(role)
+        return client
+
+    monkeypatch.setattr("iryx.orchestrator.graph.get_llm_client", _factory)
+    set_runtime_context({})
+    try:
+        resumed = service.resume_investigation(case_id=case.id, run_id=run.id, user_id=admin.id)
+    finally:
+        set_runtime_context({})
+
+    assert requested_roles == [LLMRole.RAPPORTEUR]
+    assert resumed.current_phase == PhaseName.REPORTING
+    assert len(client.calls) == 1
+    reports = list(db_session.scalars(select(Report).where(Report.case_id == case.id)))
+    assert len(reports) == 2
+    assert all(
+        report.sha256 == hashlib.sha256(report.content.encode("utf-8")).hexdigest()
+        for report in reports
+    )
+
+
+def test_approved_pseudonym_token_cannot_be_replaced(
+    db_session: Session,
+    test_setup: dict[str, Any],
+) -> None:
+    """Verify a stored approved token is immutable, while identical writes remain valid."""
+    case: Case = test_setup["case"]
+    run = _h3_run(db_session, case, PhaseName.WAITING_H3)
+    service = InvestigationService(db=db_session, checkpointer=MemorySaver())
+
+    service._persist_pseudonymizer_token(case.id, run.id, "token-approuve")
+    service._persist_pseudonymizer_token(case.id, run.id, "token-approuve")
+
+    with pytest.raises(ReportGenerationFailedException, match="remplacé"):
+        service._persist_pseudonymizer_token(case.id, run.id, "token-different")
+
+
+def test_inject_runtime_drops_stale_llm_client_unless_explicit() -> None:
+    """Verify a per-request LLM client never leaks into a later runtime context."""
+    stale = object()
+    explicit = object()
+    set_runtime_context({"llm_client": stale, "user_id": uuid.uuid4()})
+    try:
+        InvestigationService._inject_runtime(db="db-marker")
+        assert "llm_client" not in get_runtime_context()
+        InvestigationService._inject_runtime(llm_client=explicit)
+        assert get_runtime_context()["llm_client"] is explicit
+    finally:
+        set_runtime_context({})
+
+
+def test_router_forwards_current_user_to_preview_and_resume(
+    db_session: Session,
+    test_setup: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify both H3 HTTP endpoints pass the authenticated user id to the service."""
+    case: Case = test_setup["case"]
+    admin: User = test_setup["admin"]
+    run = _h3_run(db_session, case, PhaseName.WAITING_H3)
+    seen: dict[str, Any] = {}
+
+    def _preview(self: Any, case_id: Any, run_id: Any, *, user_id: Any = None) -> Any:
+        seen["preview"] = user_id
+        return AnonymizedPreviewOut(
+            run_id=run_id,
+            case_id=case_id,
+            anonymized_text="Aucune entité",
+            entity_count=0,
+            has_entities=False,
+        )
+
+    def _resume(self: Any, case_id: Any, run_id: Any, user_id: Any = None) -> Any:
+        seen["resume"] = user_id
+        return InvestigationRunOut.model_validate(
+            self.get_investigation_run(case_id=case_id, run_id=run_id)
+        )
+
+    monkeypatch.setattr(InvestigationService, "get_anonymized_preview", _preview)
+    monkeypatch.setattr(InvestigationService, "resume_investigation", _resume)
+
+    client = TestClient(app)
+    headers = auth_header(admin)
+    preview_response = client.get(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/anonymized-preview",
+        headers=headers,
+    )
+    resume_response = client.post(
+        f"/api/v1/cases/{case.id}/investigations/{run.id}/resume",
+        headers=headers,
+    )
+    assert preview_response.status_code == 200
+    assert resume_response.status_code == 200
+    assert seen == {"preview": admin.id, "resume": admin.id}
+
+
+def test_approved_resume_over_http_uses_authenticated_identity(
+    db_session: Session,
+    test_setup: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify an HTTP resume ignores a differing checkpoint identity."""
+    case: Case = test_setup["case"]
+    admin: User = test_setup["admin"]
+    outsider: User = test_setup["outside"]
+    db_session.add(
+        Finding(
+            case_id=case.id,
+            title="Connexion suspecte depuis 198.51.100.27",
+            severity=FindingSeverity.HIGH,
+            status=FindingStatus.VALIDATED,
+        )
+    )
+    run = _h3_run(db_session, case, PhaseName.WAITING_H3)
+    checkpointer = MemorySaver()
+    service = InvestigationService(db=db_session, checkpointer=checkpointer)
+    service.get_anonymized_preview(case.id, run.id, user_id=admin.id)
+
+    config = {"configurable": {"thread_id": str(run.id)}}
+    graph = build_investigation_graph(checkpointer=checkpointer)
+    token = graph.get_state(config).values["context"]["pseudonymization_token"]
+    graph.update_state(
+        config,
+        {
+            "h3_approved": True,
+            "current_phase": "gate_h3",
+            "context": {
+                "pseudonymization_token": token,
+                "pseudonymization_case_id": str(case.id),
+                "user_id": str(outsider.id),
+            },
+        },
+    )
+
+    client = _RecordingRapporteurClient()
+    monkeypatch.setattr("iryx.orchestrator.graph.get_llm_client", lambda role: client)
+    app.dependency_overrides[get_checkpointer_dependency] = lambda: checkpointer
+    set_runtime_context({})
+    try:
+        response = TestClient(app).post(
+            f"/api/v1/cases/{case.id}/investigations/{run.id}/resume",
+            headers=auth_header(admin),
+        )
+    finally:
+        app.dependency_overrides.pop(get_checkpointer_dependency, None)
+        set_runtime_context({})
+
+    assert response.status_code == 200, response.text
+    assert len(client.calls) == 1
+    reports = list(db_session.scalars(select(Report).where(Report.case_id == case.id)))
+    assert len(reports) == 2
+
+
+def test_divergent_runtime_preview_token_fails_without_mutating_store(
+    db_session: Session,
+    test_setup: dict[str, Any],
+) -> None:
+    """Verify an approved checkpoint token cannot be replaced by a shared store."""
+    case: Case = test_setup["case"]
+    run = _h3_run(db_session, case, PhaseName.WAITING_H3)
+    checkpointer = MemorySaver()
+
+    approved = DeterministicPseudonymizer()
+    approved.pseudonymize("Connexion 198.51.100.27", case_id=str(case.id))
+    approved_token = approved.export_token(case.id)
+    graph = build_investigation_graph(checkpointer=checkpointer)
+    graph.update_state(
+        {"configurable": {"thread_id": str(run.id)}},
+        {
+            "context": {
+                "pseudonymization_token": approved_token,
+                "pseudonymization_case_id": str(case.id),
+            }
+        },
+    )
+
+    shared = DeterministicPseudonymizer()
+    shared.pseudonymize("Connexion 203.0.113.9", case_id=str(case.id))
+    shared_token = shared.export_token(case.id)
+    set_runtime_context({"pseudonymizer": shared})
+    try:
+        with pytest.raises(ReportGenerationFailedException, match="remplacé"):
+            InvestigationService(db=db_session, checkpointer=checkpointer).get_anonymized_preview(
+                case.id, run.id
+            )
+    finally:
+        set_runtime_context({})
+    assert shared.export_token(case.id) == shared_token
+
+
+def test_pseudonym_token_bound_to_another_case_is_rejected(
+    db_session: Session,
+    test_setup: dict[str, Any],
+) -> None:
+    """Verify a stored token cannot be reused under a different case identity."""
+    case: Case = test_setup["case"]
+    run = _h3_run(db_session, case, PhaseName.WAITING_H3)
+    checkpointer = MemorySaver()
+    service = InvestigationService(db=db_session, checkpointer=checkpointer)
+    service._persist_pseudonymizer_token(case.id, run.id, "token-approuve")
+
+    config = {"configurable": {"thread_id": str(run.id)}}
+    graph = build_investigation_graph(checkpointer=checkpointer)
+    context = dict(graph.get_state(config).values["context"])
+    context["pseudonymization_case_id"] = str(uuid.uuid4())
+    graph.update_state(config, {"context": context})
+
+    with pytest.raises(ReportGenerationFailedException, match="autre dossier"):
+        service._persist_pseudonymizer_token(case.id, run.id, "token-approuve")
+
+
+def test_runtime_preview_without_store_restores_approved_token(
+    db_session: Session,
+    test_setup: dict[str, Any],
+) -> None:
+    """Verify an injected pseudonymizer restores the checkpoint table before drafting."""
+    case: Case = test_setup["case"]
+    admin: User = test_setup["admin"]
+    db_session.add(
+        Finding(
+            case_id=case.id,
+            title="Connexion 198.51.100.27",
+            severity=FindingSeverity.HIGH,
+            status=FindingStatus.VALIDATED,
+        )
+    )
+    run = _h3_run(db_session, case, PhaseName.WAITING_H3)
+    checkpointer = MemorySaver()
+
+    approved = DeterministicPseudonymizer()
+    approved.pseudonymize("Connexion 198.51.100.27", case_id=str(case.id))
+    stored_token = approved.export_token(case.id)
+    graph = build_investigation_graph(checkpointer=checkpointer)
+    graph.update_state(
+        {"configurable": {"thread_id": str(run.id)}},
+        {
+            "context": {
+                "pseudonymization_token": stored_token,
+                "pseudonymization_case_id": str(case.id),
+            }
+        },
+    )
+
+    injected = DeterministicPseudonymizer()
+    assert InvestigationService._current_case_token(injected, case.id) is None
+    set_runtime_context({"pseudonymizer": injected})
+    try:
+        preview = InvestigationService(
+            db=db_session, checkpointer=checkpointer
+        ).get_anonymized_preview(case.id, run.id, user_id=admin.id)
+    finally:
+        set_runtime_context({})
+    assert "198.51.100.27" not in preview.anonymized_text
+    assert injected.export_token(case.id) == stored_token

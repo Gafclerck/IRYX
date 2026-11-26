@@ -18,11 +18,17 @@ from iryx.core.exceptions import (
     InvestigationAlreadyRunningException,
     InvestigationNotFoundException,
     PlanNotFoundException,
+    ReportGenerationFailedException,
     UnreviewedFindingsException,
     ValidationException,
 )
 from iryx.orchestrator.checkpointer import get_checkpointer
-from iryx.orchestrator.graph import _sanitize_context, build_investigation_graph
+from iryx.orchestrator.graph import (
+    _sanitize_context,
+    build_investigation_graph,
+    get_runtime_context,
+    set_runtime_context,
+)
 from iryx.orchestrator.models import (
     InvestigationRun,
     InvestigationStatus,
@@ -44,6 +50,7 @@ from iryx.orchestrator.schemas import (
     InvestigationPlan,
     PhaseOut,
 )
+from iryx.reporting.verdicts import verdict_flag
 
 logger = logging.getLogger("iryx.orchestrator")
 
@@ -875,8 +882,18 @@ class InvestigationService:
         snapshot = graph.get_state(config)
         context = dict((snapshot.values or {}).get("context") or {})
         context["h3_feedback"] = decision_request.feedback
-        if not approved:
+        if approved:
+            # A refusal from a previous arbitration must not survive an approval.
+            context.pop("local_report_mode", None)
+        else:
             context["local_report_mode"] = True
+
+        pseudonymizer = self._restore_report_pseudonymizer(case_id, context)
+        self._inject_runtime(
+            db=self.db,
+            user_id=user_id,
+            pseudonymizer=pseudonymizer,
+        )
 
         state_update: dict[str, Any] = {
             "h3_approved": approved,
@@ -969,7 +986,118 @@ class InvestigationService:
             phases=[PhaseOut.model_validate(p) for p in run.phases],
         )
 
-    def get_anonymized_preview(self, case_id: uuid.UUID, run_id: uuid.UUID) -> AnonymizedPreviewOut:
+    @staticmethod
+    def _inject_runtime(**values: Any) -> None:
+        """Merge transient dependencies into the graph runtime context.
+
+        An LLM client is per-request: never let one left by an earlier call
+        survive into a later report. Tests may still inject one explicitly.
+        """
+        context = dict(get_runtime_context())
+        if "llm_client" not in values:
+            context.pop("llm_client", None)
+        context.update(values)
+        set_runtime_context(context)
+
+    def _restore_report_pseudonymizer(
+        self,
+        case_id: uuid.UUID,
+        context: dict[str, Any],
+        injected: Any | None = None,
+    ) -> Any | None:
+        """Restore the H3-approved pseudonym table, never silently create a new one."""
+        from iryx.reporting.pseudonymizer import DeterministicPseudonymizer
+
+        token = context.get("pseudonymization_token")
+        if token is None:
+            return injected
+        pseudonymizer = injected
+        try:
+            if pseudonymizer is None:
+                pseudonymizer = DeterministicPseudonymizer()
+            try:
+                current = pseudonymizer.export_token(case_id)
+            except Exception:
+                current = None
+            if current != token:
+                pseudonymizer.load_store(case_id, token)
+            # Validate the restored store immediately.
+            pseudonymizer.export_token(case_id)
+        except Exception as exc:
+            raise ReportGenerationFailedException(
+                "Impossible de restaurer la table de pseudonymisation approuvée."
+            ) from exc
+        return pseudonymizer
+
+    @staticmethod
+    def _current_case_token(pseudonymizer: Any, case_id: uuid.UUID) -> str | None:
+        """Read an existing case token without creating or mutating a store."""
+        stores = getattr(pseudonymizer, "_stores", None)
+        if not isinstance(stores, dict):
+            return None
+        store = stores.get(str(case_id)) or stores.get(case_id)
+        if store is None:
+            return None
+        try:
+            return str(store.export_token())
+        except Exception:
+            return None
+
+    def _persist_pseudonymizer_token(
+        self,
+        case_id: uuid.UUID,
+        run_id: uuid.UUID,
+        token: str,
+    ) -> dict[str, Any]:
+        """Write the canonical pseudonym token to the checkpointer before reporting."""
+        graph = build_investigation_graph(checkpointer=self.checkpointer)
+        config = {"configurable": {"thread_id": str(run_id)}}
+        try:
+            snapshot = graph.get_state(config)
+            values = dict(snapshot.values or {}) if snapshot else {}
+            context = dict(values.get("context") or {})
+            stored_token = context.get("pseudonymization_token")
+            if stored_token is not None:
+                if stored_token != token:
+                    raise ReportGenerationFailedException(
+                        "Le jeton de pseudonymisation approuvé ne peut pas être remplacé."
+                    )
+                stored_case_id = context.get("pseudonymization_case_id")
+                if stored_case_id is not None and str(stored_case_id) != str(case_id):
+                    raise ReportGenerationFailedException(
+                        "Le jeton de pseudonymisation approuvé appartient à un autre dossier."
+                    )
+            context["pseudonymization_token"] = token
+            context["pseudonymization_case_id"] = str(case_id)
+            update: dict[str, Any] = {"context": _sanitize_context(context)}
+            if not values:
+                # No verdict is fabricated when an H3 preview precedes the first run.
+                update.update(
+                    {
+                        "case_id": str(case_id),
+                        "run_id": str(run_id),
+                        "iteration_count": 0,
+                        "error_count": 0,
+                        "status": "running",
+                        "current_phase": "gate_h3",
+                    }
+                )
+            graph.update_state(config, update)
+            return context
+        except ReportGenerationFailedException:
+            raise
+        except Exception as exc:
+            raise ReportGenerationFailedException(
+                "Impossible de persister le jeton de pseudonymisation dans le checkpointer."
+            ) from exc
+
+    def get_anonymized_preview(
+        self,
+        case_id: uuid.UUID,
+        run_id: uuid.UUID,
+        *,
+        user_id: uuid.UUID | None = None,
+    ) -> AnonymizedPreviewOut:
         """Retourne un aperçu pseudonymisé de la synthèse du dossier avant la porte H3 (FR20)."""
         from iryx.analytics.models import Finding, FindingStatus
         from iryx.reporting.pseudonymizer import DeterministicPseudonymizer
@@ -996,7 +1124,62 @@ class InvestigationService:
             else "Aucune conclusion disponible pour ce dossier."
         )
 
-        result = DeterministicPseudonymizer().pseudonymize(text, case_id=str(case_id))
+        existing_context = dict(get_runtime_context())
+        injected = existing_context.get("pseudonymizer")
+        graph = build_investigation_graph(checkpointer=self.checkpointer)
+        config = {"configurable": {"thread_id": str(run_id)}}
+        try:
+            snapshot = graph.get_state(config)
+            stored_token = dict((snapshot.values or {}).get("context") or {}).get(
+                "pseudonymization_token"
+            )
+        except ReportGenerationFailedException:
+            raise
+        except Exception as exc:
+            raise ReportGenerationFailedException(
+                "Impossible de restaurer la table de pseudonymisation de l'aperçu."
+            ) from exc
+
+        pseudonymizer = injected
+        if pseudonymizer is None:
+            pseudonymizer = DeterministicPseudonymizer()
+            try:
+                if stored_token is not None:
+                    pseudonymizer.load_store(case_id, stored_token)
+            except Exception as exc:
+                raise ReportGenerationFailedException(
+                    "Impossible de restaurer la table de pseudonymisation de l'aperçu."
+                ) from exc
+        elif stored_token is not None:
+            # An approved token is immutable: check before pseudonymizing so a
+            # diverging shared store is never mutated for this case.
+            current_token = self._current_case_token(pseudonymizer, case_id)
+            if current_token is None:
+                # A shared pseudonymizer without this case's table must restore the
+                # approved table first, otherwise it would create a divergent one.
+                try:
+                    pseudonymizer.load_store(case_id, stored_token)
+                except Exception as exc:
+                    raise ReportGenerationFailedException(
+                        "Impossible de restaurer la table de pseudonymisation de l'aperçu."
+                    ) from exc
+            elif current_token != stored_token:
+                raise ReportGenerationFailedException(
+                    "Le jeton de pseudonymisation approuvé ne peut pas être remplacé."
+                )
+
+        self._inject_runtime(
+            db=self.db,
+            user_id=user_id,
+            pseudonymizer=pseudonymizer,
+        )
+        result = pseudonymizer.pseudonymize(text, case_id=str(case_id))
+        token = pseudonymizer.export_token(case_id)
+        if stored_token is not None and stored_token != token:
+            raise ReportGenerationFailedException(
+                "Le jeton de pseudonymisation approuvé ne peut pas être remplacé."
+            )
+        self._persist_pseudonymizer_token(case_id=case_id, run_id=run_id, token=token)
 
         return AnonymizedPreviewOut(
             run_id=run.id,
@@ -1122,6 +1305,7 @@ class InvestigationService:
         self,
         case_id: uuid.UUID,
         run_id: uuid.UUID,
+        user_id: uuid.UUID | None = None,
     ) -> InvestigationRun:
         """Resume an interrupted or paused investigation session from its checkpoint.
 
@@ -1166,14 +1350,33 @@ class InvestigationService:
         # Inject transient runtime context into graph
         from iryx.gateway.registry import get_tool_registry
         from iryx.gateway.runner import ToolRunner
-        from iryx.orchestrator.graph import set_runtime_context
 
-        set_runtime_context(
-            {
-                "db": self.db,
-                "tool_registry": get_tool_registry(),
-                "tool_runner": ToolRunner(db=self.db),
-            }
+        snapshot_values = dict(state_snapshot.values or {}) if state_snapshot else {}
+        snapshot_context = dict(snapshot_values.get("context") or {})
+        target_phase = str(snapshot_values.get("current_phase") or run.current_phase)
+        reaches_reporting = target_phase in (PhaseName.REPORTING, "reporting") or (
+            target_phase in ("gate_h3", PhaseName.GATE_H3, "waiting_h3", PhaseName.WAITING_H3)
+            and snapshot_values.get("h3_approved") is True
+        )
+        pseudonymizer = None
+        if reaches_reporting and snapshot_context.get("pseudonymization_token") is not None:
+            pseudonymizer = self._restore_report_pseudonymizer(
+                case_id=case_id,
+                context=snapshot_context,
+            )
+            # A failed checkpointer write must abort before any report is generated.
+            self._persist_pseudonymizer_token(
+                case_id=case_id,
+                run_id=run_id,
+                token=str(snapshot_context["pseudonymization_token"]),
+            )
+
+        self._inject_runtime(
+            db=self.db,
+            tool_registry=get_tool_registry(),
+            tool_runner=ToolRunner(db=self.db),
+            user_id=user_id or snapshot_context.get("user_id"),
+            pseudonymizer=pseudonymizer,
         )
 
         try:
@@ -1201,9 +1404,11 @@ class InvestigationService:
                 elif run.current_phase in (PhaseName.REPORTING, "reporting"):
                     snapshot_values = state_snapshot.values or {}
                     snapshot_context = snapshot_values.get("context") or {}
-                    h3_decided = bool(snapshot_values.get("h3_approved")) or bool(
-                        snapshot_values.get("h3_rejected")
-                    ) or bool(snapshot_context.get("local_report_mode"))
+                    h3_decided = (
+                        snapshot_values.get("h3_approved") is True
+                        or verdict_flag(snapshot_values.get("h3_rejected"))
+                        or verdict_flag(snapshot_context.get("local_report_mode"))
+                    )
                     state_update["h1_approved"] = True
                     state_update["h2_approved"] = True
                     # Sans verdict H3 enregistré, on repasse par la porte au lieu

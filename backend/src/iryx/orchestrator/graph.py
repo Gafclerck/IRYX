@@ -8,7 +8,9 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
+from iryx.ai import LLMRole, get_llm_client
 from iryx.orchestrator.state import InvestigationState
+from iryx.reporting.verdicts import verdict_flag
 
 logger = logging.getLogger("iryx.orchestrator.graph")
 
@@ -29,7 +31,13 @@ def get_runtime_context() -> dict[str, Any]:
 
 def _sanitize_context(ctx: dict[str, Any]) -> dict[str, Any]:
     """Strip non-serializable runtime objects so checkpointers can serialize state."""
-    non_serializable_keys = {"db", "tool_registry", "tool_runner", "llm_client"}
+    non_serializable_keys = {
+        "db",
+        "tool_registry",
+        "tool_runner",
+        "llm_client",
+        "pseudonymizer",
+    }
     return {k: v for k, v in ctx.items() if k not in non_serializable_keys}
 
 
@@ -454,13 +462,13 @@ def gate_h3_node(state: InvestigationState) -> dict[str, Any]:
     """
     context = dict(state.get("context") or {})
 
-    if state.get("h3_approved"):
+    if state.get("h3_approved") is True:
         return {
             "current_phase": "gate_h3",
             "status": "running",
             "h3_approved": True,
         }
-    if state.get("h3_rejected"):
+    if verdict_flag(state.get("h3_rejected")):
         updated_context = dict(context)
         updated_context["local_report_mode"] = True
         return {
@@ -504,26 +512,128 @@ def gate_h3_node(state: InvestigationState) -> dict[str, Any]:
 
 
 def reporting_node(state: InvestigationState) -> dict[str, Any]:
-    """Reporting phase, guarded by Human Gate H3 (Story 8.2, FR20).
+    """Reporting phase, guarded by Human Gate H3 (Stories 8.2 and 8.3).
 
-    External LLM drafting is only reachable after an explicit ``h3_approved``.
-    A rejected H3 decision allows the deterministic local template only.
-    Any other entry (including a direct edge traversal) is sent back to the
-    H3 waiting state so no synthesis can leave the platform unauthorised.
+    External LLM drafting is reachable only for ``h3_approved is True`` without
+    an explicit rejection or a stale local flag. A rejected H3 decision uses the
+    deterministic local template only. A node invoked without a DB session or a
+    case identifier keeps the isolated-unit-test contract and generates nothing.
     """
-    context = dict(state.get("context") or {})
+    from iryx.core.exceptions import (
+        CaseNotFoundException,
+        InsufficientPermissionsException,
+        ReportGenerationFailedException,
+    )
+    from iryx.reporting.services import ReportService
 
-    if not state.get("h3_approved") and not (
-        state.get("h3_rejected") or context.get("local_report_mode")
-    ):
+    context = dict(state.get("context") or {})
+    runtime_ctx = get_runtime_context()
+
+    approved = state.get("h3_approved") is True
+    rejected = verdict_flag(state.get("h3_rejected"))
+    stale_local_mode = verdict_flag(context.get("local_report_mode"))
+
+    if not approved and not rejected and not stale_local_mode:
         return {"current_phase": "waiting_h3", "status": "paused"}
 
-    if state.get("h3_rejected"):
+    external_mode = approved and not rejected and not stale_local_mode
+
+    # A stale local flag left by an earlier rejection never silently reappears
+    # after an explicit approval, but it still forces local drafting for this run.
+    if approved:
+        context.pop("local_report_mode", None)
+    if rejected:
         context["local_report_mode"] = True
 
+    db = context.get("db") or runtime_ctx.get("db")
+    state_case_id = state.get("case_id")
+    context_case_id = context.get("case_id")
+    if (
+        state_case_id is not None
+        and context_case_id is not None
+        and str(state_case_id) != str(context_case_id)
+    ):
+        raise ReportGenerationFailedException(
+            "Identifiant de dossier incohérent entre l'état et le contexte."
+        )
+    case_id = state_case_id or context_case_id
+    if db is None or case_id is None:
+        return {
+            "current_phase": "reporting",
+            "status": "running",
+            "context": _sanitize_context(context),
+        }
+
+    # The authenticated runtime user always wins over a checkpoint value.
+    user_id = context.get("user_id")
+    if runtime_ctx.get("user_id") is not None:
+        user_id = runtime_ctx.get("user_id")
+
+    try:
+        # The checkpointer deliberately strips llm_client, so an approved production
+        # run must obtain a rapporteur-scoped client from the dependency factory.
+        # Never resolve one for local drafting. A factory failure is a generation
+        # failure and must be typed/logged below, not escape the reporting node.
+        llm_client = runtime_ctx.get("llm_client") or context.get("llm_client")
+        if external_mode and llm_client is None:
+            llm_client = get_llm_client(role=LLMRole.RAPPORTEUR)
+        service = ReportService(db)
+        reports = service.generate_report(
+            case_id=case_id,
+            user_id=user_id,
+            internal=user_id is None,
+            h3_approved=external_mode,
+            h3_rejected=rejected,
+            local_report_mode=stale_local_mode or rejected,
+            pseudonymizer=runtime_ctx.get("pseudonymizer") or context.get("pseudonymizer"),
+            llm_client=llm_client,
+            run_id=state.get("run_id") or context.get("run_id"),
+            invalid_finding_titles=context.get("invalid_finding_titles"),
+        )
+    except (InsufficientPermissionsException, CaseNotFoundException):
+        raise
+    except Exception as exc:
+        error = (
+            exc
+            if isinstance(exc, ReportGenerationFailedException)
+            else ReportGenerationFailedException(
+                f"Échec de génération du rapport : {type(exc).__name__}."
+            )
+        )
+        logger.error(
+            "Report generation failed: %s",
+            type(exc).__name__,
+            extra={
+                "context": {
+                    "case_id": str(case_id),
+                    "run_id": str(state.get("run_id")) if state.get("run_id") else None,
+                    "phase": "reporting",
+                }
+            },
+        )
+        raise error from exc
+
+    formats: dict[str, dict[str, Any]] = {}
+    for report in reports:
+        formats[str(report.format)] = {
+            "id": str(report.id),
+            "sha256": report.sha256,
+            "status": str(report.status),
+            "version": report.version,
+        }
+    generation_id = str(reports[0].generation_id) if reports else None
+    report_state: dict[str, Any] = {
+        "generation_id": generation_id,
+        "version": reports[0].version if reports else None,
+        "status": str(reports[0].status) if reports else None,
+        "formats": formats,
+        **formats,
+    }
+    context["report_generation_id"] = generation_id
     return {
         "current_phase": "reporting",
         "status": "running",
+        "report": report_state,
         "context": _sanitize_context(context),
     }
 

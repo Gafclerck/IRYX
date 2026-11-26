@@ -1,16 +1,28 @@
 """Unit tests for LangGraph state graph compilation, streaming, checkpointer, and planner."""
 
+import hashlib
 import json
 import uuid
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END
 from langgraph.graph.state import CompiledStateGraph
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from iryx.ai.client import UnifiedLLMClient
 from iryx.ai.schemas import LLMResponse
+from iryx.analytics.models import Finding, FindingSeverity, FindingStatus
+from iryx.auth.models import Membership, MembershipRole, Organization, User
+from iryx.cases.models import Case
+from iryx.core.exceptions import (
+    InsufficientPermissionsException,
+    ReportGenerationFailedException,
+)
+from iryx.evidence.models import Evidence
 from iryx.orchestrator.graph import (
     analyst_node,
     build_investigation_graph,
@@ -26,10 +38,14 @@ from iryx.orchestrator.graph import (
     route_gate_h2,
     route_planner,
     route_verifier,
+    set_runtime_context,
     triage_node,
     verifier_node,
 )
 from iryx.orchestrator.state import InvestigationState
+from iryx.reporting.models import Report
+from iryx.reporting.pseudonymizer import DeterministicPseudonymizer
+from iryx.reporting.schemas import CANONICAL_SECTION_KEYS
 
 EXPECTED_NODES = {
     "triage",
@@ -170,6 +186,18 @@ def test_node_functions_return_expected_updates() -> None:
     rejected_report = reporting_node({"h3_rejected": True})
     assert rejected_report["current_phase"] == "reporting"
     assert rejected_report["context"]["local_report_mode"] is True
+
+
+@pytest.mark.parametrize("approval", ["false", "true", "1", "yes", "oui", 1])
+def test_gate_h3_node_does_not_promote_non_boolean_approval(approval: Any) -> None:
+    """Verify no non-boolean verdict can unlock Gate H3."""
+    pending = gate_h3_node({"h3_approved": approval})  # type: ignore[typeddict-item]
+    assert pending == {"current_phase": "waiting_h3", "status": "paused"}
+    assert pending.get("h3_approved") is not True
+
+    rejected_pending = gate_h3_node({"h3_rejected": "false"})  # type: ignore[typeddict-item]
+    assert rejected_pending == {"current_phase": "waiting_h3", "status": "paused"}
+    assert rejected_pending.get("h3_rejected") is not True
 
 
 def test_planner_node_with_pre_set_plan() -> None:
@@ -752,6 +780,357 @@ def test_gate_h1_node_persists_pause_when_db_in_context() -> None:
 
     session.close()
     Base.metadata.drop_all(bind=engine)
+
+
+# ============================================================================
+# Story 8.3 — reporting_node generation and H3 barrier integration
+# ============================================================================
+
+
+class _RapporteurClientDouble:
+    """External client double returning a complete eight-section draft."""
+
+    def __init__(self) -> None:
+        self.calls: list[Any] = []
+        self.role = "rapporteur"
+        sections = {key: "Texte factuel." for key in CANONICAL_SECTION_KEYS}
+        sections["perimetre"] = "Périmètre : auth.log."
+        sections["chaine_des_preuves"] = "Preuve : auth.log."
+        self.response = json.dumps(sections, ensure_ascii=False)
+
+    def for_role(self, role: Any) -> "_RapporteurClientDouble":
+        """Record the requested role."""
+        self.requested_role = role
+        return self
+
+    async def complete(self, messages: list[dict[str, Any]], temperature: float = 0.0) -> dict:
+        """Record any external call."""
+        self.calls.append(messages)
+        return {"content": self.response}
+
+
+@pytest.fixture
+def reporting_setup(db_session: Session) -> dict[str, Any]:
+    """Create an authorized case with a validated finding and one evidence."""
+    suffix = uuid.uuid4().hex[:8]
+    org = Organization(name=f"Graph Org {suffix}")
+    user = User(email=f"graph-{suffix}@cert.fr", hashed_password="pw")
+    outsider = User(email=f"outsider-{suffix}@cert.fr", hashed_password="pw")
+    db_session.add_all([org, user, outsider])
+    db_session.flush()
+    db_session.add(
+        Membership(
+            organization_id=org.id,
+            user_id=user.id,
+            role=MembershipRole.ADMIN,
+        )
+    )
+    case = Case(
+        id=uuid.uuid4(),
+        organization_id=org.id,
+        title="Rapport graphe",
+        description="Connexion suspecte confirmée",
+        created_by=user.id,
+    )
+    db_session.add(case)
+    db_session.flush()
+    db_session.add(
+        Evidence(
+            case_id=case.id,
+            original_name="auth.log",
+            file_size=512,
+            sha256="d" * 64,
+            detected_type="text/plain",
+        )
+    )
+    db_session.add(
+        Finding(
+            case_id=case.id,
+            title="Connexion suspecte depuis 203.0.113.4",
+            severity=FindingSeverity.HIGH,
+            status=FindingStatus.VALIDATED,
+        )
+    )
+    db_session.commit()
+    return {"case": case, "user": user, "outsider": outsider}
+
+
+def _reporting_state(
+    setup: dict[str, Any],
+    db_session: Session,
+    **overrides: Any,
+) -> InvestigationState:
+    """Build a reporting state carrying the authorized DB session."""
+    state: InvestigationState = {
+        "case_id": str(setup["case"].id),
+        "run_id": str(uuid.uuid4()),
+        "h3_approved": True,
+        "context": {
+            "db": db_session,
+            "user_id": setup["user"].id,
+            "pseudonymizer": DeterministicPseudonymizer(),
+            "llm_client": _RapporteurClientDouble(),
+        },
+    }
+    state.update(overrides)
+    return state
+
+
+def test_reporting_node_generates_and_seals_report_when_approved(
+    db_session: Session,
+    reporting_setup: dict[str, Any],
+) -> None:
+    """Verify an approved node persists two sealed rows and exposes them in state."""
+    client = _RapporteurClientDouble()
+    state = _reporting_state(
+        reporting_setup,
+        db_session,
+        context={
+            "db": db_session,
+            "user_id": reporting_setup["user"].id,
+            "pseudonymizer": DeterministicPseudonymizer(),
+            "llm_client": client,
+        },
+    )
+    result = reporting_node(state)
+
+    assert len(client.calls) == 1
+    prompt = client.calls[0][1]["content"]
+    # Free text and filenames are opaque in the external prompt; only pseudonyms
+    # derived from the approved store may cross the LLM boundary.
+    assert "auth.log" not in prompt
+    assert "IP_INTERNAL_1" in prompt
+    assert result["current_phase"] == "reporting"
+    assert result["status"] == "running"
+    rows = list(
+        db_session.scalars(select(Report).where(Report.case_id == reporting_setup["case"].id))
+    )
+    assert len(rows) == 2
+    assert result["report"]["status"] == "validated"
+    assert result["report"]["version"] == 1
+    assert result["report"]["generation_id"] == rows[0].generation_id
+    assert result["context"]["report_generation_id"] == rows[0].generation_id
+    markdown = next(row for row in rows if row.format == "markdown")
+    assert result["report"]["formats"]["markdown"]["sha256"] == markdown.sha256
+    assert markdown.sha256 == hashlib.sha256(markdown.content.encode("utf-8")).hexdigest()
+    assert "Connexion suspecte" in markdown.content
+    assert "auth.log" in markdown.content
+
+
+def test_reporting_node_rejected_never_calls_external_llm(
+    db_session: Session,
+    reporting_setup: dict[str, Any],
+) -> None:
+    """Verify an explicit H3 rejection uses the local template without network access."""
+    client = _RapporteurClientDouble()
+    state = _reporting_state(
+        reporting_setup,
+        db_session,
+        h3_approved=False,
+        h3_rejected=True,
+        context={
+            "db": db_session,
+            "user_id": reporting_setup["user"].id,
+            "llm_client": client,
+            "pseudonymizer": DeterministicPseudonymizer(),
+        },
+    )
+    result = reporting_node(state)
+
+    assert result["current_phase"] == "reporting"
+    assert client.calls == []
+    assert result["context"]["local_report_mode"] is True
+    assert len(db_session.scalars(select(Report)).all()) == 2
+
+
+def test_reporting_node_stale_local_mode_blocks_external_and_is_cleared(
+    db_session: Session,
+    reporting_setup: dict[str, Any],
+) -> None:
+    """Verify a stale local flag wins for this run but is not propagated further."""
+    client = _RapporteurClientDouble()
+    state = _reporting_state(
+        reporting_setup,
+        db_session,
+        context={
+            "db": db_session,
+            "user_id": reporting_setup["user"].id,
+            "llm_client": client,
+            "pseudonymizer": DeterministicPseudonymizer(),
+            "local_report_mode": True,
+        },
+    )
+    result = reporting_node(state)
+
+    assert client.calls == []
+    assert "local_report_mode" not in result["context"]
+    assert "rapport local" in next(
+        row.content
+        for row in db_session.scalars(select(Report)).all()
+        if row.format == "markdown"
+    )
+
+
+@pytest.mark.parametrize("approval", ["false", "true", "1", "yes", "oui", 1])
+def test_reporting_node_requires_literal_true_approval(
+    db_session: Session,
+    reporting_setup: dict[str, Any],
+    approval: Any,
+) -> None:
+    """Verify no affirmative non-boolean verdict can unlock reporting."""
+    client = _RapporteurClientDouble()
+    state = _reporting_state(
+        reporting_setup,
+        db_session,
+        h3_approved=approval,
+        context={
+            "db": db_session,
+            "user_id": reporting_setup["user"].id,
+            "pseudonymizer": DeterministicPseudonymizer(),
+            "llm_client": client,
+        },
+    )
+    result = reporting_node(state)
+    assert result == {"current_phase": "waiting_h3", "status": "paused"}
+    assert client.calls == []
+    assert db_session.scalars(select(Report)).all() == []
+
+
+def test_reporting_node_rejects_conflicting_case_ids(
+    db_session: Session,
+    reporting_setup: dict[str, Any],
+) -> None:
+    """Verify a state/context case-id mismatch fails before reading or writing data."""
+    client = _RapporteurClientDouble()
+    state = _reporting_state(
+        reporting_setup,
+        db_session,
+        context={
+            "db": db_session,
+            "user_id": reporting_setup["user"].id,
+            "pseudonymizer": DeterministicPseudonymizer(),
+            "llm_client": client,
+            "case_id": str(uuid.uuid4()),
+        },
+    )
+    with pytest.raises(ReportGenerationFailedException) as exc_info:
+        reporting_node(state)
+    assert exc_info.value.code == "REPORT_GENERATION_FAILED"
+    assert "incohérent" in str(exc_info.value)
+    assert client.calls == []
+    assert db_session.scalars(select(Report)).all() == []
+
+
+def test_reporting_node_rejection_wins_over_approval(
+    db_session: Session,
+    reporting_setup: dict[str, Any],
+) -> None:
+    """Verify an explicit rejection overrides a simultaneous approval."""
+    client = _RapporteurClientDouble()
+    state = _reporting_state(
+        reporting_setup,
+        db_session,
+        h3_approved=True,
+        h3_rejected=True,
+        context={
+            "db": db_session,
+            "user_id": reporting_setup["user"].id,
+            "pseudonymizer": DeterministicPseudonymizer(),
+            "llm_client": client,
+        },
+    )
+    result = reporting_node(state)
+    assert client.calls == []
+    assert result["context"]["local_report_mode"] is True
+    assert len(db_session.scalars(select(Report)).all()) == 2
+
+
+def test_reporting_node_does_not_treat_false_string_as_rejection(
+    db_session: Session,
+    reporting_setup: dict[str, Any],
+) -> None:
+    """Verify a ``"false"`` rejection keeps external drafting authorized."""
+    client = _RapporteurClientDouble()
+    state = _reporting_state(
+        reporting_setup,
+        db_session,
+        h3_approved=True,
+        h3_rejected="false",  # type: ignore[arg-type]
+        context={
+            "db": db_session,
+            "user_id": reporting_setup["user"].id,
+            "pseudonymizer": DeterministicPseudonymizer(),
+            "llm_client": client,
+        },
+    )
+    result = reporting_node(state)
+    assert len(client.calls) == 1
+    assert "local_report_mode" not in result["context"]
+
+
+def test_reporting_node_wraps_generation_errors(
+    db_session: Session,
+    reporting_setup: dict[str, Any],
+) -> None:
+    """Verify generation failures are surfaced with the typed error code."""
+    state = _reporting_state(reporting_setup, db_session, case_id="not-a-uuid")
+    with pytest.raises(ReportGenerationFailedException) as exc_info:
+        reporting_node(state)
+    assert exc_info.value.code == "REPORT_GENERATION_FAILED"
+    assert exc_info.value.status_code == 500
+    assert db_session.scalars(select(Report)).all() == []
+
+
+def test_reporting_node_prefers_authenticated_runtime_user(
+    db_session: Session,
+    reporting_setup: dict[str, Any],
+) -> None:
+    """Verify a runtime user overrides a checkpoint identity for authorization."""
+    set_runtime_context({"db": db_session, "user_id": reporting_setup["outsider"].id})
+    try:
+        with pytest.raises(InsufficientPermissionsException):
+            reporting_node(_reporting_state(reporting_setup, db_session))
+    finally:
+        set_runtime_context({})
+    assert db_session.scalars(select(Report)).all() == []
+
+
+def test_reporting_node_wraps_llm_factory_failure(
+    db_session: Session,
+    reporting_setup: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify a failed rapporteur-client resolution is a typed, logged failure."""
+
+    def _fail(role: Any) -> Any:
+        raise RuntimeError("factory indisponible")
+
+    monkeypatch.setattr("iryx.orchestrator.graph.get_llm_client", _fail)
+    state = _reporting_state(
+        reporting_setup,
+        db_session,
+        context={
+            "db": db_session,
+            "user_id": reporting_setup["user"].id,
+            "pseudonymizer": DeterministicPseudonymizer(),
+        },
+    )
+    with pytest.raises(ReportGenerationFailedException) as exc_info:
+        reporting_node(state)
+    assert exc_info.value.code == "REPORT_GENERATION_FAILED"
+    assert exc_info.value.status_code == 500
+    assert db_session.scalars(select(Report)).all() == []
+
+
+def test_reporting_node_context_excludes_runtime_objects(
+    db_session: Session,
+    reporting_setup: dict[str, Any],
+) -> None:
+    """Verify the returned state context carries no non-serializable runtime objects."""
+    result = reporting_node(_reporting_state(reporting_setup, db_session))
+    for key in ("pseudonymizer", "llm_client", "db", "tool_registry", "tool_runner"):
+        assert key not in result["context"]
+    assert result["context"]["report_generation_id"] is not None
 
 
 def test_graph_compilation_with_checkpointer() -> None:
