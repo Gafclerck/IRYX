@@ -224,7 +224,7 @@ IRYX/
 
 ## 8. Démarrage Rapide (Docker Compose — D-22)
 
-La topologie de référence est mono-serveur : `postgres` (PostgreSQL 16), `redis` (Redis 7), `iryx-api` et `iryx-worker`. Un seul port est publié sur l'hôte : `8000`.
+La topologie de référence est mono-serveur : `postgres` (PostgreSQL 16), `redis` (Redis 7), `iryx-api` et `iryx-worker`. Un cinquième service `iryx-analysis`, profilé, est réservé aux analyses forensiques à la demande et ne démarre pas par défaut. Un seul port est publié sur l'hôte : `8000`.
 
 ### 8.1 Cloner le Dépôt
 ```bash
@@ -287,13 +287,49 @@ La commande `id` doit retourner `uid=10001(iryx) gid=10001(iryx)`. La documentat
 
 **Sans `.env`**, `docker compose config` échoue explicitement sur la variable manquante, sans valeur par défaut sensible.
 
-### 8.6 Arrêt et Nettoyage
+### 8.6 Durcissement et isolation réseau (NFR-SEC-02)
+`iryx-api`, `iryx-worker` et `iryx-analysis` suppriment toutes leurs capacités (`cap_drop: ["ALL"]`) et refusent l'élévation de privilèges (`no-new-privileges:true`) ; ils exécutent leurs processus sous `10001:10001`. Les téléversements atterrissent dans `/data/evidence/staging` (`evidence_staging_data`, `EVIDENCE_STAGING_PATH`), qui reste writable : les fichiers scellés y sont conservés après verrouillage `0o440`. Le montage `/data/evidence/raw` (`evidence_data`, `EVIDENCE_STORAGE_PATH`) est `:ro` : c'est une source d'entrée immuable pour les analyses, jamais une destination d'écriture. Les symboles ISF restent montés `:ro` dans les conteneurs forensiques et leur empreinte SHA-256 est vérifiée au build.
+
+Avant la première exécution de `iryx-analysis`, construisez son image (le build du worker par `docker compose up -d --build` suffit aussi) :
+```bash
+docker compose --profile analysis build iryx-analysis
+```
+
+Le service est profilé : `docker compose up -d` ne le démarre pas. Il réutilise l'image worker avec `network_mode: none`. Sa commande par défaut lance une sonde TCP externe :
+```bash
+docker compose --profile analysis run --rm iryx-analysis
+```
+La sonde doit échouer avec `Network is unreachable` (errno `ENETUNREACH`) et renvoyer le code `0`. Si une connexion aboutit ou si l'erreur est différente, elle renvoie un code non nul avec un message explicite ; aucun repli réseau n'est tenté.
+
+Pour exécuter une analyse forensique à la demande, surchargez la commande : l'entrypoint du worker reste libre et le réseau reste coupé.
+```bash
+docker compose --profile analysis run --rm iryx-analysis <commande-d'analyse>
+```
+
+`docker inspect` ne s'applique pas à un conteneur lancé avec `--rm` : il est supprimé dès son retour. Pour les services persistants, repérez leurs identifiants avec `docker compose ps`, puis :
+```bash
+docker inspect <ID ou nom de iryx-api> <ID ou nom de iryx-worker>
+```
+Pour inspecter `iryx-analysis`, créez le conteneur sans le démarrer, puis nettoyez-le :
+```bash
+docker compose --profile analysis create iryx-analysis
+docker inspect <ID ou nom du conteneur analysis>
+docker compose --profile analysis rm -f iryx-analysis
+```
+Ces inspections doivent confirmer `CapDrop: ["ALL"]` et `SecurityOpt: ["no-new-privileges:true"]` sur les trois services applicatifs.
+
+**Migration des volumes 9.1.** Si un volume `evidence_data` préexistant contenait des preuves scellées sous l'ancien `/data/evidence/staging/`, ces fichiers apparaissent désormais en lecture seule sous `/data/evidence/raw/staging/`. Copiez-les dans le nouveau staging avant de basculer :
+```bash
+docker compose run --rm iryx-worker cp -a /data/evidence/raw/staging/. /data/evidence/staging/
+```
+
+### 8.7 Arrêt et Nettoyage
 ```bash
 docker compose down        # conserve les volumes nommés
 docker compose down -v     # supprime aussi les volumes (destructif)
 ```
 
-### 8.7 Mode Manuel (développement hors Compose)
+### 8.8 Mode Manuel (développement hors Compose)
 ```bash
 uv sync
 cd backend

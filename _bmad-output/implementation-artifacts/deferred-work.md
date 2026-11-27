@@ -22,3 +22,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-9-1-dockerfile-multi-etapes-et-docker-compose-mono-serveur.md`
   summary: Borner alembic upgrade head dans l'entrypoint API pour eviter un blocage indefini sur un verrou de migration.
   evidence: Un verrou database peut bloquer la migration sans jamais la faire échouer ; la matrice gelée couvre l'échec de migration mais pas ce blocage, et ajouter `timeout` + `MIGRATION_TIMEOUT_SECONDS` crée une surface nouvelle non démontrée dans cette exécution.
+
+- source_spec: _bmad-output/implementation-artifacts/spec-9-2-durcissement-securite-conteneur-traitement-isolation-reseau.md
+  summary: Fournir une migration ou une procédure pour rendre les preuves scellées de l'ancien volume evidence_data visibles après le passage au montage séparé brut :ro / staging.
+  evidence: Le déplacement de evidence_data vers /data/evidence/raw:ro rend invisibles les fichiers /data/evidence/staging/<id>.bin déjà scellés ; aucun test ni helper d'upgrade ne couvre ce cas et le montage :ro interdit la réparation in place. Limite déjà consignée comme connue, sans volume préexistant observé.

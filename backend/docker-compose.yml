@@ -35,13 +35,16 @@ services:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
-      EVIDENCE_STORAGE_PATH: /data/evidence/
+      EVIDENCE_STORAGE_PATH: /data/evidence/raw
       EVIDENCE_STAGING_PATH: /data/evidence/staging
       VOLATILITY_SYMBOLS_PATH: /opt/volatility3/symbols
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
     ports:
       - "8000:8000"
     volumes:
-      - evidence_data:/data/evidence
+      - evidence_data:/data/evidence/raw:ro
+      - evidence_staging_data:/data/evidence/staging
     depends_on:
       postgres:
         condition: service_healthy
@@ -59,17 +62,21 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.worker
+    image: iryx-worker:local
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?POSTGRES_USER est requis dans backend/.env}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD est requis dans backend/.env}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB est requis dans backend/.env}
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
-      EVIDENCE_STORAGE_PATH: /data/evidence/
+      EVIDENCE_STORAGE_PATH: /data/evidence/raw
       EVIDENCE_STAGING_PATH: /data/evidence/staging
       VOLATILITY_SYMBOLS_PATH: /opt/volatility3/symbols
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
     volumes:
-      - evidence_data:/data/evidence
+      - evidence_data:/data/evidence/raw:ro
+      - evidence_staging_data:/data/evidence/staging
       - symbols_data:/opt/volatility3/symbols:ro
     depends_on:
       postgres:
@@ -86,7 +93,27 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  iryx-analysis:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+    image: iryx-worker:local
+    profiles: ["analysis"]
+    network_mode: none
+    environment:
+      EVIDENCE_STORAGE_PATH: /data/evidence/raw
+      EVIDENCE_STAGING_PATH: /data/evidence/staging
+      VOLATILITY_SYMBOLS_PATH: /opt/volatility3/symbols
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    command: ["python", "/app/backend/docker/check_airgap.py"]
+    volumes:
+      - evidence_data:/data/evidence/raw:ro
+      - evidence_staging_data:/data/evidence/staging
+      - symbols_data:/opt/volatility3/symbols:ro
+
 volumes:
   postgres_data:
   evidence_data:
+  evidence_staging_data:
   symbols_data:
