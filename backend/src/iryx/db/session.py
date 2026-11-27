@@ -90,10 +90,11 @@ def get_db_session() -> Generator[Session, None, None]:
             sanitized_error,
             extra={"context": {"db_url": masked_url}},
         )
-        if session is not None:
-            with contextlib.suppress(Exception):
-                session.rollback()
         raise DatabaseUnavailableException() from exc
     finally:
         if session is not None:
+            # Guarantee rollback of any uncommitted work on every exit path so a
+            # failure inside (e.g. an audit insertion) can never leak a partial write.
+            with contextlib.suppress(Exception):
+                session.rollback()
             session.close()

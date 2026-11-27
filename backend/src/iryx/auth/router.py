@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from iryx.api.dependencies import get_db
+from iryx.audit.services import AuditService
 from iryx.auth.dependencies import get_current_user
 from iryx.auth.models import User
 from iryx.auth.schemas import LoginRequest, TokenResponse, UserResponse
@@ -37,6 +38,16 @@ def login(
         email=login_data.email,
         password=login_data.password,
     )
+    audit_service = AuditService(db)
+    audit_service.record(
+        action="AUTH_LOGIN",
+        actor_id=user.id,
+        case_id=None,
+        target_type="User",
+        target_id=user.id,
+        details={"method": "password"},
+    )
+    db.commit()
 
     settings = get_settings()
     expires_minutes = settings.jwt_access_token_expire_minutes

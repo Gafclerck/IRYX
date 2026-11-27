@@ -203,9 +203,11 @@ def test_report_fk_cascades_and_audit_fks_restrict() -> None:
             AuditEvent(
                 case_id=other_case.id,
                 actor_id=user.id,
-                event_type="report.generated",
-                payload={"ok": True},
-                payload_sha256=_SHA256,
+                action="REPORT_GENERATE",
+                target_type="Report",
+                target_id=uuid.uuid4(),
+                payload_hash=_SHA256,
+                details={"run_id": None},
             )
         )
         session.commit()

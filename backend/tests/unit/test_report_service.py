@@ -254,10 +254,58 @@ def test_generate_report_persists_two_sealed_validated_rows(
         assert _PROPOSED_TITLE not in row.content
         assert _OTHER_TITLE not in row.content
         assert "secret.log" not in row.content
-        assert db_session.scalar(select(AuditEvent)) is None
+
+    audit_events = list(db_session.scalars(select(AuditEvent)).all())
+    assert len(audit_events) == 1
+    assert audit_events[0].action == "REPORT_GENERATE"
+    assert audit_events[0].target_type == "Report"
+    assert audit_events[0].case_id == setup["case"].id
+    # generate_report called internally without a user: anonymous actor marked as system.
+    assert audit_events[0].actor_id is None
+    assert audit_events[0].details["actor"] == "system"
 
     hashes = {row.format: row.sha256 for row in rows}
     assert hashes[ReportFormat.MARKDOWN.value] != hashes[ReportFormat.JSON.value]
+
+
+def test_generate_report_with_user_attributes_audit_to_user(
+    db_session: Session,
+    setup: dict[str, Any],
+) -> None:
+    """Verify a user-scoped generation records that user as the audit actor."""
+    ReportService(db_session).generate_report(
+        case_id=setup["case"].id,
+        user_id=setup["user"].id,
+    )
+
+    events = list(db_session.scalars(select(AuditEvent)).all())
+    assert len(events) == 1
+    assert events[0].action == "REPORT_GENERATE"
+    assert events[0].actor_id == setup["user"].id
+    assert "actor" not in events[0].details
+
+
+def test_generate_report_rolls_back_when_audit_fails(
+    db_session: Session,
+    setup: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify an audit failure prevents the sealed reports from being committed."""
+
+    def _boom(self: object, **kwargs: Any) -> None:
+        raise RuntimeError("audit down")
+
+    monkeypatch.setattr("iryx.reporting.services.AuditService.record", _boom)
+
+    with pytest.raises(ReportGenerationFailedException):
+        ReportService(db_session).generate_report(
+            case_id=setup["case"].id,
+            internal=True,
+        )
+
+    db_session.rollback()
+    assert list(db_session.scalars(select(Report)).all()) == []
+    assert list(db_session.scalars(select(AuditEvent)).all()) == []
 
 
 @pytest.mark.parametrize(
@@ -1496,4 +1544,7 @@ def test_report_read_paths_never_commit_or_write_audit(
     assert len(rows) == 2
     assert total == 2
     assert (report.content, report.sha256, report.status, report.version) == before
-    assert db_session.scalar(select(AuditEvent)) is None
+    # Read paths must not write audit events: the generation entry is the only one.
+    events_after_reads = list(db_session.scalars(select(AuditEvent)).all())
+    assert len(events_after_reads) == 1
+    assert events_after_reads[0].action == "REPORT_GENERATE"

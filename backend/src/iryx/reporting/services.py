@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from iryx.analytics.models import Finding, FindingStatus, Observation
 from iryx.analytics.services import TimelineService
+from iryx.audit.services import AuditService
 from iryx.auth.models import Membership
 from iryx.cases.models import Case
 from iryx.core.exceptions import (
@@ -438,6 +439,15 @@ class ReportService:
                 try:
                     for row in rows:
                         self.db.add(row)
+                    audit_service = AuditService(self.db)
+                    audit_service.record(
+                        action="REPORT_GENERATE",
+                        actor_id=parsed_user_id,
+                        case_id=parsed_case_id,
+                        target_type="Report",
+                        target_id=rows[0].id,
+                        details={"run_id": str(parsed_run_id) if parsed_run_id else None},
+                    )
                     self.db.commit()
                     # A refresh failure after commit must never be reported as a failure.
                     with contextlib.suppress(Exception):

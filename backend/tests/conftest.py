@@ -70,10 +70,12 @@ def db_session(_shared_engine) -> Generator[Session, None, None]:
         yield session
     finally:
         session.close()
-        # Clean all rows from all tables in reverse dependency order
+        # Clean all rows from all tables in reverse dependency order.
+        # The append-only ``audit_events`` table cannot be row-deleted (SQL
+        # trigger blocks UPDATE/DELETE), so the schema is dropped and recreated.
         with _shared_engine.begin() as conn:
-            for table in reversed(Base.metadata.sorted_tables):
-                conn.execute(table.delete())
+            Base.metadata.drop_all(bind=conn, checkfirst=True)
+            Base.metadata.create_all(bind=conn, checkfirst=True)
 
 
 @pytest.fixture(autouse=True)

@@ -45,6 +45,8 @@ class CaseService:
         title: str,
         description: str | None,
         creator_id: uuid.UUID,
+        *,
+        commit: bool = True,
     ) -> Case:
         """Create a new case in the specified organization initialized with 'open' status.
 
@@ -70,8 +72,11 @@ class CaseService:
             created_by=creator_id,
         )
         self.db.add(case)
-        self.db.commit()
-        self.db.refresh(case)
+        if commit:
+            self.db.commit()
+            self.db.refresh(case)
+        else:
+            self.db.flush()
 
         logger.info(
             "Created case %s in organization %s by user %s",
@@ -183,6 +188,8 @@ class CaseService:
         case_id: uuid.UUID,
         new_status: CaseStatus | str,
         user_id: uuid.UUID | None = None,
+        *,
+        commit: bool = True,
     ) -> Case:
         """Update case status following strict transition rules and RBAC.
 
@@ -239,8 +246,9 @@ class CaseService:
 
         old_status = case.status
         case.status = target_status
-        self.db.commit()
-        self.db.refresh(case)
+        if commit:
+            self.db.commit()
+            self.db.refresh(case)
 
         logger.info(
             "Case %s status updated from %s to %s by user %s",

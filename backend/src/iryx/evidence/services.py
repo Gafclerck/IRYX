@@ -9,6 +9,7 @@ from fastapi import UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from iryx.audit.services import AuditService
 from iryx.core.config import get_settings
 from iryx.core.exceptions import (
     EmptyFileException,
@@ -125,9 +126,18 @@ class EvidenceService:
                 completed_at=None,
             )
 
+            audit_service = AuditService(self.db)
             try:
                 self.db.add(evidence)
                 self.db.add(ingestion_run)
+                audit_service.record(
+                    action="EVIDENCE_UPLOAD",
+                    actor_id=current_user_id,
+                    case_id=case_id,
+                    target_type="Evidence",
+                    target_id=new_evidence_id,
+                    details={"original_name": original_name, "file_size": total_bytes},
+                )
                 self.db.commit()
                 self.db.refresh(evidence)
                 self.db.refresh(ingestion_run)

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from iryx.api.dependencies import get_db
+from iryx.audit.services import AuditService
 from iryx.auth.dependencies import get_current_user
 from iryx.auth.models import Membership, MembershipRole, User
 from iryx.cases.dependencies import require_case_role, verify_case_access
@@ -56,7 +57,18 @@ def create_case(
         title=payload.title,
         description=payload.description,
         creator_id=current_user.id,
+        commit=False,
     )
+    audit_service = AuditService(db)
+    audit_service.record(
+        action="CASE_CREATE",
+        actor_id=current_user.id,
+        case_id=case.id,
+        target_type="Case",
+        target_id=case.id,
+        details={"title": case.title},
+    )
+    db.commit()
     return CaseOut.model_validate(case)
 
 
@@ -137,8 +149,20 @@ def list_user_cases(
 )
 def get_case(
     case: Annotated[Case, Depends(verify_case_access)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
 ) -> CaseOut:
     """Retrieve case details enforcing tenant membership via verify_case_access."""
+    audit_service = AuditService(db)
+    audit_service.record(
+        action="CASE_READ",
+        actor_id=current_user.id,
+        case_id=case.id,
+        target_type="Case",
+        target_id=case.id,
+        details={},
+    )
+    db.commit()
     return CaseOut.model_validate(case)
 
 
@@ -174,5 +198,16 @@ def update_case_status(
         case_id=case_id,
         new_status=payload.status,
         user_id=current_user.id,
+        commit=False,
     )
+    audit_service = AuditService(db)
+    audit_service.record(
+        action="CASE_STATUS_UPDATE",
+        actor_id=current_user.id,
+        case_id=case.id,
+        target_type="Case",
+        target_id=case.id,
+        details={"status": payload.status},
+    )
+    db.commit()
     return CaseOut.model_validate(case)

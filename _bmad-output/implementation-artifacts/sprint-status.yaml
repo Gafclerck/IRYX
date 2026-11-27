@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 11-23-2026 17:18
-last_updated: 11-26-2026 21:40
+last_updated: 11-27-2026 11:49
 project: IRYX
 project_key: NOKEY
 story_location: D:\MY_PROEJCT\IRYX\_bmad-output\implementation-artifacts
@@ -93,7 +93,7 @@ development_status:
   8-2-porte-humaine-h3-autorisation-d-envoi-llm-externe-et-prévisu: done
   8-3-modèle-report-agent-rapporteur-génération-et-scellement-sha: done
   8-4-endpoints-de-consultation-et-téléchargement-des-rapports-sce: review
-  8-5-service-d-audit-immuable-en-ajout-seul-auditevent-et-déclenc: backlog
+  8-5-service-d-audit-immuable-en-ajout-seul-auditevent-et-déclenc: review
   epic-8-retrospective: optional
 
   epic-9: backlog

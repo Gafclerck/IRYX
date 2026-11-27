@@ -29,6 +29,7 @@ from iryx.analytics.schemas import (
     TimelineProjectionResponse,
     UndatedFactOut,
 )
+from iryx.audit.services import AuditService
 from iryx.core.exceptions import FindingNotFoundException, ValidationException
 from iryx.evidence.models import Evidence
 
@@ -169,6 +170,16 @@ class FindingService:
 
         if user_id is not None:
             finding.created_by = user_id
+
+        audit_service = AuditService(self.db)
+        audit_service.record(
+            action="FINDING_REVIEW",
+            actor_id=user_id,
+            case_id=case_id,
+            target_type="Finding",
+            target_id=finding_id,
+            details={"action": payload.action, "severity": payload.severity},
+        )
 
         self.db.commit()
         self.db.refresh(finding)

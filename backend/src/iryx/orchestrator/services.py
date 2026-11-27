@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+from iryx.audit.services import AuditService
 from iryx.cases.models import Case, CaseStatus
 from iryx.core.exceptions import (
     CannotResumeTerminatedSessionException,
@@ -529,6 +530,20 @@ class InvestigationService:
                 code="INVALID_DECISION",
             )
 
+        audit_service = AuditService(self.db)
+        audit_service.record(
+            action="GATE_H1_DECISION",
+            actor_id=user_id,
+            case_id=case_id,
+            target_type="InvestigationRun",
+            target_id=run.id,
+            details={
+                "decision": decision_request.decision,
+                "feedback": decision_request.feedback,
+                "return_to_planner": decision_request.return_to_planner,
+            },
+        )
+
         self.db.commit()
         self.db.refresh(run)
 
@@ -740,6 +755,20 @@ class InvestigationService:
                 status_code=400,
             )
 
+        audit_service = AuditService(self.db)
+        audit_service.record(
+            action="GATE_H2_DECISION",
+            actor_id=user_id,
+            case_id=case_id,
+            target_type="InvestigationRun",
+            target_id=run.id,
+            details={
+                "decision": decision_request.decision,
+                "feedback": decision_request.feedback,
+                "current_phase": str(run.current_phase),
+            },
+        )
+
         self.db.commit()
         self.db.refresh(run)
 
@@ -874,7 +903,7 @@ class InvestigationService:
             )
 
         # The checkpointer is the source of truth for gate decisions (Story 5.6).
-        # Persist the H3 verdict there BEFORE advancing the DB run so that a
+        # The H3 verdict is written there before the DB transaction commits so a
         # resume cannot silently re-approve an external LLM send after a reject.
         approved = decision_request.decision == H3Decision.APPROVE
         graph = build_investigation_graph(checkpointer=self.checkpointer)
@@ -902,13 +931,6 @@ class InvestigationService:
             "status": "running",
             "context": _sanitize_context(context),
         }
-        try:
-            graph.update_state(config, state_update)
-        except Exception as exc:
-            raise ValidationException(
-                message="Impossible d'enregistrer la décision H3 dans le checkpointer.",
-                code="H3_DECISION_PERSISTENCE_FAILED",
-            ) from exc
 
         now = datetime.now(UTC)
         run.updated_at = now
@@ -957,6 +979,32 @@ class InvestigationService:
                 "Envoi externe refusé à la porte H3 par l'analyste. "
                 "Le rapport sera compilé par le gabarit déterministe local, sans appel LLM."
             )
+
+        audit_service = AuditService(self.db)
+        audit_service.record(
+            action="GATE_H3_DECISION",
+            actor_id=user_id,
+            case_id=case_id,
+            target_type="InvestigationRun",
+            target_id=run.id,
+            details={
+                "decision": decision_request.decision,
+                "feedback": decision_request.feedback,
+                "approved": approved,
+            },
+        )
+
+        # Persist the H3 verdict in the checkpointer only once the audit row is
+        # staged in the same DB transaction: an audit failure must leave neither
+        # the decision nor the run transition behind (fail-closed).
+        try:
+            graph.update_state(config, state_update)
+        except Exception as exc:
+            self.db.rollback()
+            raise ValidationException(
+                message="Impossible d'enregistrer la décision H3 dans le checkpointer.",
+                code="H3_DECISION_PERSISTENCE_FAILED",
+            ) from exc
 
         self.db.commit()
         self.db.refresh(run)

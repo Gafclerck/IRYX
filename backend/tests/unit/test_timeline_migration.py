@@ -36,7 +36,7 @@ def test_migration_008_offline_upgrade_sql() -> None:
     command.upgrade(cfg, "head", sql=True)
 
     script_dir = ScriptDirectory.from_config(cfg)
-    assert script_dir.get_heads() == ["009"]
+    assert script_dir.get_heads() == ["010"]
 
     revisions = [rev.revision for rev in script_dir.walk_revisions()]
     assert "008" in revisions
@@ -55,7 +55,7 @@ def test_migration_008_offline_downgrade_sql() -> None:
 
 
 def test_migration_008_upgrade_and_downgrade_live_database() -> None:
-    """Verify alembic upgrade to head (008) and downgrade to 007 and base."""
+    """Verify alembic upgrade to head (010) and downgrade to 007 and base."""
     backend_dir = Path(__file__).resolve().parent.parent.parent
     ini_path = backend_dir / "alembic.ini"
 
@@ -70,7 +70,7 @@ def test_migration_008_upgrade_and_downgrade_live_database() -> None:
         cfg.set_main_option("script_location", str(backend_dir / "migrations"))
         cfg.attributes["connection"] = connection
 
-        # Run upgrade to head (008)
+        # Run upgrade to head (010)
         command.upgrade(cfg, "head")
 
         inspector = inspect(connection)
@@ -95,7 +95,7 @@ def test_migration_008_upgrade_and_downgrade_live_database() -> None:
         index_names_after = {idx["name"] for idx in indexes_after_downgrade}
         assert "ix_observations_case_id_timestamp_utc" not in index_names_after
 
-        # Re-upgrade to head (008)
+        # Re-upgrade to head (010)
         command.upgrade(cfg, "head")
         inspector_re = inspect(connection)
         indexes_re = inspector_re.get_indexes("observations")

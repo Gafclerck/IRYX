@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from iryx import __version__
 from iryx.analytics.router import router as analytics_router
+from iryx.audit.router import router as audit_router
 from iryx.auth.router import router as auth_router
 from iryx.cases.router import router as cases_router
 from iryx.core.config import get_settings
@@ -91,6 +92,7 @@ def create_app() -> FastAPI:
     application.include_router(gateway_router)
     application.include_router(orchestrator_router)
     application.include_router(analytics_router)
+    application.include_router(audit_router)
     application.include_router(reporting_router)
 
     # Thin Health Check Endpoint (D-03)
