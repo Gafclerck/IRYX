@@ -1,0 +1,72 @@
+# syntax=docker/dockerfile:1.7
+# Contexte de build : la racine du dépôt (seul uv.lock racine est à jour, D-22).
+FROM python:3.12-slim AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_NO_CACHE=1 \
+    UV_PROJECT_ENVIRONMENT=/opt/venv
+
+COPY --from=ghcr.io/astral-sh/uv:0.12.8 /uv /uvx /bin/
+
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+COPY backend ./backend
+
+RUN uv sync --frozen --no-dev
+
+# Étape dédiée aux symboles ISF : l'archive est fournie localement par
+# l'opérateur, vérifiée par SHA-256, puis extraite. Aucun téléchargement réseau.
+FROM python:3.12-slim AS symbols
+
+ARG EXPECTED_SYMBOLS_SHA256=c7e49e8a520bfd68cfa1907cbcf9581c15f9e761dfb61b369527ec50c76251b3
+
+# Le dossier est toujours présent dans le contexte (son .gitignore est versionné) :
+# l'absence de windows.zip est donc signalée par un message explicite.
+COPY backend/docker/symbols/ /tmp/symbols-source/
+
+RUN set -eu; \
+    if [ ! -f /tmp/symbols-source/windows.zip ]; then \
+        echo "ERREUR: backend/docker/symbols/windows.zip est requis (SHA-256 attendu : ${EXPECTED_SYMBOLS_SHA256})" >&2; \
+        exit 1; \
+    fi; \
+    actual="$(sha256sum /tmp/symbols-source/windows.zip | cut -d ' ' -f 1)"; \
+    if [ "$actual" != "$EXPECTED_SYMBOLS_SHA256" ]; then \
+        echo "ERREUR: SHA-256 de backend/docker/symbols/windows.zip = ${actual} ; attendu = ${EXPECTED_SYMBOLS_SHA256}" >&2; \
+        exit 1; \
+    fi; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends unzip; \
+    rm -rf /var/lib/apt/lists/*; \
+    mkdir -p /opt/volatility3/symbols; \
+    unzip -q /tmp/symbols-source/windows.zip -d /opt/volatility3/symbols; \
+    if [ -z "$(find /opt/volatility3/symbols -type f -print -quit)" ]; then \
+        echo "ERREUR: aucun symbole ISF trouvé dans backend/docker/symbols/windows.zip (SHA-256 : ${EXPECTED_SYMBOLS_SHA256})" >&2; \
+        exit 1; \
+    fi; \
+    rm -rf /tmp/symbols-source; \
+    chown -R 10001:10001 /opt/volatility3/symbols
+
+FROM python:3.12-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:${PATH}" \
+    EVIDENCE_STORAGE_PATH=/data/evidence/ \
+    EVIDENCE_STAGING_PATH=/data/evidence/staging \
+    VOLATILITY_SYMBOLS_PATH=/opt/volatility3/symbols
+
+RUN groupadd --gid 10001 iryx \
+    && useradd --uid 10001 --gid 10001 --home-dir /home/iryx --create-home \
+       --shell /usr/sbin/nologin iryx \
+    && mkdir -p /data/evidence/staging /home/iryx /app \
+    && chown -R iryx:iryx /data /home/iryx /app
+
+COPY --from=builder --chown=iryx:iryx /opt/venv /opt/venv
+COPY --from=symbols --chown=iryx:iryx /opt/volatility3/symbols /opt/volatility3/symbols
+COPY --chown=iryx:iryx backend /app/backend
+
+WORKDIR /app/backend
+USER iryx:iryx
+
+CMD ["celery", "-A", "iryx.core.celery_app", "worker", "--loglevel=info", "--pool=threads", "--concurrency=4"]

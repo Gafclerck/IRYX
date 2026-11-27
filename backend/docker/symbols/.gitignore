@@ -1,0 +1,5 @@
+# Archive ISF Windows fournie localement par l'operateur (D-26).
+# Le dossier est versionne via ce fichier ; l'archive ne l'est pas.
+windows.zip
+*.zip
+!.gitignore

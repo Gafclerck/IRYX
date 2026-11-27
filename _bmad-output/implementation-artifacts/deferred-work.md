@@ -10,3 +10,15 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-8-4-endpoints-de-consultation-et-telechargement-des-rapports-scelles.md`
   summary: Revenir sur le changement `fastapi` → `fastapi[standard]` et le churn de `uv.lock` une fois la story 8.4 terminée, si ces dépendances ne sont plus nécessaires.
   evidence: Modifications présentes dans l’arbre avant l’implémentation de la story et explicitement conservées à la demande de l’utilisateur ; elles ne sont pas causées par cette story et ne doivent pas être annulées ici.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-9-1-dockerfile-multi-etapes-et-docker-compose-mono-serveur.md`
+  summary: Refuser en production les valeurs placeholders de SECRET_KEY et POSTGRES_PASSWORD copiées depuis .env.example.
+  evidence: Comportement préexistant de core/config.py (seul JWT_SECRET_KEY est gardé en production) ; le correctif exigerait de modifier backend/src, interdit par le bloc gelé de la story 9.1.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-9-1-dockerfile-multi-etapes-et-docker-compose-mono-serveur.md`
+  summary: Documenter la procédure de recréation de postgres_data lorsque POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB changent après l'initialisation du volume.
+  evidence: L'image PostgreSQL officielle n'applique ces variables qu'à un volume vide ; l'API tente alors de se connecter avec des identifiants inconnus. Comportement préexistant de l'image, non causé par la story 9.1.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-9-1-dockerfile-multi-etapes-et-docker-compose-mono-serveur.md`
+  summary: Borner alembic upgrade head dans l'entrypoint API pour eviter un blocage indefini sur un verrou de migration.
+  evidence: Un verrou database peut bloquer la migration sans jamais la faire échouer ; la matrice gelée couvre l'échec de migration mais pas ce blocage, et ajouter `timeout` + `MIGRATION_TIMEOUT_SECONDS` crée une surface nouvelle non démontrée dans cette exécution.

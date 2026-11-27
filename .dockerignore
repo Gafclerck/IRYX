@@ -1,0 +1,33 @@
+# Artefacts locaux et données forensiques : jamais envoyés au daemon Docker.
+.git/
+.venv/
+**/.venv/
+**/__pycache__/
+**/*.py[cod]
+.pytest_cache/
+.ruff_cache/
+**/.pytest_cache/
+**/.ruff_cache/
+.env
+.env.*
+**/.env
+**/.env.*
+
+# Données forensiques locales (le paquet source backend/src/iryx/evidence est conservé).
+/evidence/
+/backend/evidence/
+/backend/data/
+
+# Artefacts de planification, documentation et dépôts de référence.
+/_bmad-output/
+/_bmad/
+/.bmad-loop/
+/docs/
+/mulder_repo/
+/sources-frontend/
+/.agent/
+/.agents/
+/.claude/
+/.gemini/
+/.opencode/
+/.qoder/

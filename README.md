@@ -222,7 +222,9 @@ IRYX/
 
 ---
 
-## 8. Démarrage Rapide
+## 8. Démarrage Rapide (Docker Compose — D-22)
+
+La topologie de référence est mono-serveur : `postgres` (PostgreSQL 16), `redis` (Redis 7), `iryx-api` et `iryx-worker`. Un seul port est publié sur l'hôte : `8000`.
 
 ### 8.1 Cloner le Dépôt
 ```bash
@@ -230,49 +232,77 @@ git clone https://github.com/votre-organisation/iryx.git
 cd iryx
 ```
 
-### 8.2 Configurer l'Environnement Virtuel
-Avec `uv` (recommandé) :
-```bash
-uv venv
-# Activation sous Linux / macOS :
-source .venv/bin/activate
-# Activation sous Windows (PowerShell) :
-.venv\Scripts\Activate.ps1
-
-# Synchronisation des dépendances avec le fichier de verrouillage
-uv sync
-```
-
-### 8.3 Initialiser les Variables d'Environnement
-Copiez le modèle dans le dossier `backend` :
+### 8.2 Configurer les Variables d'Environnement
+Copiez le modèle, puis renseignez les valeurs (le fichier `backend/.env` n'est jamais versionné) :
 ```bash
 cp backend/.env.example backend/.env
 ```
-Ajustez les valeurs dans `backend/.env` (connexion PostgreSQL, Redis, clés d'API LLM et répertoires de stockage des preuves).
+Valeurs à vérifier impérativement avant le démarrage :
 
-### 8.4 Initialiser la Base de Données
-Assurez-vous que votre instance PostgreSQL 16 est active, puis appliquez les migrations Alembic :
+- `SECRET_KEY` : obligatoire dès l'import de l'application ;
+- `JWT_SECRET_KEY` : remplacer la valeur de développement en production ;
+- `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` : utilisés par Compose pour le service PostgreSQL et pour construire l'URL interne de l'API et du worker.
+
+Dans les conteneurs, `DATABASE_URL`, `REDIS_URL` et `CELERY_*` sont remplacés par les hôtes internes `postgres` et `redis` : les valeurs `localhost` du modèle ne servent qu'au développement hors Docker. Les ports `5432` et `6379` ne sont pas publiés sur l'hôte.
+
+### 8.3 Prérequis : Symboles Volatility 3 (D-26)
+L'image worker exige une archive ISF Windows fournie localement par l'opérateur :
+```bash
+mkdir -p backend/docker/symbols
+cp /chemin/fourni/windows.zip backend/docker/symbols/windows.zip
+sha256sum backend/docker/symbols/windows.zip
+```
+Empreinte attendue : `c7e49e8a520bfd68cfa1907cbcf9581c15f9e761dfb61b369527ec50c76251b3`. Sous PowerShell : `Get-FileHash -Algorithm SHA256 backend\docker\symbols\windows.zip`.
+
+L'archive est extraite dans `/opt/volatility3/symbols` pendant le build et vérifiée par SHA-256. Aucun téléchargement de symboles n'est effectué, ni au build ni au runtime. Une archive absente ou non conforme fait échouer le build avec un message explicite nommant le chemin et le hash attendu. `backend/docker/symbols/windows.zip` est ignoré par git.
+
+### 8.4 Démarrer la Plateforme
+Depuis `backend/` :
 ```bash
 cd backend
-alembic upgrade head
-cd ..
+docker compose up -d --build
+docker compose ps
 ```
+Les quatre services doivent atteindre l'état `healthy`. L'entrypoint API attend PostgreSQL (`pg_isready`), applique `alembic upgrade head` jusqu'à la révision `010`, puis seulement alors ouvre le port HTTP : aucune requête n'est servie avant la fin des migrations. Sa sonde accepte aussi `POSTGRES_HOST` (défaut `postgres`), `POSTGRES_PORT` (défaut `5432`) et `PG_READY_TIMEOUT_SECONDS` (défaut `60`, entier positif).
 
-### 8.5 Lancer les Services
-
-**Terminal 1 — API HTTP FastAPI :**
+### 8.5 Vérifications
 ```bash
-cd backend
-uvicorn iryx.main:app --host 0.0.0.0 --port 8000 --reload
-```
-L'API est accessible à l'adresse : `http://localhost:8000`  
-La documentation interactive OpenAPI Swagger est consultable sur : `http://localhost:8000/docs`
+# Configuration résolue (le démon Docker n'est pas nécessaire)
+docker compose config --quiet
 
-**Terminal 2 — Worker Celery :**
-```bash
-cd backend
-celery -A iryx.core.celery_app worker --loglevel=info --pool=threads --concurrency=4
+# API en bonne santé
+curl -fsS --max-time 5 http://localhost:8000/health
+
+# Tête des migrations (doit afficher 010)
+docker compose exec iryx-api alembic current
+
+# identité non-root attendue dans les deux conteneurs applicatifs
+docker compose exec iryx-api id
+docker compose exec iryx-worker id
+
+# Logs structurés JSON sur stdout
+docker compose logs --tail=100
 ```
+La commande `id` doit retourner `uid=10001(iryx) gid=10001(iryx)`. La documentation OpenAPI/Swagger reste disponible sur `http://localhost:8000/docs`.
+
+**Sans `.env`**, `docker compose config` échoue explicitement sur la variable manquante, sans valeur par défaut sensible.
+
+### 8.6 Arrêt et Nettoyage
+```bash
+docker compose down        # conserve les volumes nommés
+docker compose down -v     # supprime aussi les volumes (destructif)
+```
+
+### 8.7 Mode Manuel (développement hors Compose)
+```bash
+uv sync
+cd backend
+uv run alembic upgrade head
+uv run uvicorn iryx.main:app --host 0.0.0.0 --port 8000 --reload
+#Dans un second terminal :
+uv run celery -A iryx.core.celery_app worker --loglevel=info --pool=threads --concurrency=4
+```
+Ce mode ne remplace pas Compose : PostgreSQL 16 et Redis 7 doivent déjà être disponibles, et les hôtes `localhost` du `.env` sont alors utilisés.
 
 ---
 

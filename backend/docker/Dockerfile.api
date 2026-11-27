@@ -1,0 +1,51 @@
+# syntax=docker/dockerfile:1.7
+# Contexte de build : la racine du dépôt (seul uv.lock racine est à jour, D-22).
+FROM python:3.12-slim AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_NO_CACHE=1 \
+    UV_PROJECT_ENVIRONMENT=/opt/venv
+
+# Version de uv figée sur celle validée en local.
+COPY --from=ghcr.io/astral-sh/uv:0.12.8 /uv /uvx /bin/
+
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+COPY backend ./backend
+
+# --frozen : aucune résolution réseau de dépendances, le lockfile fait foi.
+RUN uv sync --frozen --no-dev
+
+FROM python:3.12-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:${PATH}" \
+    EVIDENCE_STORAGE_PATH=/data/evidence/ \
+    VOLATILITY_SYMBOLS_PATH=/opt/volatility3/symbols
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 iryx \
+    && useradd --uid 10001 --gid 10001 --home-dir /home/iryx --create-home \
+       --shell /usr/sbin/nologin iryx \
+    && mkdir -p /data/evidence/staging /home/iryx /app \
+    && chown -R iryx:iryx /data /home/iryx /app
+
+COPY --from=builder --chown=iryx:iryx /opt/venv /opt/venv
+COPY --chown=iryx:iryx backend /app/backend
+COPY --chown=iryx:iryx docker/entrypoint-api.sh /usr/local/bin/entrypoint-api.sh
+
+RUN chmod 0755 /usr/local/bin/entrypoint-api.sh
+
+WORKDIR /app/backend
+USER iryx:iryx
+
+# Le port HTTP n'est annoncé comme prêt qu'après la fin de l'entrypoint
+# (attente PostgreSQL + migrations Alembic).
+HEALTHCHECK --interval=5s --timeout=5s --start-period=45s --retries=12 \
+    CMD python -c "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else 1)"
+
+ENTRYPOINT ["/usr/local/bin/entrypoint-api.sh"]
