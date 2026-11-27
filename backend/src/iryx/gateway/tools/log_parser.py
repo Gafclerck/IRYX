@@ -16,7 +16,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from iryx.core.config import get_settings
 from iryx.core.exceptions import ValidationException
-from iryx.gateway.base import BaseTool, ToolExecutionContext, ToolExecutionResult
+from iryx.gateway.base import (
+    BaseTool,
+    ToolExecutionContext,
+    ToolExecutionResult,
+    resolve_confined_evidence_path,
+)
 from iryx.gateway.models import ToolExecutionStatus
 
 logger = logging.getLogger("iryx.gateway.tools.log_parser")
@@ -442,7 +447,7 @@ class LogCsvParserTool(BaseTool):
             return params.content.lstrip("\ufeff"), source_id
 
         if params.file_path is not None:
-            path = Path(params.file_path)
+            path = resolve_confined_evidence_path(params.file_path)
             if not path.is_file():
                 raise ValidationException(f"Fichier journal introuvable: '{params.file_path}'.")
             try:

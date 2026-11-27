@@ -15,7 +15,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from iryx.core.config import get_settings
 from iryx.core.exceptions import ToolExecutionFailedException, ValidationException
-from iryx.gateway.base import BaseTool, ToolExecutionContext, ToolExecutionResult
+from iryx.gateway.base import (
+    BaseTool,
+    ToolExecutionContext,
+    ToolExecutionResult,
+    resolve_confined_evidence_path,
+)
 from iryx.gateway.models import ToolExecutionStatus
 
 logger = logging.getLogger("iryx.gateway.tools.prefetch_parser")
@@ -282,7 +287,8 @@ class PrefetchParserTool(BaseTool):
                     break
                 files_analyzed += 1
                 try:
-                    obs_list, exec_list = self._parse_single_file(pf_path, source_id, params)
+                    confined_pf = resolve_confined_evidence_path(pf_path)
+                    obs_list, exec_list = self._parse_single_file(confined_pf, source_id, params)
                     for obs, exc in zip(obs_list, exec_list, strict=False):
                         if len(observations) >= params.max_results:
                             truncated = True
@@ -327,7 +333,7 @@ class PrefetchParserTool(BaseTool):
         source_id = params.evidence_id or context.evidence_id
 
         if params.file_path is not None:
-            path = Path(params.file_path)
+            path = resolve_confined_evidence_path(params.file_path)
             if not path.exists():
                 raise ValidationException(
                     f"Fichier ou répertoire Prefetch introuvable: '{params.file_path}'."

@@ -2,11 +2,32 @@
 
 import uuid
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from iryx.core.config import get_settings
+from iryx.core.exceptions import ValidationException
 from iryx.gateway.models import ToolExecutionStatus
+
+
+def resolve_confined_evidence_path(raw_path: str | Path) -> Path:
+    """Resolve a file path and ensure it stays confined within evidence storage or staging."""
+    if isinstance(raw_path, str) and not raw_path.strip():
+        raise ValidationException("Chemin de fichier non autorisé ou hors périmètre: ''.")
+
+    settings = get_settings()
+    resolved = Path(raw_path).resolve()
+    raw_allowed = (settings.evidence_storage_path, settings.evidence_staging_path)
+    allowed_dirs = tuple(
+        Path(d).resolve() for d in raw_allowed if isinstance(d, str) and d.strip()
+    )
+    if not allowed_dirs or not any(resolved.is_relative_to(allowed_dir) for allowed_dir in allowed_dirs):
+        raise ValidationException(
+            f"Chemin de fichier non autorisé ou hors périmètre: '{raw_path}'."
+        )
+    return resolved
 
 
 class ToolExecutionContext(BaseModel):

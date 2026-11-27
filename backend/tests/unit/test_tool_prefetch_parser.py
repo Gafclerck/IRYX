@@ -17,6 +17,7 @@ from sqlalchemy.pool import StaticPool
 from iryx.analytics.models import Observation
 from iryx.auth.models import Organization
 from iryx.cases.models import Case
+from iryx.core.config import get_settings
 from iryx.core.exceptions import ToolExecutionFailedException, ValidationException
 from iryx.db.base import Base
 from iryx.evidence.models import Evidence
@@ -31,6 +32,14 @@ from iryx.gateway.tools.prefetch_parser import (
     sanitize_loaded_files,
     sanitize_path,
 )
+
+
+@pytest.fixture(autouse=True)
+def _confine_evidence_to_tmp_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Configure evidence storage and staging paths to tmp_path for unit tests."""
+    settings = get_settings()
+    monkeypatch.setattr(settings, "evidence_storage_path", str(tmp_path))
+    monkeypatch.setattr(settings, "evidence_staging_path", str(tmp_path / "staging"))
 
 
 @pytest.fixture
@@ -649,6 +658,7 @@ async def test_tool_runner_error_on_corrupt_file(
 
 @pytest.mark.asyncio
 async def test_tool_runner_source_not_found(
+    tmp_path: Path,
     db_session: Session,
     test_case: Case,
 ) -> None:
@@ -659,7 +669,7 @@ async def test_tool_runner_source_not_found(
     with pytest.raises(ValidationException, match="introuvable"):
         await runner.execute_tool(
             tool_name="parse_execution",
-            parameters={"file_path": "Z:/NonExistent/Prefetch.pf"},
+            parameters={"file_path": str(tmp_path / "NonExistent" / "Prefetch.pf")},
             context=context,
         )
 

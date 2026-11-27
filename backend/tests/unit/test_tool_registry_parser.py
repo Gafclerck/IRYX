@@ -18,6 +18,7 @@ from sqlalchemy.pool import StaticPool
 from iryx.analytics.models import Observation
 from iryx.auth.models import Organization
 from iryx.cases.models import Case
+from iryx.core.config import get_settings
 from iryx.core.exceptions import ToolExecutionFailedException, ValidationException
 from iryx.db.base import Base
 from iryx.evidence.models import Evidence
@@ -35,6 +36,14 @@ from iryx.gateway.tools.registry_parser import (
     normalize_key_path,
     normalize_value_data,
 )
+
+
+@pytest.fixture(autouse=True)
+def _confine_evidence_to_tmp_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Configure evidence storage and staging paths to tmp_path for unit tests."""
+    settings = get_settings()
+    monkeypatch.setattr(settings, "evidence_storage_path", str(tmp_path))
+    monkeypatch.setattr(settings, "evidence_staging_path", str(tmp_path / "staging"))
 
 
 @pytest.fixture
