@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 11-23-2026 17:18
-last_updated: 11-27-2026 21:25
+last_updated: 11-28-2026 06:45
 project: IRYX
 project_key: NOKEY
 story_location: D:\MY_PROEJCT\IRYX\_bmad-output\implementation-artifacts
@@ -99,6 +99,6 @@ development_status:
   epic-9: in-progress
   9-1-configuration-dockerfile-multi-étapes-et-docker-compose-mono: review
   9-2-durcissement-de-sécurité-du-conteneur-de-traitement-et-isola: review
-  9-3-script-de-peuplement-de-démonstration-seed-data-d-un-inciden: backlog
+  9-3-script-de-peuplement-de-démonstration-seed-data-d-un-inciden: review
   9-4-script-de-test-d-acceptation-et-démonstration-de-bout-en-bou: backlog
   epic-9-retrospective: optional

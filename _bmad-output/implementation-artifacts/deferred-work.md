@@ -26,3 +26,7 @@
 - source_spec: _bmad-output/implementation-artifacts/spec-9-2-durcissement-securite-conteneur-traitement-isolation-reseau.md
   summary: Fournir une migration ou une procédure pour rendre les preuves scellées de l'ancien volume evidence_data visibles après le passage au montage séparé brut :ro / staging.
   evidence: Le déplacement de evidence_data vers /data/evidence/raw:ro rend invisibles les fichiers /data/evidence/staging/<id>.bin déjà scellés ; aucun test ni helper d'upgrade ne couvre ce cas et le montage :ro interdit la réparation in place. Limite déjà consignée comme connue, sans volume préexistant observé.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-9-3-script-peuplement-demonstration-seed-data-incident-windows.md`
+  summary: Ajouter unicité DB `Organization.name`, `Case(organization_id, title)`, `Evidence(case_id, original_name)` et verrouillage/transaction pour rendre le seed concurrent-safe.
+  evidence: `_ensure_organization`/`_ensure_case`/`_ensure_evidence` sont check-then-insert sans `INSERT … ON CONFLICT`, advisory lock, ni contraintes `UNIQUE` sur ces tables ; deux exécutions concurrentes ou des doublons préexistants peuvent créer des doublons métier. Correctif hors `backend/src/iryx/scripts/**`.

@@ -340,6 +340,37 @@ uv run celery -A iryx.core.celery_app worker --loglevel=info --pool=threads --co
 ```
 Ce mode ne remplace pas Compose : PostgreSQL 16 et Redis 7 doivent déjà être disponibles, et les hôtes `localhost` du `.env` sont alors utilisés.
 
+### 8.9 Jeu de Données de Démonstration (Story 9.3)
+Une base migrée (`alembic upgrade head`) et un `backend/.env` valide — au minimum `SECRET_KEY` et `DATABASE_URL` — sont requis. Le seed est idempotent : il peut être relancé sans créer de doublon et répare les preuves manquantes ou partiellement scellées. Il n'exige pas de broker Celery : le scellement appelle directement le pipeline d'ingestion.
+
+```bash
+cd backend
+uv run python -m iryx.scripts.seed_data
+```
+
+En environnement Compose, exécutez-le dans le conteneur API (base et staging y sont déjà configurés) :
+
+```bash
+docker compose exec iryx-api python -m iryx.scripts.seed_data
+```
+
+Le script crée ou met à jour :
+
+- l'organisation `Banque Atlantique DFIR` ;
+- quatre comptes actifs avec mots de passe argon2id :
+
+| Email | Mot de passe | Rôle |
+|-------|--------------|------|
+| `admin@iryx.local` | `Admin12345!` | `admin` |
+| `analyst@iryx.local` | `Analyst12345!` | `analyst` |
+| `investigator@iryx.local` | `Investigator12345!` | `investigator` |
+| `auditor@iryx.local` | `Auditor12345!` | `viewer` |
+
+- le dossier `open` `Attaque Ransomware Serveur AD` ;
+- trois preuves générées localement, sans téléchargement, puis scellées via le pipeline d'ingestion (SHA-256, type détecté, permissions `0o440`, run `completed`) : `Security.evtx` (Event IDs 4624 et 4688), `POWERSHELL.EXE-DEMO1234.pf` et `MEMORY.DMP`.
+
+> **Avertissement** — Ces identifiants sont réservés à la démonstration. En dehors d'un environnement de démo, utilisez des mots de passe robustes et personnalisés, et ne réutilisez jamais ces comptes en production.
+
 ---
 
 ## 9. Tests & Assurance Qualité
