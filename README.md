@@ -371,6 +371,25 @@ Le script crée ou met à jour :
 
 > **Avertissement** — Ces identifiants sont réservés à la démonstration. En dehors d'un environnement de démo, utilisez des mots de passe robustes et personnalisés, et ne réutilisez jamais ces comptes en production.
 
+### 8.10 Validation et Démonstration E2E (Story 9.4)
+Une fois la pile démarrée et le jeu de données de démonstration initialisé (Section 8.9), exécutez le test d'acceptation de bout en bout (12 étapes couvrant JWT, RBAC, téléversement/scellement SHA-256, LangGraph + portes H1/H2/H3, Gateway, Verifier, timeline UTC, Presidio, rapports Markdown/JSON scellés et audit append-only Invariant 3) :
+
+```bash
+# Depuis le conteneur API (avec fournisseur LLM compatible OpenAI configuré dans backend/.env)
+cd backend
+docker compose exec iryx-api python -m iryx.scripts.test_e2e_investigation_flow --base-url http://127.0.0.1:8000
+
+# Ou depuis l'hôte (ajoutez --skip-db-audit-check si PostgreSQL 5432 n'est pas exposé sur l'hôte)
+uv run python -m iryx.scripts.test_e2e_investigation_flow --base-url http://127.0.0.1:8000 --skip-db-audit-check
+
+# Mode autonome hors ligne / CI (base SQLite isolée + stubs Celery/LLM locaux au script)
+uv run python -m iryx.scripts.test_e2e_investigation_flow --mode local-demo
+```
+
+En cas de succès complet, le script affiche `DÉMONSTRATION ET VALIDATION COMPLÈTE DU MVP IRYX RÉUSSIE` et termine avec le code de sortie `0`. Toute anomalie provoque un arrêt immédiat (code non nul) identifiant l'étape et l'écart constaté.
+
+> **Note sur les relances en mode `stack`** — Le graphe d'orchestration laisse la session d'investigation complétée au statut `running` (phase `reporting`), si bien qu'une seconde exécution immédiate de `--mode stack` sur la même base rencontrera `HTTP 409` (`INVESTIGATION_ALREADY_RUNNING`) à l'étape 4 ; réinitialisez ou purgez la session concernée avant de relancer le test en mode `stack`.
+
 ---
 
 ## 9. Tests & Assurance Qualité

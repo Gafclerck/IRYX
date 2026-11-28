@@ -243,7 +243,6 @@ class ToolRunner:
         result.result_sha256 = sha256
         result.duration_ms = duration_ms
         result.status = ToolExecutionStatus.SUCCESS
-        result.agent_payload = result.to_agent_payload()
 
         if self.db is not None:
             execution = ToolExecution(
@@ -260,6 +259,7 @@ class ToolRunner:
             self.db.add(execution)
             self.db.flush()
 
+            created_observations: list[tuple[dict[str, Any], uuid.UUID, uuid.UUID | None]] = []
             if result.observations:
                 for obs_data in result.observations:
                     ts = obs_data.get("timestamp_utc")
@@ -274,23 +274,38 @@ class ToolRunner:
                             src_id = uuid.UUID(src_id)
                         except ValueError:
                             src_id = None
+                    raw_norm = obs_data.get("normalized_content")
+                    normalized_content = raw_norm if raw_norm is not None else dict(obs_data)
                     obs = Observation(
                         case_id=context.case_id,
                         source_id=src_id,
                         tool_name=tool.name,
                         tool_execution_id=execution.id,
-                        normalized_content=obs_data.get("normalized_content", obs_data),
+                        normalized_content=normalized_content,
                         timestamp_utc=ts,
                         source_location=obs_data.get("source_location"),
                     )
                     self.db.add(obs)
+                    self.db.flush()
+                    created_observations.append((obs_data, obs.id, obs.source_id))
 
+            exec_id_str = str(execution.id)
             try:
                 self.db.commit()
                 self.db.refresh(execution)
             except Exception:
                 self.db.rollback()
                 raise
+            for obs_data, obs_id, obs_source_id in created_observations:
+                obs_data["id"] = str(obs_id)
+                obs_data["tool_name"] = tool.name
+                obs_data["tool_execution_id"] = exec_id_str
+                if obs_source_id is not None:
+                    obs_data["source_id"] = str(obs_source_id)
             result.tool_execution_id = execution.id
+            result.agent_payload = None
+            result.agent_payload = result.to_agent_payload()
+        else:
+            result.agent_payload = result.to_agent_payload()
 
         return result

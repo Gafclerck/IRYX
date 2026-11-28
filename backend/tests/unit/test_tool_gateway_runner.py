@@ -513,3 +513,82 @@ async def test_subprocess_cancellation() -> None:
 
     with pytest.raises(asyncio.CancelledError):
         await task
+
+
+@pytest.mark.asyncio
+async def test_observation_backfill_and_agent_payload_consistency(
+    db_session: Session,
+    test_case: Case,
+) -> None:
+    """Verify DB observation backfill overrides tool_name and refreshes agent_payload."""
+
+    class RawObsTool(BaseTool):
+        name = "parse_text_logs"
+        version = "1.0.0"
+        description = "Tool returning observations without normalized_content or valid tool_name"
+        timeout_seconds = 10
+        parameters_schema = SimpleInputSchema
+
+        async def execute(self, params: SimpleInputSchema, context: ToolExecutionContext):
+            return ToolExecutionResult(
+                raw_output={"count": 1},
+                observations=[
+                    {
+                        "tool_name": "spoofed_tool_name",
+                        "source_location": "line:1",
+                        "message": params.data,
+                    }
+                ],
+            )
+
+    from iryx.evidence.models import Evidence
+
+    evidence = Evidence(
+        id=uuid.uuid4(),
+        case_id=test_case.id,
+        original_name="sample.log",
+        file_size=64,
+        sha256="a" * 64,
+        detected_type="text/plain",
+    )
+    db_session.add(evidence)
+    db_session.commit()
+
+    registry = ToolRegistry()
+    registry.register(RawObsTool())
+    runner = ToolRunner(db=db_session, registry=registry)
+    evidence_id = evidence.id
+    context = ToolExecutionContext(
+        case_id=test_case.id,
+        agent_role="Executor",
+        evidence_id=evidence_id,
+    )
+
+    result = await runner.execute_tool(
+        tool_name="parse_text_logs",
+        parameters={"data": "suspicious command"},
+        context=context,
+    )
+
+    execution = db_session.get(ToolExecution, result.tool_execution_id)
+    assert execution is not None
+    assert len(execution.observations) == 1
+    persisted_obs = execution.observations[0]
+
+    assert len(result.observations) == 1
+    backfilled = result.observations[0]
+    assert backfilled["id"] == str(persisted_obs.id)
+    assert backfilled["tool_name"] == "parse_text_logs"
+    assert backfilled["tool_execution_id"] == str(execution.id)
+    assert backfilled["source_id"] == str(evidence_id)
+
+    # DB normalized_content should be an independent copy without backfilled keys
+    assert "id" not in persisted_obs.normalized_content
+    assert "tool_execution_id" not in persisted_obs.normalized_content
+    assert persisted_obs.normalized_content["message"] == "suspicious command"
+
+    assert result.agent_payload is not None
+    assert "<parse_text_logs>" in result.agent_payload.summary
+    assert "spoofed_tool_name" not in result.agent_payload.summary
+    assert result.agent_payload.observations[0]["id"] == str(persisted_obs.id)
+    assert result.agent_payload.observations[0]["tool_execution_id"] == str(execution.id)
