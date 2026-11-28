@@ -1,3 +1,4 @@
+# Décisions C1, C2, C4 et identité : décidées, voir docs/frontend/15-decisions-ouvertes.md
 # Porte de préparation passée le 2026-11-25 : checklist manuelle, sans bmad-sprint-planning.
 # Suivi tenu à la main, bmad-sprint-planning non utilisé (chemin de sortie figé sur sprint-status.yaml du back).
 #
@@ -8,40 +9,41 @@
 
 project: IRYX-Frontend
 tracking_system: manual
-status: à faire
+status: en cours
 development_status:
-  epic-f1: à faire
-  F1.1: à faire
-  F1.2: à faire
-  F1.3: à faire
-  F1.4: à faire
-  F1.5: à faire
-  F1.6: à faire
-  F1.7: à faire
+  epic-f1: en cours
+  F1.1: fait
+  F1.2: fait, routes simulées, à réaligner
+  F1.3: fait, contrat simulé, à réaligner
+  F1.4: fait, contrat simulé, à réaligner
+  F1.5: fait, contrat simulé, à réaligner
+  F1.6: fait, contrat simulé, à réaligner
+  F1.7: fait, contrat simulé, à réaligner
 
-  epic-f2: à faire
-  F2.1: à faire
-  F2.2: à faire
+  epic-f2: en cours
+  F2.1: fait, contrat simulé, à réaligner
+  F2.2: fait, contrat simulé, à réaligner
 
-  epic-f3: à faire
-  F3.1: à faire
-  F3.2: à faire
-  F3.3: à faire
+  epic-f3: en cours
+  F3.1: fait, contrat simulé, à réaligner
+  F3.2: fait, contrat simulé, à réaligner
+  F3.3: fait, contrat simulé, à réaligner
 
   epic-f4: à faire
-  F4.1: à faire
-  F4.2: à faire
-  F4.3: à faire
+  F4.1: fait, contrat simulé, à réaligner
+  F4.2: fait, contrat simulé, à réaligner
+  F4.3: fait, contrat simulé, à réaligner
   F4.4: à faire
   F4.5: à faire
-  F4.6: à faire
-  F4.7: à faire
-  F4.8: à faire
+  F4.6: fait, contrat simulé, à réaligner
+  F4.7: fait, contrat simulé, à réaligner
+  F4.8: fait, contrat simulé, à réaligner
   F4.9: à faire
 
   epic-f5: à faire
-  F5.1: à faire
-  F5.2: à faire
+  F5.1: fait, contrat simulé, à réaligner
+  F5.2: fait, contrat simulé, à réaligner
+  # Dette F5.2 : historique des versions scellées hors périmètre de la démo, à réaligner avec E8.
   F5.3: à faire
   F5.4: à faire
   F5.5: à faire
